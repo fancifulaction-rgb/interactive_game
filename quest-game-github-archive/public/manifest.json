@@ -1,0 +1,10 @@
+{
+  "name": "Quest Game",
+  "short_name": "Квест",
+  "description": "Командные квесты на мероприятиях",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#8b5cf6",
+  "theme_color": "#8b5cf6",
+  "lang": "ru"
+}

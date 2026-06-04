@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%
+  }
+
+  .dark {
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%
+  }
+}
+
+
+
+img {
+  object-position: top;
+}
+
+.fixed {
+  position: fixed;
+}
+
+/* Мобильные устройства и touch targets */
+@media (max-width: 640px) {
+  /* Увеличиваем минимальный размер для всех интерактивных элементов */
+  button,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"],
+  .cursor-pointer {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Улучшаем отступы для мобильных */
+  .p-mobile {
+    padding: 1rem;
+  }
+
+  /* Улучшаем размеры шрифтов */
+  .text-mobile-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .text-mobile-base {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+
+  /* Предотвращаем зум на input'ах */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* Улучшаем spacing для мобильных */
+  .space-y-mobile > * + * {
+    margin-top: 1rem;
+  }
+}
+
+/* Адаптивные размеры для иконок */
+.icon-sm {
+  width: 1rem;
+  height: 1rem;
+}
+
+.icon-base {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.icon-lg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.icon-xl {
+  width: 2rem;
+  height: 2rem;
+}
+
+/* Улучшенные touch targets для мобильных */
+@media (max-width: 768px) {
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Улучшаем отступы для card элементов */
+  .card-mobile {
+    padding: 1rem;
+    margin: 0.5rem;
+  }
+
+  /* Улучшаем spacing между элементами */
+  .stack-mobile > * + * {
+    margin-top: 0.75rem;
+  }
+}
+
+/* Предотвращаем горизонтальный скролл на мобильных */
+@media (max-width: 640px) {
+  html, body {
+    overflow-x: hidden;
+  }
+  
+  .overflow-x-hidden {
+    overflow-x: hidden;
+  }
+}
+
+/* Улучшаем читаемость на маленьких экранах */
+@media (max-width: 480px) {
+  .text-xs-responsive {
+    font-size: 0.75rem;
+  }
+  
+  .text-sm-responsive {
+    font-size: 0.875rem;
+  }
+  
+  .text-base-responsive {
+    font-size: 1rem;
+  }
+  
+  .text-lg-responsive {
+    font-size: 1.125rem;
+  }
+}
+
+/* Адаптивные отступы контейнеров */
+.container-mobile {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container-mobile {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-mobile {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}

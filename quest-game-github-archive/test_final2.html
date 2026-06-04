@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест финала 2</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Тест финальной страницы 2</h1>
+    
+    <div class="test-section">
+        <h2>1. Настройка тестовых данных</h2>
+        <p>Эта страница поможет протестировать финальную страницу с финалом 2.</p>
+        
+        <button onclick="setupTestData()">📝 Настроить тестовые данные</button>
+        <button onclick="openFinalPage()">🎉 Открыть финальную страницу</button>
+        <button onclick="clearData()">🗑️ Очистить данные</button>
+        
+        <div id="status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Ручное тестирование</h2>
+        <p>Для полного тестирования:</p>
+        <ol>
+            <li>Перейдите на <a href="/team/register" target="_blank">страницу регистрации команды</a></li>
+            <li>Введите код игры: <strong>MIN2024</strong></li>
+            <li>Заполните данные команды</li>
+            <li>Отправьте форму</li>
+            <li>Пройдите игру до конца</li>
+            <li>Проверьте финальную страницу</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Прямые ссылки</h2>
+        <p><a href="/congratulation-with-stats/MIN2024" target="_blank">🎯 Финальная страница MIN2024</a></p>
+        <p><a href="/team/register" target="_blank">👥 Регистрация команды</a></p>
+        <p><a href="/admin/login" target="_blank">🔧 Админ панель</a></p>
+    </div>
+
+    <script>
+        function showStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+
+        function setupTestData() {
+            try {
+                // Устанавливаем данные команды, как если бы она была зарегистрирована
+                const teamInfo = {
+                    id: '5cb97849-0868-4a07-b4b1-071a12b2ecd0',
+                    name: 'Тестовая команда',
+                    captain_name: 'Алексей Петров',
+                    players: ['Алексей Петров', 'Мария Сидорова'],
+                    total_score: 45,
+                    answers_count: 3
+                };
+
+                localStorage.setItem('team_id', teamInfo.id);
+                localStorage.setItem('game_code', 'MIN2024');
+                localStorage.setItem('current_team', JSON.stringify(teamInfo));
+
+                showStatus('✅ Тестовые данные установлены! Команда: "Тестовая команда", Капитан: "Алексей Петров", Очки: 45');
+                console.log('🎯 Установлены тестовые данные:', teamInfo);
+            } catch (error) {
+                showStatus('❌ Ошибка установки данных: ' + error.message, 'error');
+                console.error('❌ Ошибка:', error);
+            }
+        }
+
+        function openFinalPage() {
+            const gameCode = 'MIN2024';
+            window.open(`/congratulation-with-stats/${gameCode}`, '_blank');
+        }
+
+        function clearData() {
+            localStorage.removeItem('team_id');
+            localStorage.removeItem('game_code');
+            localStorage.removeItem('current_team');
+            showStatus('🗑️ Данные очищены!');
+        }
+
+        // Автоматически показываем текущий статус при загрузке
+        window.onload = function() {
+            const hasData = localStorage.getItem('current_team');
+            if (hasData) {
+                showStatus('ℹ️ Тестовые данные уже настроены');
+            } else {
+                showStatus('ℹ️ Нажмите "Настроить тестовые данные" для начала тестирования');
+            }
+        };
+    </script>
+</body>
+</html>

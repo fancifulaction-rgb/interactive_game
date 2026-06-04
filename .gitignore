@@ -1,0 +1,30 @@
+# Личные заметки (не в репозиторий)
+offline_docs/
+
+# Секреты
+.env
+.env.*
+!.env.example
+**/Supabase.txt
+
+# Зависимости и сборка
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Бэкапы БД (локально, не в git)
+archive/backups/
+**/backup-extract/
+*.backup.gz
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Логи
+*.log
+npm-debug.log*
