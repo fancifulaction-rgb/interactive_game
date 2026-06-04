@@ -1,0 +1,13 @@
+---
+description: Quest Game — сеть и Supabase на player routes
+globs: quest-game-github-archive/src/pages/GamePlay.tsx,quest-game-github-archive/src/pages/TeamRegister.tsx,quest-game-github-archive/src/pages/PlayerScoreboard.tsx,quest-game-github-archive/src/lib/**
+alwaysApply: false
+---
+
+# Player network (Quest Game)
+
+При изменении этих файлов:
+
+- Все Supabase/Storage вызовы — через `requestQueue` или существующие обёртки (`saveAnswer`, `storageUpload`, `loadScoreboardTeams`)
+- UI ответа — optimistic; не `await` insert перед переходом к следующему вопросу
+- См. `docs/REALTIME_AND_NETWORKING.md`, `docs/BUGS_FOUND.md`

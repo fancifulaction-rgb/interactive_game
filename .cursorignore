@@ -1,0 +1,6 @@
+﻿# Cursor indexing — exclude heavy / generated paths
+**/node_modules/
+**/dist/
+**/.git/
+**/*.log
+quest-game-github-archive/dist/

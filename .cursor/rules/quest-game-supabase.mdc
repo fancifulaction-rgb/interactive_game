@@ -1,0 +1,13 @@
+---
+description: Quest Game — Supabase, SQL, Edge Functions
+globs: quest-game-github-archive/src/lib/**,quest-game-github-archive/docs/sql-migrations/**,quest-game-github-archive/supabase/**
+alwaysApply: false
+---
+
+# Supabase (Quest Game)
+
+- Клиент: только `VITE_*` во фронте; `SUPABASE_SERVICE_ROLE_KEY` — scripts/Edge, не `import.meta.env` в React.
+- Миграции: нумерация 00x в `docs/sql-migrations/`; описать в `docs/DATABASE.md` при новой таблице.
+- Игрок: Storage/REST через `requestQueue` и `storageUpload.ts` / `saveAnswer.ts`.
+- Edge: приоритет deploy `player-upload`, `delete-game` (Спринт 1).
+- После DDL: напомнить Reload schema в Supabase Dashboard.

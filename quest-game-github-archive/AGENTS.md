@@ -12,7 +12,10 @@
 
 ## Подключение нового агента
 
-Полный промпт для копирования в новый чат: **[docs/AI_AGENT_ONBOARDING_PROMPT.md](docs/AI_AGENT_ONBOARDING_PROMPT.md)**.
+| Когда | Документ |
+|-------|----------|
+| Первый вход в проект / новый чат | **[docs/AI_AGENT_ONBOARDING_PROMPT.md](docs/AI_AGENT_ONBOARDING_PROMPT.md)** |
+| Каждые 1–2 ч длинной сессии / агент «уплыл» | **[docs/AI_AGENT_FOCUS_REMINDER.md](docs/AI_AGENT_FOCUS_REMINDER.md)** |
 
 ## С чего начать
 

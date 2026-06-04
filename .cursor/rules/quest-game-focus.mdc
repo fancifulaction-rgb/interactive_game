@@ -1,0 +1,31 @@
+---
+description: Quest Game — фокус проекта, Спринт 1, сеть Supabase
+alwaysApply: true
+---
+
+# Quest Game (v1.2.13)
+
+Командные квесты на мероприятиях (2–100 команд). Стек: React + Vite + TypeScript + Supabase only. Не Kahoot, не отдельный Socket/API-сервер без IMP-ARC-001.
+
+## Обязательно перед работой
+
+- Онбординг (новый чат): `quest-game-github-archive/docs/AI_AGENT_ONBOARDING_PROMPT.md`
+- Периодический фокус: `quest-game-github-archive/docs/AI_AGENT_FOCUS_REMINDER.md`
+- План: `quest-game-github-archive/docs/ROADMAP.md` (Спринт 1)
+- Задачи только по ID: `quest-game-github-archive/docs/IMPROVEMENTS_CATALOG.md`
+
+## Железные правила кода
+
+- Hot-path игрока: `enqueueCritical` / `enqueueBackground` (`src/lib/requestQueue.ts`)
+- Не параллелить Supabase REST + Storage в одной вкладке
+- Аватар после игры (`avatarAfterGame`), не в `saveAnswer`
+- Не коммить `.env`; регулярные commit+push по завершении блока (если владелец не отменил)
+- `npm run build` после существенных изменений
+
+## Сейчас не делать без явного ID
+
+PWA, AI-квиз, комната ожидания (спринт 2–3), Socket.IO, большой рефактор без IMP-*.
+
+## Документация
+
+Каталог: `quest-game-github-archive/docs/INDEX.md` | Кратко: `quest-game-github-archive/AGENTS.md`

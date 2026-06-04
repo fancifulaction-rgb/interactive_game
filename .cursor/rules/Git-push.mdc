@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Делай регулярные коммиты, после завершения этапа разрабоки проекта.  - Conventional Commits; не коммить .env, секреты, dist, node_modules. - Не force-push на main; не менять git config глобально.

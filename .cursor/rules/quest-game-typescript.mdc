@@ -1,0 +1,13 @@
+---
+description: Quest Game — React, TypeScript, Vite conventions
+globs: quest-game-github-archive/**/*.ts,quest-game-github-archive/**/*.tsx
+alwaysApply: false
+---
+
+# TypeScript / React (Quest Game)
+
+- Functional components + hooks; логика сети/Supabase — в `src/lib/`, не раздувать pages.
+- Предпочитать узкий `.select('id,name,...')` вместо `.select('*')` на hot paths.
+- Новые зависимости — только если владелец согласовал; проверить размер bundle.
+- После изменений в `src/`: `npm run build` из `quest-game-github-archive/`.
+- Пути импорта — как в соседних файлах (alias `@/` если уже используется в файле).
