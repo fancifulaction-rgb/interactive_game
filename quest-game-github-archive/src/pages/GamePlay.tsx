@@ -1,6 +1,21 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { uploadAnswerMediaQueued, cancelActiveStorageUpload } from '../lib/storageUpload'
+import { bumpTeamScoreInBackground } from '../lib/teamScore'
+import { postponeAvatarUntilAfterAnswer } from '../lib/pendingAvatar'
+import { calculateQuestionScore } from '../lib/scoring'
+import { debugLog } from '../lib/debugLog'
+import { getGamePlayCache, isGamePlayCacheFresh } from '../lib/gamePlayCache'
+import { buildFinishNavigateState } from '../lib/finishNavigation'
+import { mapQuestionsForPlay } from '../lib/prefetchGameQuestions'
+import {
+  revalidateGamePlayFromServer,
+  mapRevalidatedQuestions,
+  pauseBackgroundRevalidate,
+} from '../lib/revalidateGamePlay'
+import { saveAnswerToServer, type AnswerInsertPayload } from '../lib/saveAnswer'
+import { usePlayerExtrasReady } from '../lib/usePlayerExtrasReady'
 import { useTheme } from '../contexts/ThemeContext'
 import { Clock, HelpCircle, Send, Upload, X, Image, Film, Music } from 'lucide-react'
 import NotificationPopup from '../components/NotificationPopup'
@@ -42,14 +57,44 @@ export default function GamePlay() {
   const [currentHintDisplay, setCurrentHintDisplay] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const loadGenRef = useRef(0)
   const teamId = localStorage.getItem('team_id')
+  const extrasReady = usePlayerExtrasReady(game?.id, loading)
+
+  const applyPlayData = (gameData: Record<string, unknown>, mappedQuestions: Question[]) => {
+    setGame(gameData)
+    if (gameData.theme) setTheme(gameData.theme as string)
+    setQuestions(mappedQuestions as Question[])
+    if (mappedQuestions.length > 0) {
+      const first = mappedQuestions[0]
+      setTimeLeft(
+        first.per_question_time_sec ||
+          (gameData.per_question_time_sec as number) ||
+          120
+      )
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
     if (!teamId) {
       navigate('/team/register')
       return
     }
-    loadGameData()
+
+    const code = (gameCode ?? '').trim().toUpperCase()
+    const cached = getGamePlayCache(code)
+
+    if (cached && isGamePlayCacheFresh(code)) {
+      const mapped = mapQuestionsForPlay(cached.questions) as Question[]
+      applyPlayData(cached.game, mapped)
+      debugLog('GamePlay.tsx', 'hydrate from cache', { questions: mapped.length }, 'F')
+      postponeAvatarUntilAfterAnswer()
+      return
+    }
+
+    const gen = ++loadGenRef.current
+    void loadGameData(gen, !!cached)
   }, [gameCode, teamId, navigate])
 
   useEffect(() => {
@@ -87,52 +132,47 @@ export default function GamePlay() {
     setCurrentHintDisplay(0)
   }, [currentQuestionIndex])
 
-  const loadGameData = async () => {
-    try {
-      const { data: gameData, error: gameError } = await supabase
-        .from('games')
-        .select('*')
-        .eq('code', gameCode)
-        .maybeSingle()
+  const loadGameData = async (loadGen: number, staleCache: boolean) => {
+    const code = (gameCode ?? '').trim().toUpperCase()
+    debugLog('GamePlay.tsx:loadGameData', 'start', { gameCode: code, staleCache }, 'E')
 
-      if (gameError) throw gameError
-      if (!gameData) {
-        alert('Игра не найдена')
-        navigate('/')
+    if (staleCache) {
+      const cached = getGamePlayCache(code)
+      if (cached) {
+        const mapped = mapQuestionsForPlay(cached.questions) as Question[]
+        applyPlayData(cached.game, mapped)
+        debugLog('GamePlay.tsx', 'stale cache shown', { questions: mapped.length }, 'F')
+      }
+    }
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (loadGen !== loadGenRef.current) return
+      try {
+        const result = await revalidateGamePlayFromServer(code)
+        if (loadGen !== loadGenRef.current) return
+        if (!result) {
+          alert('Игра не найдена')
+          navigate('/')
+          return
+        }
+
+        const mappedQuestions = mapRevalidatedQuestions(result.questions) as Question[]
+        applyPlayData(result.game, mappedQuestions)
+        debugLog('GamePlay.tsx', 'load ok', { questions: mappedQuestions.length, attempt }, 'E')
         return
+      } catch (err: any) {
+        if (loadGen !== loadGenRef.current) return
+        debugLog('GamePlay.tsx', 'load error', { msg: err?.message, attempt, staleCache }, 'E')
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)))
+          continue
+        }
+        if (!staleCache && !game) {
+          console.error('Ошибка загрузки данных:', err)
+          alert('Не удалось загрузить игру. Проверьте интернет и обновите страницу.')
+          setLoading(false)
+        }
       }
-
-      setGame(gameData)
-
-      // Применяем тему игры
-      if (gameData.theme) {
-        setTheme(gameData.theme)
-      }
-
-      const { data: questionsData, error: questionsError } = await supabase
-        .from('questions')
-        .select('*')
-        .eq('game_id', gameData.id)
-        .order('question_number', { ascending: true })
-
-      if (questionsError) throw questionsError
-      // Преобразуем поля БД в поля компонента
-      const mappedQuestions = (questionsData || []).map((q: any) => ({
-        ...q,
-        order_index: q.question_number,
-        prompt: q.question_text,
-        base_points: q.points
-      }))
-      setQuestions(mappedQuestions)
-      
-      if (mappedQuestions && mappedQuestions.length > 0) {
-        setTimeLeft(mappedQuestions[0].per_question_time_sec || gameData.per_question_time_sec || 120)
-      }
-    } catch (err: any) {
-      console.error('Ошибка загрузки данных:', err)
-      alert('Ошибка: ' + err.message)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -145,89 +185,37 @@ export default function GamePlay() {
     return total
   }
 
-  const calculateScore = (
-    isCorrect: boolean,
-    basePoints: number,
-    difficulty: string,
-    timeTaken: number,
-    maxTime: number,
-    hintsUsed: number,
-    hintPenalties: number[]
-  ): number => {
-    if (!isCorrect) return 0
-
-    // Множитель сложности
-    const difficultyMultiplier = {
-      'Легкий': 1.0,
-      'Средний': 1.5,
-      'Сложный': 2.0,
-      'easy': 1.0,
-      'medium': 1.5,
-      'hard': 2.0
-    }[difficulty] || 1.0
-
-    // Базовые очки с учетом сложности
-    let score = basePoints * difficultyMultiplier
-
-    // Бонус за скорость: +1 очко за каждые 10 секунд до конца
-    const timeLeft = maxTime - timeTaken
-    const speedBonus = Math.floor(timeLeft / 10)
-    score += speedBonus
-
-    // Штраф за подсказки: суммируем штрафы для каждой использованной подсказки
-    let totalHintPenalty = 0
-    for (let i = 0; i < hintsUsed && i < hintPenalties.length; i++) {
-      totalHintPenalty += hintPenalties[i]
-    }
-    score = score - totalHintPenalty
-
-    // Минимум 1 очко за правильный ответ
-    return Math.max(1, Math.round(score))
-  }
-
   const handleSubmitAnswer = async () => {
     const currentQuestion = questions[currentQuestionIndex]
     const hasTextAnswer = currentQuestion.answer_count === 1 && answer.trim()
     const hasSelectedOptions = currentQuestion.answer_count > 1 && selectedOptions.length > 0
     
     if ((!hasTextAnswer && !hasSelectedOptions && !answerFile) || !teamId) return
+    if (!game?.id) {
+      alert('Игра ещё загружается. Подождите секунду и попробуйте снова.')
+      return
+    }
 
+    pauseBackgroundRevalidate()
+    cancelActiveStorageUpload()
     setUploadingFile(true)
-    
+    const submitStarted = Date.now()
+    debugLog('GamePlay.tsx:submit', 'start', { hasFile: !!answerFile, q: currentQuestionIndex }, 'H')
+
     try {
-      let mediaUrl = null
-      
+      let mediaUrl: string | null = null
+
       if (answerFile) {
         try {
-          const fileName = `${Date.now()}-${answerFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-          
-          // Convert file to base64
-          const base64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve((reader.result as string).split(',')[1])
-            reader.onerror = reject
-            reader.readAsDataURL(answerFile)
-          })
-          
-          // Upload using player-upload function
-          const { data, error } = await supabase.functions.invoke('player-upload', {
-            body: { 
-              file: base64, 
-              bucket: 'answer-media', 
-              fileName: fileName,
-              mimeType: answerFile.type
-            }
-          })
-          
-          if (error) {
-            console.error('Ошибка загрузки файла:', error)
-            alert('Предупреждение: Не удалось загрузить файл. Ответ будет сохранен без медиафайла.')
-          } else if (data?.url) {
-            mediaUrl = data.url
-          }
+          mediaUrl = await uploadAnswerMediaQueued(answerFile)
+          debugLog('GamePlay.tsx:submit', 'media ok', { ms: Date.now() - submitStarted }, 'H')
         } catch (err) {
+          debugLog('GamePlay.tsx:submit', 'media fail', {
+            ms: Date.now() - submitStarted,
+            msg: err instanceof Error ? err.message : String(err),
+          }, 'H')
           console.error('Ошибка загрузки файла:', err)
-          alert('Предупреждение: Не удалось загрузить файл. Ответ будет сохранен без медиафайла.')
+          alert('Предупреждение: не удалось загрузить файл. Ответ будет сохранён без медиа.')
         }
       }
 
@@ -302,56 +290,65 @@ export default function GamePlay() {
       // Расчет времени и очков
       const maxTime = currentQuestion.per_question_time_sec || game.per_question_time_sec || 120
       const timeTaken = maxTime - timeLeft
-      const baseScore = calculateScore(
-        true, // передаем true для расчета базовых очков
-        currentQuestion.base_points,
-        currentQuestion.difficulty,
+      const score = calculateQuestionScore({
+        scoring: game.scoring,
+        basePoints: currentQuestion.base_points,
+        difficulty: currentQuestion.difficulty,
         timeTaken,
         maxTime,
-        hintLevel,
-        currentQuestion.hint_penalties || []
-      )
-      
-      // Применяем множитель за правильность
-      const score = Math.round(baseScore * scoreMultiplier)
+        hintsUsed: hintLevel,
+        hintPenalties: currentQuestion.hint_penalties || [],
+        isCorrect,
+        partialMultiplier: scoreMultiplier,
+      })
 
-      // Сохранение ответа
-      const { error: answerError } = await supabase
-        .from('answers')
-        .insert({
-          team_id: teamId,
-          question_id: currentQuestion.id,
-          answer_text: userAnswerText,
-          media_url: mediaUrl,
-          time_taken: timeTaken,
-          is_correct: isCorrect,
-          score: score
-        })
-
-      if (answerError) throw answerError
-
-      // Обновление общего счета команды
-      if (isCorrect && score > 0) {
-        const { data: teamData, error: teamFetchError } = await supabase
-          .from('teams')
-          .select('total_score')
-          .eq('id', teamId)
-          .maybeSingle()
-
-        if (teamFetchError) throw teamFetchError
-
-        const newTotalScore = (teamData?.total_score || 0) + score
-
-        const { error: teamUpdateError } = await supabase
-          .from('teams')
-          .update({ total_score: newTotalScore })
-          .eq('id', teamId)
-
-        if (teamUpdateError) throw teamUpdateError
+      const payload: AnswerInsertPayload = {
+        game_id: game.id,
+        team_id: teamId,
+        question_number: currentQuestion.order_index ?? currentQuestionIndex + 1,
+        answer: userAnswers.length ? userAnswers : [userAnswerText],
+        media_urls: mediaUrl ? [mediaUrl] : [],
+        is_correct: isCorrect,
+        points_earned: score,
+        time_spent: timeTaken,
       }
 
+      debugLog('GamePlay.tsx:submit', 'advance ui', {
+        ms: Date.now() - submitStarted,
+        optimistic: !answerFile,
+      }, 'H')
+
       handleNextQuestion()
+      setUploadingFile(false)
+
+      void saveAnswerToServer(payload)
+        .then(() => {
+          debugLog('GamePlay.tsx:submit', 'saved', {
+            totalMs: Date.now() - submitStarted,
+            isCorrect,
+            score,
+          }, 'H')
+          if (isCorrect && score > 0) {
+            bumpTeamScoreInBackground(teamId, score, gameCode ?? '')
+          }
+        })
+        .catch((saveErr: unknown) => {
+          const msg = saveErr instanceof Error ? saveErr.message : String(saveErr)
+          debugLog('GamePlay.tsx:submit', 'save failed', {
+            totalMs: Date.now() - submitStarted,
+            msg,
+          }, 'H')
+          alert(
+            'Ответ принят в игре, но не сохранился на сервере: ' +
+              msg +
+              '\n\nПроверьте интернет. Администратор увидит табло с задержкой.'
+          )
+        })
     } catch (err: any) {
+      debugLog('GamePlay.tsx:submit', 'error', {
+        totalMs: Date.now() - submitStarted,
+        msg: err?.message,
+      }, 'H')
       console.error('Ошибка отправки ответа:', err)
       
       if (err.message?.includes('answers')) {
@@ -379,18 +376,21 @@ export default function GamePlay() {
       const nextQuestion = questions[currentQuestionIndex + 1]
       setTimeLeft(nextQuestion.per_question_time_sec || game.per_question_time_sec || 120)
     } else {
-      // Перенаправление в зависимости от настройки финальной страницы
+      const code = (gameCode ?? '').trim().toUpperCase()
+      const cached = getGamePlayCache(code)
+      const finishState = buildFinishNavigateState(game, cached?.teamsSnapshot)
       const finishType = game?.finish_page_type || 'congratulation'
+      const navOpts = { state: finishState }
       switch (finishType) {
         case 'congratulation':
-          navigate(`/congratulation/${gameCode}`)
+          navigate(`/congratulation/${gameCode}`, navOpts)
           break
         case 'congratulation_stats':
-          navigate(`/congratulation-with-stats/${gameCode}`)
+          navigate(`/congratulation-with-stats/${gameCode}`, navOpts)
           break
         case 'scoreboard':
         default:
-          navigate(`/scoreboard/${gameCode}`) // Игроки попадают на чистое табло без админ-функций
+          navigate(`/scoreboard/${gameCode}`, navOpts)
           break
       }
     }
@@ -762,10 +762,12 @@ export default function GamePlay() {
       </div>
 
       {/* Компонент управления состоянием игры (пауза) */}
-      {game && <GameStateManager gameId={game.id} onPauseChange={setIsPaused} />}
+      {extrasReady && game && (
+        <GameStateManager gameId={game.id} onPauseChange={setIsPaused} />
+      )}
 
       {/* Компонент уведомлений от админа */}
-      {game && <NotificationPopup gameId={game.id} />}
+      {extrasReady && game && <NotificationPopup gameId={game.id} />}
     </div>
   )
 }

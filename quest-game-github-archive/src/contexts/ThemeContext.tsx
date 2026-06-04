@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { BUILTIN_THEMES } from '../lib/builtinThemes'
 
 interface Theme {
   id: string
@@ -25,30 +27,51 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [currentTheme, setCurrentTheme] = useState<Theme | null>(null)
   const [themes, setThemes] = useState<Theme[]>([])
 
-  // Загрузка тем из базы данных
   useEffect(() => {
+    const applyDefault = (list: Theme[]) => {
+      setThemes(list)
+      const defaultTheme = list.find((theme) => theme.name === 'default')
+      if (defaultTheme) {
+        setCurrentTheme(defaultTheme)
+        applyThemeToDOM(defaultTheme)
+      }
+    }
+
+    const isAdminRoute = window.location.pathname.startsWith('/admin')
+    if (!isAdminRoute) {
+      applyDefault(BUILTIN_THEMES as Theme[])
+      return
+    }
+
+    const cached = sessionStorage.getItem('quest_themes_cache')
+    if (cached) {
+      try {
+        applyDefault(JSON.parse(cached) as Theme[])
+      } catch {
+        applyDefault(BUILTIN_THEMES as Theme[])
+      }
+    } else {
+      applyDefault(BUILTIN_THEMES as Theme[])
+    }
+
     const loadThemes = async () => {
       try {
         const { data, error } = await supabase
           .from('themes')
-          .select('*')
+          .select('id,name,display_name,colors,effects')
           .order('display_name', { ascending: true })
 
         if (error) throw error
-        setThemes(data || [])
-        
-        // Применяем тему по умолчанию (если игра не указала свою тему)
-        const defaultTheme = (data || []).find(theme => theme.name === 'default')
-        if (defaultTheme && !currentTheme) {
-          setCurrentTheme(defaultTheme)
-          applyThemeToDOM(defaultTheme)
-        }
-      } catch (err: any) {
-        console.error('Ошибка загрузки тем:', err)
+        const list = data?.length ? data : BUILTIN_THEMES
+        sessionStorage.setItem('quest_themes_cache', JSON.stringify(list))
+        applyDefault(list as Theme[])
+      } catch {
+        /* встроенные темы уже применены */
       }
     }
 
-    loadThemes()
+    const t = window.setTimeout(loadThemes, 3000)
+    return () => window.clearTimeout(t)
   }, [])
 
   const applyThemeToDOM = (theme: Theme | null) => {
@@ -336,6 +359,3 @@ export function useTheme() {
   }
   return context
 }
-
-// Импорт supabase для загрузки тем
-import { supabase } from '../lib/supabase'

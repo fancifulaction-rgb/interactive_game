@@ -1,113 +1,136 @@
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useState, useRef } from 'react'
+import { useParams, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getGamePlayCache, updateTeamsSnapshot } from '../lib/gamePlayCache'
+import type { TeamSnapshot } from '../lib/gamePlayCache'
+import type { FinishNavigateState } from '../lib/finishNavigation'
+import { fetchTeamsForScoreboard } from '../lib/loadScoreboardTeams'
+import { tryUploadAvatarAfterGame } from '../lib/avatarAfterGame'
 import { Trophy, Medal, Award } from 'lucide-react'
 
-interface TeamScore {
-  id: string
-  team_name: string
-  captain_name: string
-  avatar_url: string | null
-  total_score: number
-  registration_time: string
-}
+const GAME_SELECT = 'id, code, title, mask_board'
 
 export default function PlayerScoreboard() {
   const { gameCode } = useParams()
-  const [teams, setTeams] = useState<TeamScore[]>([])
-  const [game, setGame] = useState<any>(null)
+  const location = useLocation()
+  const finishState = location.state as FinishNavigateState | null
+
+  const [teams, setTeams] = useState<TeamSnapshot[]>([])
+  const [game, setGame] = useState<{
+    id: string
+    code?: string
+    title?: string
+    mask_board?: boolean
+  } | null>(null)
   const [loading, setLoading] = useState(true)
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const realtimeEnabledRef = useRef(false)
 
   useEffect(() => {
-    loadData()
-    
-    // 🚀 НОВАЯ ФИЧА: Realtime подписка на teams для мгновенного обновления табло
-    let teamsChannel: any = null
-    
-    const setupRealtimeSubscription = async () => {
-      if (!game?.id) return
-      
-      console.log('🔄 Настраиваем realtime подписку на teams для игры:', game.id)
-      
-      teamsChannel = supabase
-        .channel(`teams-scoreboard-${game.id}`)
-        .on('postgres_changes', {
-          event: '*', // Слушаем все изменения: INSERT, UPDATE, DELETE
-          schema: 'public',
-          table: 'teams',
-          filter: `game_id=eq.${game.id}`
-        }, (payload) => {
-          console.log('📊 Realtime изменение в teams:', payload)
-          
-          // При любом изменении в teams - перезагружаем данные
-          loadData()
-        })
-        .subscribe((status) => {
-          console.log('📡 Статус realtime подписки teams:', status)
-        })
+    const code = (gameCode ?? '').trim().toUpperCase()
+    if (!code) return
+
+    let cancelled = false
+
+    const applyInstant = () => {
+      if (finishState?.game) {
+        const g = finishState.game as { id: string; title?: string; mask_board?: boolean }
+        setGame({ id: g.id, title: g.title, mask_board: g.mask_board })
+        if (finishState.teamsPreview?.length) {
+          setTeams(finishState.teamsPreview)
+        }
+        setLoading(false)
+        return true
+      }
+      const cached = getGamePlayCache(code)
+      if (cached?.game?.id) {
+        const g = cached.game as { id: string; code?: string; title?: string; mask_board?: boolean }
+        setGame({ id: g.id, code: g.code as string, title: g.title as string, mask_board: g.mask_board as boolean })
+        if (cached.teamsSnapshot?.length) {
+          setTeams(cached.teamsSnapshot)
+        }
+        setLoading(false)
+        return true
+      }
+      return false
     }
-    
-    // Настраиваем подписку после загрузки данных
-    if (game?.id) {
-      setupRealtimeSubscription()
-    }
-    
+
+    applyInstant()
+    tryUploadAvatarAfterGame(localStorage.getItem('team_id'))
+
+    void (async () => {
+      try {
+        let gameId =
+          finishState?.gameId ??
+          (finishState?.game?.id as string | undefined) ??
+          (getGamePlayCache(code)?.game?.id as string | undefined)
+        if (!gameId) {
+          const { data: gameData, error: gameError } = await supabase
+            .from('games')
+            .select(GAME_SELECT)
+            .eq('code', code)
+            .maybeSingle()
+          if (gameError) throw gameError
+          if (!gameData || cancelled) return
+          gameId = gameData.id
+          if (!cancelled) setGame(gameData)
+        }
+
+        if (!gameId || cancelled) return
+
+        const freshTeams = await fetchTeamsForScoreboard(gameId as string)
+        if (!cancelled) {
+          setTeams(freshTeams)
+          updateTeamsSnapshot(code, freshTeams)
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки табло:', err)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+
     return () => {
-      // Отписываемся от realtime при размонтировании
-      if (teamsChannel) {
-        console.log('🔄 Отписываемся от realtime teams')
-        supabase.removeChannel(teamsChannel)
+      cancelled = true
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
       }
     }
-  }, [gameCode, game?.id])
-  
-  // Отдельный useEffect для первоначальной загрузки
-  useEffect(() => {
-    loadInitialData()
   }, [gameCode])
-  
-  const loadInitialData = async () => {
-    try {
-      const { data: gameData, error: gameError } = await supabase
-        .from('games')
-        .select('*')
-        .eq('code', gameCode)
-        .maybeSingle()
 
-      if (gameError) throw gameError
-      if (!gameData) return
+  useEffect(() => {
+    if (!game?.id || realtimeEnabledRef.current) return
 
-      setGame(gameData)
-      setLoading(false)
-    } catch (err: any) {
-      console.error('Ошибка загрузки игры:', err)
-      setLoading(false)
-    }
-  }
+    const timer = window.setTimeout(() => {
+      if (realtimeEnabledRef.current) return
+      realtimeEnabledRef.current = true
 
-  const loadData = async () => {
-    try {
-      if (!game?.id) {
-        console.log('🔄 loadData: game.id не найден, пропускаем загрузку teams')
-        return
-      }
-      
-      console.log('📊 Загружаем команды для табло, game_id:', game.id)
-      
-      const { data: teamsData, error: teamsError } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('game_id', game.id)
-        .order('total_score', { ascending: false })
+      const channel = supabase
+        .channel(`teams-scoreboard-${game.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'teams',
+            filter: `game_id=eq.${game.id}`,
+          },
+          () => {
+            void fetchTeamsForScoreboard(game.id).then((data) => {
+              setTeams(data)
+              const code = (gameCode ?? '').trim().toUpperCase()
+              if (code) updateTeamsSnapshot(code, data)
+            })
+          }
+        )
+        .subscribe()
 
-      if (teamsError) throw teamsError
-      
-      console.log('📊 Загружено команд для табло:', teamsData?.length || 0)
-      setTeams(teamsData || [])
-    } catch (err: any) {
-      console.error('Ошибка загрузки команд табло:', err)
-    }
-  }
+      channelRef.current = channel
+    }, 8000)
+
+    return () => window.clearTimeout(timer)
+  }, [game?.id, gameCode])
 
   const getMedalIcon = (position: number) => {
     if (position === 0) return <Trophy className="w-8 h-8 text-yellow-500" />
@@ -116,7 +139,7 @@ export default function PlayerScoreboard() {
     return null
   }
 
-  if (loading) {
+  if (loading && teams.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-xl">Загрузка табло...</div>
@@ -133,9 +156,7 @@ export default function PlayerScoreboard() {
 
         <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6">
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-white mb-2">
-              {game?.title || 'Загрузка...'}
-            </h2>
+            <h2 className="text-2xl font-bold text-white mb-2">{game?.title || 'Игра'}</h2>
             <p className="text-white/80">
               Код игры: {gameCode} • {teams.length} команд участвует
             </p>
@@ -156,10 +177,10 @@ export default function PlayerScoreboard() {
                       index === 0
                         ? 'bg-gradient-to-r from-yellow-100 to-yellow-50 border-2 border-yellow-400 shadow-lg scale-105'
                         : index === 1
-                        ? 'bg-gradient-to-r from-gray-100 to-gray-50 border-2 border-gray-400'
-                        : index === 2
-                        ? 'bg-gradient-to-r from-orange-100 to-orange-50 border-2 border-orange-400'
-                        : 'bg-white border-2 border-gray-200'
+                          ? 'bg-gradient-to-r from-gray-100 to-gray-50 border-2 border-gray-400'
+                          : index === 2
+                            ? 'bg-gradient-to-r from-orange-100 to-orange-50 border-2 border-orange-400'
+                            : 'bg-white border-2 border-gray-200'
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
@@ -201,12 +222,6 @@ export default function PlayerScoreboard() {
                 ))}
               </div>
             )}
-          </div>
-
-          <div className="mt-6 text-center">
-            <p className="text-white/80 text-sm">
-              Обновляется автоматически каждые 5 секунд
-            </p>
           </div>
         </div>
       </div>

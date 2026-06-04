@@ -22,22 +22,16 @@ export default function AdminLogin() {
     try {
       if (loginMode === 'email') {
         // Используем Supabase Auth для входа по email
-        console.log('Attempting login with email:', email);
-        
         const { data, error: authError } = await supabase.auth.signInWithPassword({
           email: email,
           password: password
         })
 
-        console.log('Auth result:', { data: !!data, error: authError });
-
         if (authError) {
-          console.error('Auth error:', authError);
           throw authError;
         }
 
         if (data.user) {
-          console.log('User authenticated:', data.user.id);
           localStorage.setItem('admin_logged_in', 'true');
           localStorage.setItem('admin_email', email);
           localStorage.setItem('admin_user_id', data.user.id);

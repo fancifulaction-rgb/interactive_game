@@ -21,11 +21,14 @@ export default function GameStateManager({ gameId, onPauseChange }: GameStateMan
   useEffect(() => {
     if (!gameId) return
 
-    // Загрузить текущее состояние
-    loadGameState()
+    let channel: ReturnType<typeof supabase.channel> | null = null
+    let cancelled = false
 
-    // Подписаться на изменения состояния
-    const channel = supabase
+    const setup = async () => {
+      await loadGameState()
+      if (cancelled) return
+
+      channel = supabase
       .channel(`game-state-${gameId}`)
       .on(
         'postgres_changes',
@@ -46,10 +49,22 @@ export default function GameStateManager({ gameId, onPauseChange }: GameStateMan
           }
         }
       )
-      .subscribe()
+        .subscribe()
+    }
 
+    if (typeof requestIdleCallback === 'function') {
+      const idleId = requestIdleCallback(() => void setup(), { timeout: 5000 })
+      return () => {
+        cancelled = true
+        cancelIdleCallback(idleId)
+        if (channel) supabase.removeChannel(channel)
+      }
+    }
+
+    void setup()
     return () => {
-      supabase.removeChannel(channel)
+      cancelled = true
+      if (channel) supabase.removeChannel(channel)
     }
   }, [gameId])
 
@@ -57,7 +72,7 @@ export default function GameStateManager({ gameId, onPauseChange }: GameStateMan
     try {
       const { data, error } = await supabase
         .from('game_state')
-        .select('*')
+        .select('id, game_id, is_paused, paused_at, paused_by')
         .eq('game_id', gameId)
         .maybeSingle()
 

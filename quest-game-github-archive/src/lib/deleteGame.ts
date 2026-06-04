@@ -1,0 +1,100 @@
+import { supabase } from './supabase'
+
+export type DeleteGameResult = {
+  success: boolean
+  deleted: {
+    game: number
+    questions: number
+    teams: number
+    answers: number
+    mediaFiles: number
+  }
+  usedEdgeFunction: boolean
+  error?: string
+}
+
+/** Удаление игры через Edge Function (если развёрнута) или напрямую из БД (CASCADE). */
+export async function deleteGameCompletely(gameId: string): Promise<DeleteGameResult> {
+  const empty = {
+    game: 0,
+    questions: 0,
+    teams: 0,
+    answers: 0,
+    mediaFiles: 0,
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('delete-game', {
+      body: { gameId },
+    })
+
+    if (!error && data?.success) {
+      return {
+        success: true,
+        deleted: {
+          game: data.deleted?.game ?? 1,
+          questions: data.deleted?.questions ?? 0,
+          teams: data.deleted?.teams ?? 0,
+          answers: data.deleted?.answers ?? 0,
+          mediaFiles: data.deleted?.mediaFiles ?? 0,
+        },
+        usedEdgeFunction: true,
+      }
+    }
+  } catch {
+    // Edge Function не развёрнута или недоступна — удаляем через REST
+  }
+
+  const [questionsRes, teamsRes] = await Promise.all([
+    supabase.from('questions').select('id', { count: 'exact', head: true }).eq('game_id', gameId),
+    supabase.from('teams').select('id', { count: 'exact', head: true }).eq('game_id', gameId),
+  ])
+
+  const teamIdsRes = await supabase.from('teams').select('id').eq('game_id', gameId)
+  const teamIds = (teamIdsRes.data ?? []).map((t) => t.id)
+
+  let answersCount = 0
+  if (teamIds.length > 0) {
+    const answersRes = await supabase
+      .from('answers')
+      .select('id', { count: 'exact', head: true })
+      .in('team_id', teamIds)
+    answersCount = answersRes.count ?? 0
+  }
+
+  const { data: deletedRows, error: deleteError } = await supabase
+    .from('games')
+    .delete()
+    .eq('id', gameId)
+    .select('id')
+
+  if (deleteError) {
+    return {
+      success: false,
+      deleted: empty,
+      usedEdgeFunction: false,
+      error: deleteError.message,
+    }
+  }
+
+  if (!deletedRows?.length) {
+    return {
+      success: false,
+      deleted: empty,
+      usedEdgeFunction: false,
+      error: 'Игра не найдена или нет прав на удаление',
+    }
+  }
+
+  return {
+    success: true,
+    deleted: {
+      game: 1,
+      questions: questionsRes.count ?? 0,
+      teams: teamsRes.count ?? 0,
+      answers: answersCount,
+      mediaFiles: 0,
+    },
+    usedEdgeFunction: false,
+  }
+}

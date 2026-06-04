@@ -9,7 +9,5 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-export const supabase = createClient(
-  supabaseUrl ?? '',
-  supabaseAnonKey ?? ''
-)
+/** Стандартный клиент без обёртки fetch — меньше «зомби»-запросов при таймаутах. */
+export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '')

@@ -31,13 +31,58 @@ export default function GameEditor() {
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('admin_logged_in')
     if (!isLoggedIn) {
+      setLoading(false)
       navigate('/admin/login')
+      return
+    }
+    if (!gameId) {
+      setLoading(false)
+      navigate('/admin/panel')
       return
     }
     loadGameData()
   }, [gameId, navigate])
 
+  const normalizeQuestion = (q: Record<string, unknown>): Question => {
+    let answer: string[] = []
+    if (Array.isArray(q.answer)) {
+      answer = q.answer.filter((a): a is string => typeof a === 'string')
+    } else if (typeof q.correct_answer === 'string' && q.correct_answer) {
+      answer = [q.correct_answer]
+    }
+
+    let options: string[] = []
+    if (Array.isArray(q.options)) {
+      options = q.options.map((o) => (typeof o === 'string' ? o : String(o ?? '')))
+    }
+
+    const answerCount =
+      typeof q.answer_count === 'number' && q.answer_count > 1
+        ? q.answer_count
+        : answer.length > 1 || options.filter(Boolean).length > 1
+          ? Math.max(2, options.length || 2)
+          : 1
+
+    return {
+      id: q.id as string | undefined,
+      game_id: (q.game_id as string) || gameId!,
+      order_index: (q.order_index as number) ?? (q.question_number as number) ?? 0,
+      type: (q.type as string) || (q.question_type as string) || 'text',
+      prompt: (q.question_text as string) || (q.prompt as string) || '',
+      media_url: (q.media_url as string | null) ?? null,
+      answer,
+      options: options.length ? options : Array(answerCount).fill(''),
+      answer_count: answerCount,
+      difficulty: (q.difficulty as string) || 'Средний',
+      base_points: (q.points as number) ?? (q.base_points as number) ?? 100,
+      hint_levels: Array.isArray(q.hint_levels) ? (q.hint_levels as string[]) : [],
+      hint_penalties: Array.isArray(q.hint_penalties) ? (q.hint_penalties as number[]) : [],
+      per_question_time_sec: (q.per_question_time_sec as number | null) ?? null,
+    }
+  }
+
   const loadGameData = async () => {
+    setLoading(true)
     try {
       const { data: gameData, error: gameError } = await supabase
         .from('games')
@@ -51,7 +96,19 @@ export default function GameEditor() {
         navigate('/admin/panel')
         return
       }
-      setGame(gameData)
+
+      const scoring =
+        gameData.scoring && typeof gameData.scoring === 'object'
+          ? gameData.scoring
+          : {
+              p_base: 100,
+              k_diff: 1.0,
+              k_time: 0.5,
+              k_skip: 0.8,
+              k_fast: 1.2,
+              combo_bonus: 10,
+            }
+      setGame({ ...gameData, scoring })
 
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
@@ -60,14 +117,7 @@ export default function GameEditor() {
         .order('question_number', { ascending: true })
 
       if (questionsError) throw questionsError
-      // Инициализируем hint_penalties для старых записей
-      const processedQuestions = (questionsData || []).map(q => ({
-        ...q,
-        prompt: q.question_text,
-        base_points: q.points,
-        hint_penalties: q.hint_penalties || []
-      }))
-      setQuestions(processedQuestions)
+      setQuestions((questionsData || []).map((q) => normalizeQuestion(q)))
     } catch (err: any) {
       console.error('Ошибка загрузки:', err)
       alert('Ошибка: ' + err.message)
@@ -146,159 +196,99 @@ export default function GameEditor() {
     setQuestions(questions.filter((_, i) => i !== index))
   }
 
+  const buildQuestionRow = (question: Question, index: number) => {
+    let finalOptions = question.options ?? []
+    let finalAnswer = question.answer ?? []
+
+    if (question.answer_count > 1) {
+      finalOptions = finalOptions.filter((opt) => opt && typeof opt === 'string' && opt.trim())
+      finalAnswer = finalAnswer.filter((ans) => finalOptions.includes(ans))
+    }
+
+    return {
+      game_id: gameId,
+      question_number: index + 1,
+      question_type: question.type || 'text',
+      type: question.type || 'text',
+      question_text: question.prompt.trim(),
+      media_url: question.media_url,
+      answer: finalAnswer,
+      options: finalOptions,
+      answer_count: question.answer_count > 1 ? finalOptions.length : 1,
+      difficulty: question.difficulty,
+      points: question.base_points,
+      hint_levels: question.hint_levels ?? [],
+      hint_penalties: question.hint_penalties ?? [],
+      per_question_time_sec: question.per_question_time_sec,
+      order_index: index + 1,
+    }
+  }
+
   const handleSaveQuestions = async () => {
+    if (!gameId) {
+      alert('Игра не выбрана')
+      return
+    }
+
+    if (questions.length === 0) {
+      alert('Добавьте хотя бы один вопрос перед сохранением')
+      return
+    }
+
     setSaving(true)
     try {
-      // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Использование административного клиента для удаления
-      console.log('🔄 Очистка существующих вопросов игры перед сохранением...')
-      
-      // КРИТИЧЕСКИЙ ПУНКТ: Подсчёт вопросов ДО удаления (используем обычный клиент)
-      console.log('🗑️ ШАГ 1: Проверка существующих вопросов перед удалением...')
-      const { count: beforeCount, error: beforeCountError } = await supabase
-        .from('questions')
-        .select('*', { count: 'exact', head: true })
-        .eq('game_id', gameId)
-      
-      if (beforeCountError) throw beforeCountError
-      console.log(`   📊 Найдено ${beforeCount} существующих вопросов`)
-      
-      // КРИТИЧЕСКИЙ ПУНКТ: Удаление ВСЕХ вопросов (используем административный клиент)
-      console.log('🗑️ ШАГ 2: Удаление всех существующих вопросов...')
-      const { error: deleteError } = await supabase
-        .from('questions')
-        .delete()
-        .eq('game_id', gameId)
-      
-      if (deleteError) {
-        console.error('❌ Ошибка при удалении:', deleteError)
-        throw new Error(`Не удалось удалить вопросы: ${deleteError.message}`)
-      }
-      
-      // КРИТИЧЕСКИЙ ПУНКТ: Проверка ПОСЛЕ удаления
-      console.log('✅ ШАГ 3: Проверка результата удаления...')
-      const { count: afterCount, error: afterCountError } = await supabase
-        .from('questions')
-        .select('*', { count: 'exact', head: true })
-        .eq('game_id', gameId)
-      
-      if (afterCountError) throw afterCountError
-      
-      if (afterCount !== 0) {
-        const errorMsg = `КРИТИЧЕСКАЯ ОШИБКА: После удаления осталось ${afterCount} вопросов! Сохранение отменено.`
-        console.error('❌', errorMsg)
-        alert(errorMsg)
-        setSaving(false)
-        return
-      }
-      
-      console.log('✅ Удаление подтверждено: вопросов осталось 0')
-      
-      // Проверка на дубликаты question_number в текущем состоянии
-      const orderIndexes = questions.map((_, index) => index + 1)
-      const uniqueIndexes = [...new Set(orderIndexes)]
-      if (orderIndexes.length !== uniqueIndexes.length) {
-        throw new Error('Обнаружены дубликаты порядковых номеров вопросов! Перезагрузите страницу и создайте вопросы заново.')
-      }
-      
-      // Валидация перед сохранением
       for (let i = 0; i < questions.length; i++) {
         const question = questions[i]
-        
-        // Проверка что текст вопроса заполнен
-        if (!question.prompt || typeof question.prompt !== 'string' || !question.prompt.trim()) {
-          alert(`Вопрос ${i + 1}: Необходимо заполнить текст вопроса`)
-          setSaving(false)
+
+        if (!question.prompt?.trim()) {
+          alert(`Вопрос ${i + 1}: заполните текст вопроса`)
           return
         }
-        
-        // Проверка правильных ответов
+
         if (question.answer_count === 1) {
-          if (!question.answer[0] || typeof question.answer[0] !== 'string' || !question.answer[0].trim()) {
-            alert(`Вопрос ${i + 1}: Необходимо указать правильный ответ`)
-            setSaving(false)
+          if (!question.answer?.[0]?.trim()) {
+            alert(`Вопрос ${i + 1}: укажите правильный ответ`)
             return
           }
         } else {
-          // Фильтруем только заполненные варианты
-          const filledOptions = question.options.filter(opt => opt && typeof opt === 'string' && opt.trim())
-          
-          // Проверка что есть минимум 2 заполненных варианта (для вопросов с выбором)
+          const filledOptions = (question.options ?? []).filter(
+            (opt) => opt && typeof opt === 'string' && opt.trim()
+          )
           if (filledOptions.length < 2) {
-            alert(`Вопрос ${i + 1}: Необходимо заполнить минимум 2 варианта ответов`)
-            setSaving(false)
+            alert(`Вопрос ${i + 1}: заполните минимум 2 варианта ответа`)
             return
           }
-          
-          // Проверка что отмечен минимум 1 правильный ответ среди заполненных вариантов
-          const validAnswers = question.answer.filter(ans => filledOptions.includes(ans))
+          const validAnswers = (question.answer ?? []).filter((ans) =>
+            filledOptions.includes(ans)
+          )
           if (validAnswers.length === 0) {
-            alert(`Вопрос ${i + 1}: Необходимо отметить минимум 1 правильный ответ`)
-            setSaving(false)
+            alert(`Вопрос ${i + 1}: отметьте хотя бы один правильный вариант`)
             return
           }
         }
       }
-      
-      for (let i = 0; i < questions.length; i++) {
-        const question = questions[i]
-        // Подготавливаем данные для сохранения
-        let finalOptions = question.options
-        let finalAnswer = question.answer
-        
-        // Если это вопрос с выбором (answer_count > 1), фильтруем только заполненные варианты
-        if (question.answer_count > 1) {
-          finalOptions = question.options.filter(opt => opt && typeof opt === 'string' && opt.trim())
-          // Обновляем правильные ответы - убираем те, которых больше нет среди вариантов
-          finalAnswer = question.answer.filter(ans => finalOptions.includes(ans))
-        }
-        
-        const questionData = {
-          game_id: gameId,
-          question_number: i + 1,
-          type: question.type,
-          question_text: question.prompt,
-          media_url: question.media_url,
-          answer: finalAnswer,
-          options: finalOptions,
-          answer_count: question.answer_count > 1 ? finalOptions.length : 1,
-          difficulty: question.difficulty,
-          points: question.base_points,
-          hint_levels: question.hint_levels,
-          hint_penalties: question.hint_penalties,
-          per_question_time_sec: question.per_question_time_sec
-        }
 
-        if (question.id) {
-          const { error } = await supabase
-            .from('questions')
-            .update(questionData)
-            .eq('id', question.id)
-
-          if (error) throw error
-        } else {
-          const { data, error } = await supabase
-            .from('questions')
-            .insert(questionData)
-            .select()
-            .maybeSingle()
-
-          if (error) throw error
-          if (data) {
-            questions[i].id = data.id
-          }
-        }
+      const { error: deleteError } = await supabase.from('questions').delete().eq('game_id', gameId)
+      if (deleteError) {
+        throw new Error(`Не удалось удалить старые вопросы: ${deleteError.message}`)
       }
-      
-      // Финальная проверка - подсчитаем сохраненные вопросы
-      const { count: savedCount } = await supabase
+
+      const rows = questions.map((q, i) => buildQuestionRow(q, i))
+      const { data: inserted, error: insertError } = await supabase
         .from('questions')
-        .select('*', { count: 'exact', head: true })
-        .eq('game_id', gameId)
-      
-      console.log(`🎉 Завершено! В базе данных сохранено ${savedCount || 0} вопросов`)
-      alert(`✅ Вопросы успешно сохранены!\n\n🗑️ Удалено старых вопросов: ${beforeCount || 0}\n💾 Сохранено новых вопросов: ${questions.length}\n📊 Итого в базе: ${savedCount || 0}\n\nСтарые вопросы полностью очищены, новые сохранены с корректными индексами (1-${questions.length}).`)
+        .insert(rows)
+        .select()
+
+      if (insertError) throw insertError
+      if (!inserted?.length) {
+        throw new Error('Вопросы не сохранились в базе')
+      }
+
+      setQuestions(inserted.map((q) => normalizeQuestion(q)))
+      alert(`Вопросы сохранены: ${inserted.length}`)
     } catch (err: any) {
-      alert('Ошибка сохранения вопросов: ' + err.message)
+      console.error('Ошибка сохранения вопросов:', err)
+      alert('Ошибка сохранения вопросов: ' + (err?.message || String(err)))
     } finally {
       setSaving(false)
     }
@@ -737,7 +727,7 @@ export default function GameEditor() {
                   value={safeGame.scoring.p_base}
                   onChange={(e) => setGame({ 
                     ...game, 
-                    scoring: { ...game.scoring, p_base: parseFloat(e.target.value) }
+                    scoring: { ...safeGame.scoring, p_base: parseFloat(e.target.value) }
                   })}
                   className="w-full px-4 py-2 border rounded-lg"
                   step="0.1"
@@ -750,7 +740,7 @@ export default function GameEditor() {
                   value={safeGame.scoring.k_diff}
                   onChange={(e) => setGame({ 
                     ...game, 
-                    scoring: { ...game.scoring, k_diff: parseFloat(e.target.value) }
+                    scoring: { ...safeGame.scoring, k_diff: parseFloat(e.target.value) }
                   })}
                   className="w-full px-4 py-2 border rounded-lg"
                   step="0.1"
@@ -763,7 +753,7 @@ export default function GameEditor() {
                   value={safeGame.scoring.k_time}
                   onChange={(e) => setGame({ 
                     ...game, 
-                    scoring: { ...game.scoring, k_time: parseFloat(e.target.value) }
+                    scoring: { ...safeGame.scoring, k_time: parseFloat(e.target.value) }
                   })}
                   className="w-full px-4 py-2 border rounded-lg"
                   step="0.1"
@@ -776,7 +766,7 @@ export default function GameEditor() {
                   value={safeGame.scoring.k_skip}
                   onChange={(e) => setGame({ 
                     ...game, 
-                    scoring: { ...game.scoring, k_skip: parseFloat(e.target.value) }
+                    scoring: { ...safeGame.scoring, k_skip: parseFloat(e.target.value) }
                   })}
                   className="w-full px-4 py-2 border rounded-lg"
                   step="0.1"
@@ -789,7 +779,7 @@ export default function GameEditor() {
                   value={safeGame.scoring.k_fast}
                   onChange={(e) => setGame({ 
                     ...game, 
-                    scoring: { ...game.scoring, k_fast: parseFloat(e.target.value) }
+                    scoring: { ...safeGame.scoring, k_fast: parseFloat(e.target.value) }
                   })}
                   className="w-full px-4 py-2 border rounded-lg"
                   step="0.1"
@@ -802,7 +792,7 @@ export default function GameEditor() {
                   value={safeGame.scoring.combo_bonus}
                   onChange={(e) => setGame({ 
                     ...game, 
-                    scoring: { ...game.scoring, combo_bonus: parseFloat(e.target.value) }
+                    scoring: { ...safeGame.scoring, combo_bonus: parseFloat(e.target.value) }
                   })}
                   className="w-full px-4 py-2 border rounded-lg"
                   step="1"

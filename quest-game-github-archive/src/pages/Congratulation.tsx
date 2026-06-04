@@ -1,106 +1,120 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Trophy, Star, ArrowRight } from 'lucide-react'
+import { getGamePlayCache } from '../lib/gamePlayCache'
+import type { FinishNavigateState } from '../lib/finishNavigation'
+import { tryUploadAvatarAfterGame } from '../lib/avatarAfterGame'
+import { enqueueBackground } from '../lib/requestQueue'
+import { Trophy, Star } from 'lucide-react'
+
+const GAME_SELECT = 'id, code, title, theme, finish_page_type'
 
 export default function Congratulation() {
   const { gameCode } = useParams()
   const navigate = useNavigate()
-  const [game, setGame] = useState<any>(null)
+  const location = useLocation()
+  const finishState = location.state as FinishNavigateState | null
+
+  const [game, setGame] = useState<{ title?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [finalTexts, setFinalTexts] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    loadGameData()
-    loadFinalTexts()
-  }, [gameCode])
-
-  const loadGameData = async () => {
-    try {
-      const { data: gameData, error: gameError } = await supabase
-        .from('games')
-        .select('*')
-        .eq('code', gameCode)
-        .maybeSingle()
-
-      if (gameError) throw gameError
-      if (!gameData) {
-        alert('Игра не найдена')
-        navigate('/')
-        return
-      }
-
-      setGame(gameData)
-    } catch (err: any) {
-      console.error('Ошибка загрузки игры:', err)
-      alert('Ошибка загрузки игры')
-      navigate('/')
-    } finally {
+    const code = (gameCode ?? '').trim().toUpperCase()
+    if (finishState?.game) {
+      setGame({ title: finishState.game.title as string })
       setLoading(false)
-    }
-  }
-
-  const loadFinalTexts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('final_page_texts')
-        .select('text_key, current_value, default_value')
-        .eq('page_type', 'simple')
-
-      if (!error && data) {
-        const texts: Record<string, string> = {}
-        data.forEach(item => {
-          texts[item.text_key] = item.current_value || item.default_value
-        })
-        setFinalTexts(texts)
+    } else {
+      const cached = getGamePlayCache(code)
+      if (cached?.game) {
+        setGame({ title: cached.game.title as string })
+        setLoading(false)
       }
-    } catch (err: any) {
-      console.error('Ошибка загрузки текстов финальной страницы:', err)
-      // Продолжаем работу с дефолтными текстами
     }
-  }
 
-  const getText = (key: string, defaultValue: string) => {
-    return finalTexts[key] || defaultValue
-  }
+    tryUploadAvatarAfterGame(localStorage.getItem('team_id'))
 
+    void enqueueBackground(async () => {
+      try {
+        if (!finishState?.game && !getGamePlayCache(code)) {
+          const { data, error } = await supabase
+            .from('games')
+            .select(GAME_SELECT)
+            .eq('code', code)
+            .maybeSingle()
+          if (error) throw error
+          if (!data) {
+            navigate('/')
+            return
+          }
+          setGame({ title: data.title })
+        }
 
+        const { data: texts, error } = await supabase
+          .from('final_page_texts')
+          .select('text_key, current_value, default_value')
+          .eq('page_type', 'simple')
 
-  if (loading) {
+        if (!error && texts) {
+          const map: Record<string, string> = {}
+          texts.forEach((item) => {
+            map[item.text_key] = item.current_value || item.default_value
+          })
+          setFinalTexts(map)
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки поздравления:', err)
+      } finally {
+        setLoading(false)
+      }
+    })
+  }, [gameCode, navigate, finishState])
+
+  const getText = (key: string, defaultValue: string) => finalTexts[key] || defaultValue
+
+  if (loading && !game) {
     return (
-      <div className="min-h-screen theme-background flex items-center justify-center" style={{
-        background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)'
-      }}>
+      <div
+        className="min-h-screen theme-background flex items-center justify-center"
+        style={{
+          background:
+            'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
+        }}
+      >
         <div className="text-white text-xl">Загрузка...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen theme-background flex items-center justify-center p-4" style={{
-      background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)'
-    }}>
+    <div
+      className="min-h-screen theme-background flex items-center justify-center p-4"
+      style={{
+        background:
+          'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
+      }}
+    >
       <div className="max-w-2xl mx-auto text-center">
-        {/* Основной блок поздравления */}
         <div className="bg-white rounded-3xl shadow-2xl p-8 sm:p-12 mb-8">
           <div className="flex justify-center mb-6">
             <div className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full p-4">
               <Trophy className="w-16 h-16 text-white" />
             </div>
           </div>
-          
+
           <h1 className="text-3xl sm:text-4xl font-bold text-gray-800 mb-4">
             {getText('main_title', 'Поздравляем!')}
           </h1>
-          
-          <h2 className="text-xl sm:text-2xl font-semibold text-gray-700 mb-6">
-            {game?.title}
-          </h2>
-          
+
+          <h2 className="text-xl sm:text-2xl font-semibold text-gray-700 mb-6">{game?.title}</h2>
+
           <p className="text-lg text-gray-600 mb-8 leading-relaxed">
-            {getText('description', 'Вы успешно завершили квест! Все ваши ответы сохранены в системе. Данные команды и набранные очки отображаются в таблице результатов.')}
+            {getText(
+              'description',
+              'Вы успешно завершили квест! Все ваши ответы сохранены в системе.'
+            )}
           </p>
-          
+
           <div className="bg-gradient-to-r from-purple-100 to-blue-100 rounded-xl p-6 mb-8">
             <div className="flex items-center justify-center gap-2 mb-2">
               <Star className="w-6 h-6 text-yellow-500" />
@@ -115,10 +129,9 @@ export default function Congratulation() {
           </div>
         </div>
 
-
-        
         <p className="text-white/80 text-sm mt-4">
-          {getText('game_code_label', 'Код игры:')} <span className="font-mono font-bold">{gameCode}</span>
+          {getText('game_code_label', 'Код игры:')}{' '}
+          <span className="font-mono font-bold">{gameCode}</span>
         </p>
       </div>
     </div>

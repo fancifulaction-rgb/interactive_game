@@ -1,6 +1,14 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { registerTeam } from '../lib/teamRegister'
+import { enqueueBackground, enqueueCritical } from '../lib/requestQueue'
+import type { TeamSnapshot } from '../lib/gamePlayCache'
+import { compressImageForAvatar } from '../lib/compressImage'
+import { debugLog } from '../lib/debugLog'
+import { setGamePlayCache } from '../lib/gamePlayCache'
+import { prefetchQuestionsForGame } from '../lib/prefetchGameQuestions'
+import { saveTeamSession } from '../lib/playerSession'
 import { ArrowLeft, Users, User, Upload, Hash } from 'lucide-react'
 
 export default function TeamRegister() {
@@ -12,106 +20,138 @@ export default function TeamRegister() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const submittingRef = useRef(false)
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError('Размер файла не должен превышать 5 МБ')
-        return
-      }
-      setAvatarFile(file)
+    if (!file) return
+    setError('')
+    try {
+      const prepared = await compressImageForAvatar(file)
+      setAvatarFile(prepared)
       const reader = new FileReader()
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string)
+      reader.onloadend = () => setAvatarPreview(reader.result as string)
+      reader.readAsDataURL(prepared)
+      if (file.size > prepared.size) {
+        setError('')
       }
-      reader.readAsDataURL(file)
+    } catch {
+      setError('Не удалось обработать изображение')
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (submittingRef.current) return
+    submittingRef.current = true
     setError('')
     setLoading(true)
+    const normalizedCode = gameCode.trim().toUpperCase()
+    debugLog('TeamRegister.tsx:submit', 'start', { normalizedCode, hasAvatar: !!avatarFile }, 'D')
 
     try {
-      const { data: game, error: gameError } = await supabase
-        .from('games')
-        .select('*')
-        .eq('code', gameCode)
-        .maybeSingle()
+      let game = null
+      let gameError = null
 
-      if (gameError) throw gameError
+      debugLog('TeamRegister.tsx', 'game lookup start', { normalizedCode }, 'D')
+      const res = await enqueueCritical(async () =>
+        supabase
+          .from('games')
+          .select('id, code, title, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec')
+          .eq('code', normalizedCode)
+          .maybeSingle()
+      )
+      game = res.data
+      gameError = res.error
+
+      if (gameError) {
+        throw new Error(
+          gameError.message?.includes('fetch') || gameError.message?.includes('Failed')
+            ? 'Нет связи с сервером. Проверьте интернет/VPN и попробуйте снова.'
+            : gameError.message
+        )
+      }
       if (!game) {
-        setError('Игра с таким кодом не найдена')
+        debugLog('TeamRegister.tsx', 'game not found', { normalizedCode }, 'D')
+        setError(`Игра с кодом «${normalizedCode}» не найдена. Проверьте код в админ-панели.`)
         setLoading(false)
         return
       }
+      debugLog('TeamRegister.tsx', 'game found', { gameId: game.id }, 'D')
 
-      let avatarUrl = null
-      if (avatarFile) {
-        const fileName = `${Date.now()}-${avatarFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-        
-        // Convert file to base64 synchronously using FileReader.readAsDataURL
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve((reader.result as string).split(',')[1])
-          reader.onerror = reject
-          reader.readAsDataURL(avatarFile)
-        })
-        
-        // Upload using player-upload function
-        const { data, error } = await supabase.functions.invoke('player-upload', {
-          body: { 
-            file: base64, 
-            bucket: 'answer-media', 
-            fileName: fileName,
-            mimeType: avatarFile.type
-          }
-        })
-        
-        if (error) {
-          console.error('Ошибка загрузки аватара:', error)
-        } else if (data?.url) {
-          avatarUrl = data.url
-        }
+      setGamePlayCache(normalizedCode, { game, questions: [] })
+
+      const { team } = await registerTeam({
+        gameId: game.id,
+        gameCode: normalizedCode,
+        teamName,
+        captainName,
+        avatarFile,
+      })
+
+      const teamSnapshot: TeamSnapshot = {
+        id: team.id,
+        team_name: (team.team_name || team.name) as string,
+        captain_name: team.captain_name as string,
+        avatar_url: (team.avatar_url || team.avatar) as string | null,
+        total_score: Number(team.total_score) || 0,
+        registration_time: (team.registration_time || team.created_at) as string,
       }
 
-      const { data: team, error: teamError } = await supabase
-        .from('teams')
-        .insert({
-          game_id: game.id,
-          team_name: teamName,
-          captain_name: captainName,
-          avatar: avatarUrl,
-          total_score: 0
-        })
-        .select()
-        .maybeSingle()
+      setGamePlayCache(normalizedCode, {
+        game,
+        questions: [],
+        teamsSnapshot: [teamSnapshot],
+      })
 
-      if (teamError) throw teamError
-
-      if (team) {
-        localStorage.setItem('team_id', team.id)
-        localStorage.setItem('game_code', gameCode)
-        
-        // Сохраняем полную информацию о команде для финальных страниц
-        const teamInfo = {
+      saveTeamSession(team)
+      localStorage.setItem('game_code', normalizedCode)
+      localStorage.setItem(
+        'current_team',
+        JSON.stringify({
           id: team.id,
-          name: team.team_name,
+          name: team.team_name || team.name,
           captain_name: team.captain_name,
-          players: [team.captain_name], // Начинаем с капитана как первого игрока
-          avatar_url: team.avatar_url
-        }
-        localStorage.setItem('current_team', JSON.stringify(teamInfo))
-        
-        navigate(`/game/${gameCode}`)
-      }
-    } catch (err: any) {
-      setError('Ошибка регистрации: ' + err.message)
-    } finally {
+          players: [team.captain_name || captainName],
+          avatar_url: team.avatar_url || team.avatar,
+          total_score: 0,
+        })
+      )
+
+      debugLog('TeamRegister.tsx', 'navigate', { path: `/game/${normalizedCode}` }, 'E')
       setLoading(false)
+      navigate(`/game/${normalizedCode}`)
+
+      void enqueueBackground(async () => {
+        try {
+          const questions = await prefetchQuestionsForGame(game.id)
+          setGamePlayCache(normalizedCode, {
+            game,
+            questions,
+            teamsSnapshot: [teamSnapshot],
+          })
+          debugLog('TeamRegister.tsx', 'play cache saved', { questions: questions.length }, 'F')
+        } catch (cacheErr) {
+          debugLog('TeamRegister.tsx', 'play cache skip', {
+            msg: cacheErr instanceof Error ? cacheErr.message : String(cacheErr),
+          }, 'F')
+        }
+      })
+      return
+    } catch (err: any) {
+      const msg = err?.message || String(err)
+      debugLog('TeamRegister.tsx', 'error', { msg }, 'A')
+      setError(
+        msg.includes('listener indicated an asynchronous response')
+          ? 'Сбой расширения браузера. Отключите блокировщики на этом сайте или попробуйте в режиме инкогнито.'
+          : 'Ошибка регистрации: ' + msg
+      )
+    } finally {
+      submittingRef.current = false
+      setLoading(false)
+      debugLog('TeamRegister.tsx', 'finally loading=false', {}, 'E')
     }
+    // navigate path returns early above
   }
 
   return (
@@ -210,7 +250,7 @@ export default function TeamRegister() {
                     <p className="text-sm text-gray-600">
                       {avatarFile ? avatarFile.name : 'Загрузить изображение'}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">Макс. 5 МБ</p>
+                    <p className="text-xs text-gray-500 mt-1">Большие фото сжимаются автоматически</p>
                   </div>
                   <input
                     type="file"

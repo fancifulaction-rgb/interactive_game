@@ -48,20 +48,30 @@ export default function Home() {
         }
       }
 
-      // Проверяем настройки в базе данных
-      const { data: dbSettings } = await supabase
-        .from('settings')
-        .select('key, value')
-        .eq('key', 'quest_logo_url')
-        .single()
+      const cachedLogo = sessionStorage.getItem('quest_logo_url')
+      if (cachedLogo) {
+        parsedSettings.quest_logo_url = cachedLogo
+        setSettings(parsedSettings)
+        setLogoLoaded(true)
+        return
+      }
 
-      if (dbSettings && dbSettings.value) {
+      const { data: dbSettings, error: dbError } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'quest_logo_url')
+        .maybeSingle()
+
+      if (!dbError && dbSettings?.value) {
         parsedSettings.quest_logo_url = dbSettings.value
+        sessionStorage.setItem('quest_logo_url', dbSettings.value)
       }
 
       setSettings(parsedSettings)
+      setLogoLoaded(true)
     } catch (error) {
-      console.error('Ошибка загрузки настроек:', error)
+      console.warn('Настройки с сервера недоступны, используем локальные:', error)
+      setLogoLoaded(true)
     }
   }
 

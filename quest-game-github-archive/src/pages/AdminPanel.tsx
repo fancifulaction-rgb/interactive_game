@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { deleteGameCompletely } from '../lib/deleteGame'
 import ThemeManager from '../components/ThemeManager'
 import SettingsManager from '../components/SettingsManager'
 import QuestSettingsManager from '../components/QuestSettingsManager'
@@ -188,20 +189,20 @@ export default function AdminPanel() {
 
     try {
       setLoading(true)
-      
-      // Вызываем функцию комплексного удаления
-      const { data, error } = await supabase.functions.invoke('delete-game', {
-        body: { gameId }
-      })
 
-      if (error) throw error
-      
-      if (data?.success) {
-        setGames(games.filter(g => g.id !== gameId))
-        alert(`Игра успешно удалена!\nУдалено: ${data.deleted.questions} вопросов, ${data.deleted.teams} команд, ${data.deleted.answers} ответов, ${data.deleted.mediaFiles} медиа файлов`)
-      } else {
-        throw new Error(data?.error || 'Неизвестная ошибка')
+      const result = await deleteGameCompletely(gameId)
+      if (!result.success) {
+        throw new Error(result.error || 'Неизвестная ошибка')
       }
+
+      setGames(games.filter(g => g.id !== gameId))
+      const via = result.usedEdgeFunction ? 'серверная функция' : 'база данных (CASCADE)'
+      alert(
+        `Игра успешно удалена (${via})!\n` +
+          `Удалено: ${result.deleted.questions} вопросов, ${result.deleted.teams} команд, ` +
+          `${result.deleted.answers} ответов` +
+          (result.deleted.mediaFiles ? `, ${result.deleted.mediaFiles} медиа файлов` : '')
+      )
     } catch (err: any) {
       console.error('Ошибка удаления игры:', err)
       alert('Ошибка удаления игры: ' + err.message)
