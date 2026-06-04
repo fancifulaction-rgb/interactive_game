@@ -3,7 +3,7 @@
 Интерактивная платформа для **командных квестов** на мероприятиях: регистрация команд, вопросы с медиа, табло в реальном времени, админ-панель.
 
 **Версия:** 1.2.13  
-**Аудитория:** гости корпоративов, ~20–60 лет.
+**Аудитория:** гости корпоративов, ~20–60 лет, до **100** команд одновременно (см. [docs/SCALING.md](docs/SCALING.md)).
 
 ## Возможности
 
@@ -32,30 +32,36 @@ npm run dev
 
 ### Тестовый вход (если создан админ в БД)
 
-- Админ: `/admin/login` — логин/пароль из вашей БД (ранее в демо: `admin` / `admin123`)
+- Админ: `/admin/login` — email/пароль из `node scripts/create_admin_script.js` (по умолчанию `admin@quest.game` / `admin123`)
 - Игрок: `/team/register` → код игры
 
 ## Документация
 
-| Документ | Описание |
-|----------|----------|
-| [docs/SUPABASE_NEW_PROJECT.md](docs/SUPABASE_NEW_PROJECT.md) | **Новый проект** (старый на паузе >90 дней) |
-| [docs/SUPABASE_RESTORE.md](docs/SUPABASE_RESTORE.md) | Бэкап, архив старого ref |
-| [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) | Миграции, Storage, Edge Functions |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Сборка и выкладка фронта |
-| [docs/BACKLOG.md](docs/BACKLOG.md) | План доработок |
-| [docs/guides/MULTIPLE_ANSWERS.md](docs/guides/MULTIPLE_ANSWERS.md) | Вопросы с несколькими вариантами |
-| [CHANGELOG.md](CHANGELOG.md) | История версий |
+**Начните здесь:** [docs/INDEX.md](docs/INDEX.md) — полный каталог.  
+**Для AI-агентов:** [AGENTS.md](AGENTS.md).
+
+| Раздел | Документы |
+|--------|-----------|
+| Продукт и архитектура | [PRODUCT](docs/PRODUCT.md), [ARCHITECTURE](docs/ARCHITECTURE.md) |
+| Код и потоки | [FRONTEND](docs/FRONTEND.md), [API_AND_FLOWS](docs/API_AND_FLOWS.md) |
+| БД и Storage | [DATABASE](docs/DATABASE.md), [STORAGE](docs/STORAGE.md) |
+| Сеть и масштаб | [REALTIME_AND_NETWORKING](docs/REALTIME_AND_NETWORKING.md), [SCALING](docs/SCALING.md) |
+| Разработка | [DEVELOPMENT](docs/DEVELOPMENT.md), [TESTING](docs/TESTING.md) |
+| Деплой и мероприятие | [DEPLOYMENT](docs/DEPLOYMENT.md), [OPERATIONS](docs/OPERATIONS.md) |
+| Supabase | [SUPABASE_SETUP](docs/SUPABASE_SETUP.md), [SUPABASE_NEW_PROJECT](docs/SUPABASE_NEW_PROJECT.md) |
+| План и идеи | [ROADMAP](docs/ROADMAP.md) (3 спринта), [IMPROVEMENTS_CATALOG](docs/IMPROVEMENTS_CATALOG.md) (ID фич) |
+| Качество | [BUGS_FOUND](docs/BUGS_FOUND.md), [SECURITY](docs/SECURITY.md) |
 
 ## Структура
 
 ```
-├── src/                 # React-приложение
-├── supabase/functions/  # Edge Functions
-├── docs/
-│   ├── sql-migrations/  # SQL для Postgres
-│   └── ...
-└── scripts/             # Вспомогательные скрипты
+├── AGENTS.md              # онбординг для AI
+├── src/                   # React-приложение
+├── supabase/functions/    # Edge Functions
+├── docs/                  # документация
+│   ├── sql-migrations/    # SQL 001–009
+│   └── guides/
+└── scripts/               # migrate, e2e, latency
 ```
 
 ## Основные таблицы

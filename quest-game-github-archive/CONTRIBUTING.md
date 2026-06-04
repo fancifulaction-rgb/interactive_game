@@ -138,8 +138,11 @@ refactor: optimize team deletion logic
 ## 📚 Ресурсы
 
 ### Документация проекта
-- [docs/QUEST_GAME_PROJECT_COMPLETE_DESCRIPTION.md](docs/QUEST_GAME_PROJECT_COMPLETE_DESCRIPTION.md)
-- [docs/DEPLOYMENT_INSTRUCTIONS.md](docs/DEPLOYMENT_INSTRUCTIONS.md)
+- [docs/INDEX.md](docs/INDEX.md) — каталог всей документации
+- [AGENTS.md](AGENTS.md) — быстрый старт для AI-агентов
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — локальная разработка
+- [docs/IMPROVEMENTS_CATALOG.md](docs/IMPROVEMENTS_CATALOG.md) — идеи с ID (брать/не брать)
+- [docs/ROADMAP.md](docs/ROADMAP.md) — три спринта
 
 ### Технологии
 - [React Documentation](https://reactjs.org/docs/)
