@@ -17,6 +17,8 @@ const files = [
   '003_settings_and_themes.sql',
   '004_production_schema.sql',
   '005_seed_from_backup.sql',
+  '008_teams_app_columns.sql',
+  '009_game_state_pause.sql',
 ]
 
 const { client, label } = await connectPostgres()

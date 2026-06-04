@@ -23,7 +23,12 @@ CREATE TABLE IF NOT EXISTS teams (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     game_id UUID REFERENCES games(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    team_name TEXT,
+    captain_name TEXT,
     avatar TEXT,
+    avatar_url TEXT,
+    total_score INTEGER DEFAULT 0,
+    registration_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -206,9 +211,9 @@ CREATE TABLE IF NOT EXISTS themes (
 
 -- Р’СЃС‚Р°РІРєР° РґРµС„РѕР»С‚РЅС‹С… РЅР°СЃС‚СЂРѕРµРє
 INSERT INTO settings (key, value, description, category) VALUES
-('quest_title', 'РРЅС‚РµСЂР°РєС‚РёРІРЅС‹Р№ РљРІРµСЃС‚', 'Р—Р°РіРѕР»РѕРІРѕРє РЅР° РіР»Р°РІРЅРѕР№', 'РљРІРµСЃС‚'),
-('quest_subtitle', 'Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ РёРіСЂСѓ', 'РџРѕРґР·Р°РіРѕР»РѕРІРѕРє РЅР° РіР»Р°РІРЅРѕР№', 'РљРІРµСЃС‚'),
-('quest_logo_url', '', 'URL Р»РѕРіРѕС‚РёРїР°', 'РљРІРµСЃС‚')
+('quest_title', 'Интерактивный Квест', 'Заголовок на главной', 'Квест'),
+('quest_subtitle', 'Добро пожаловать в игру', 'Подзаголовок на главной', 'Квест'),
+('quest_logo_url', '', 'URL логотипа', 'Квест')
 ON CONFLICT (key) DO NOTHING;
 
 
@@ -254,14 +259,14 @@ CREATE POLICY "Allow all operations on themes" ON themes FOR ALL USING (true);
 -- Р’С‹РїРѕР»РЅСЏС‚СЊ РїРѕСЃР»Рµ 004
 
 INSERT INTO themes (name, display_name, colors, effects) VALUES
-  ('default', 'РџРѕ СѓРјРѕР»С‡Р°РЅРёСЋ', '{"primary":"#8b5cf6","secondary":"#ec4899","background":"#f3f4f6"}'::jsonb, '{}'::jsonb),
-  ('new-year', 'РќРѕРІС‹Р№ РіРѕРґ', '{"primary":"#dc2626","secondary":"#16a34a","background":"#1e293b"}'::jsonb, '{"snow":true}'::jsonb)
+  ('default', 'По умолчанию', '{"primary":"#8b5cf6","secondary":"#ec4899","background":"#f3f4f6"}'::jsonb, '{}'::jsonb),
+  ('new-year', 'Новый год', '{"primary":"#dc2626","secondary":"#16a34a","background":"#1e293b"}'::jsonb, '{"snow":true}'::jsonb)
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO settings (key, value, description, category) VALUES
-  ('quest_title', 'РРЅС‚РµСЂР°РєС‚РёРІРЅС‹Р№ РљРІРµСЃС‚', 'Р—Р°РіРѕР»РѕРІРѕРє РЅР° РіР»Р°РІРЅРѕР№', 'РљРІРµСЃС‚'),
-  ('quest_subtitle', 'Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ РёРіСЂСѓ', 'РџРѕРґР·Р°РіРѕР»РѕРІРѕРє РЅР° РіР»Р°РІРЅРѕР№', 'РљРІРµСЃС‚'),
-  ('quest_logo_url', '', 'URL Р»РѕРіРѕС‚РёРїР°', 'РљРІРµСЃС‚')
+  ('quest_title', 'Интерактивный Квест', 'Заголовок на главной', 'Квест'),
+  ('quest_subtitle', 'Добро пожаловать в игру', 'Подзаголовок на главной', 'Квест'),
+  ('quest_logo_url', '', 'URL логотипа', 'Квест')
 ON CONFLICT (key) DO UPDATE SET
   value = EXCLUDED.value,
   description = EXCLUDED.description,
@@ -273,7 +278,7 @@ INSERT INTO games (
 ) VALUES (
   '34835359-82e0-4e1b-94cf-83c0deae6628',
   'QYA0E2',
-  'РќРѕРІР°СЏ РёРіСЂР°',
+  'Новая игра',
   NULL,
   '{}'::jsonb,
   '2025-11-26 12:07:28.82649+00',

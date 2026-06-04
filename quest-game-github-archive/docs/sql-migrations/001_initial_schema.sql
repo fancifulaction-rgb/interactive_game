@@ -20,7 +20,12 @@ CREATE TABLE IF NOT EXISTS teams (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     game_id UUID REFERENCES games(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    team_name TEXT,
+    captain_name TEXT,
     avatar TEXT,
+    avatar_url TEXT,
+    total_score INTEGER DEFAULT 0,
+    registration_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
