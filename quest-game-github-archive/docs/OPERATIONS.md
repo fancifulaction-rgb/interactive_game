@@ -52,7 +52,7 @@
 
 - [ ] Экспорт результатов (Excel)
 - [ ] Удалить тестовые игры или вызвать `delete-game`
-- [ ] (Опционально) архив — IMP-DATA-001
+- [x] Архив заездов — IMP-DATA-001 (`npm run db:migrate:014`)
 
 ## Edge Functions
 

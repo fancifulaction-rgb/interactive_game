@@ -1,7 +1,7 @@
 {
   "name": "quest-game",
   "description": "Интерактивная система проведения квестов в реальном времени",
-  "version": "1.2.13",
+  "version": "1.2.14",
   "type": "module",
   "author": "",
   "license": "MIT",
@@ -24,6 +24,7 @@
     "db:verify": "node scripts/verify-db.mjs",
     "db:migrate": "node scripts/apply-migrations.mjs",
     "db:migrate:013": "node scripts/run-sql.mjs docs/sql-migrations/013_submit_auto_answer.sql",
+    "db:migrate:014": "node scripts/run-sql.mjs docs/sql-migrations/014_event_archive.sql",
     "db:storage": "node scripts/run-sql.mjs docs/sql-migrations/006_storage_buckets.sql",
     "db:test-connection": "node scripts/test-db-connection.mjs",
     "edge:deploy": "node scripts/deploy-edge-functions.mjs",

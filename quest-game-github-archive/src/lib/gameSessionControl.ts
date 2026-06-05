@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { archiveGameSession } from './eventArchive'
 import { fetchGameStateForGame } from './fetchGameState'
 import { resetGameProgress } from './resetGameProgress'
 import { getAdminDisplayName } from './adminAuth'
@@ -71,6 +72,11 @@ export async function finishGameSession(gameId: string): Promise<void> {
     paused_at: null,
     paused_by: null,
   })
+
+  const archive = await archiveGameSession(gameId)
+  if (!archive.success) {
+    console.warn('Не удалось сохранить архив заезда:', archive.error)
+  }
 }
 
 export async function restartGameSessionToLobby(gameId: string): Promise<void> {

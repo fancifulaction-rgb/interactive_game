@@ -92,10 +92,10 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-DATA-001 | Архив сессии + CSV | История мероприятий | QuizLive | 3 | proposed |
+| IMP-DATA-001 | Архив сессии + CSV | `event_archive` при финише; история в AdminPanel + CSV | QuizLive | 3 | done |
 | IMP-DATA-002 | Мягкое удаление games | `deleted_at` + retention | DATA_LIFECYCLE | proposed | proposed |
 | IMP-DATA-003 | Очистка Storage в client fallback | deleteGame без Edge | DATA_LIFECYCLE | 1 | done |
-| IMP-DATA-004 | Таблица event_archive | Агрегаты после игры | GDPR/отчёты | proposed | proposed |
+| IMP-DATA-004 | Таблица event_archive | Агрегаты после игры | GDPR/отчёты | 3 | done |
 
 ---
 

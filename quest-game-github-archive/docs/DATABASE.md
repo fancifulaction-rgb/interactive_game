@@ -18,10 +18,12 @@ PostgreSQL в Supabase. Миграции: `docs/sql-migrations/`.
 | `010_increment_team_score.sql` | RPC `increment_team_score(team_id, delta)` |
 | `011_…` … `012_…` | По мере спринтов (см. `docs/sql-migrations/`) |
 | `013_submit_auto_answer.sql` | RPC `submit_auto_answer` — серверная проверка авто-ответов (IMP-LOG-001) |
+| `014_event_archive.sql` | Таблица `event_archive` — снимок заезда и CSV (IMP-DATA-001) |
 
 **Скрипты:**
 - `npm run db:migrate` — все новые миграции; журнал `schema_migrations`, уже применённые пропускаются
 - `npm run db:migrate:013` — только 013 (если полный прогон «висит» на старой БД)
+- `npm run db:migrate:014` — только 014 (`event_archive`)
 
 На существующей БД без журнала скрипт один раз отмечает 001–012 как применённые и догоняет только новые файлы.
 
@@ -41,6 +43,8 @@ games (1) ──┬──< teams
 
 settings (глобальные, без FK на games)
 themes   (глобальные)
+
+games (1) ──< event_archive   (снимок заезда; game_id SET NULL при удалении игры)
 ```
 
 ## Таблицы

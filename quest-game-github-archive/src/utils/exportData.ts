@@ -179,10 +179,7 @@ export async function exportToPDF(gameId: string, gameName: string) {
   doc.save(`${gameName}_результаты.pdf`)
 }
 
-export async function exportToCSV(gameId: string, gameName: string) {
-  await loadExportLibraries()
-  const data = await loadExportData(gameId)
-
+export function buildTeamsCsvContent(data: ExportData): string {
   const csvRows = [
     ['Место', 'Команда', 'Капитан', 'Очки', 'Время регистрации'],
     ...data.teams.map((team, index) => [
@@ -190,24 +187,39 @@ export async function exportToCSV(gameId: string, gameName: string) {
       team.team_name,
       team.captain_name,
       team.total_score,
-      new Date(team.registration_time).toLocaleString('ru-RU')
-    ])
+      new Date(team.registration_time).toLocaleString('ru-RU'),
+    ]),
   ]
 
-  const csvContent = csvRows.map(row => 
-    row.map(cell => {
-      // Экранируем кавычки и обрамляем поле в кавычки если нужно
-      if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"') || cell.includes('\n'))) {
-        return '"' + cell.replace(/"/g, '""') + '"'
-      }
-      return cell
-    }).join(',')
-  ).join('\n')
+  return csvRows
+    .map((row) =>
+      row
+        .map((cell) => {
+          if (
+            typeof cell === 'string' &&
+            (cell.includes(',') || cell.includes('"') || cell.includes('\n'))
+          ) {
+            return '"' + cell.replace(/"/g, '""') + '"'
+          }
+          return cell
+        })
+        .join(',')
+    )
+    .join('\n')
+}
 
-  // Правильно добавляем BOM для UTF-8 и указываем кодировку
-  const bom = new Uint8Array([0xEF, 0xBB, 0xBF]) // UTF-8 BOM
-  const csvWithBom = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' })
-  saveAs(csvWithBom, `${gameName}_результаты.csv`)
+export async function downloadCsvFile(content: string, filename: string): Promise<void> {
+  await loadExportLibraries()
+  const bom = new Uint8Array([0xef, 0xbb, 0xbf])
+  const csvWithBom = new Blob([bom, content], { type: 'text/csv;charset=utf-8;' })
+  saveAs(csvWithBom, filename)
+}
+
+export async function exportToCSV(gameId: string, gameName: string) {
+  const data = await loadExportData(gameId)
+  const csvContent = buildTeamsCsvContent(data)
+  const safeName = gameName.replace(/[<>:"/\\|?*]+/g, '_').slice(0, 60)
+  await downloadCsvFile(csvContent, `${safeName}_результаты.csv`)
 }
 
 export async function exportAllFormats(gameId: string, gameName: string) {

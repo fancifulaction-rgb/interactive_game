@@ -19,10 +19,11 @@ import GameControls from '../components/GameControls'
 import MessagePanel from '../components/MessagePanel'
 import TeamManagementManager from '../components/TeamManagementManager'
 import CollapsibleSection from '../components/CollapsibleSection'
+import EventArchiveModal from '../components/EventArchiveModal'
 import {
   LogOut, Plus, Edit, Trash2, Play, Settings,
   Download, Users, Trophy, Palette, FileText, BarChart3, Type, Key, Radio, Calendar, Copy, X,
-  Presentation,
+  Presentation, History,
 } from 'lucide-react'
 
 interface Game {
@@ -79,6 +80,7 @@ export default function AdminPanel() {
   const [cloneCode, setCloneCode] = useState('')
   const [cloneTheme, setCloneTheme] = useState('')
   const [cloneBusy, setCloneBusy] = useState(false)
+  const [archiveGame, setArchiveGame] = useState<{ id: string; title: string } | null>(null)
 
   const refreshAdminSession = useCallback(async () => {
     setAdminSessionOk(await hasSupabaseAdminSession())
@@ -573,6 +575,14 @@ export default function AdminPanel() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => setArchiveGame({ id: game.id, title: game.title })}
+                          className="p-3 sm:p-2 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center"
+                          title="История заездов (архив CSV)"
+                        >
+                          <History className="w-5 h-5 sm:w-6 sm:h-6" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => void deleteGame(game.id)}
                           disabled={deletingGameIds.has(game.id)}
                           className="p-3 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center disabled:opacity-40"
@@ -953,6 +963,14 @@ export default function AdminPanel() {
             </div>
           </div>
         </div>
+      )}
+
+      {archiveGame && (
+        <EventArchiveModal
+          gameId={archiveGame.id}
+          gameTitle={archiveGame.title}
+          onClose={() => setArchiveGame(null)}
+        />
       )}
     </div>
   )
