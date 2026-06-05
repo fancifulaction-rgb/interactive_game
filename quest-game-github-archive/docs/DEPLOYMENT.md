@@ -6,7 +6,7 @@
 |------|------------|
 | Frontend | React 18 + Vite + TypeScript |
 | Backend | [Supabase](https://supabase.com/dashboard/project/qsomqrzkuivgfutpautf) |
-| Хостинг UI | Vercel, Netlify, Cloudflare Pages или любой static host |
+| Хостинг UI | Docker Compose (self-host), Vercel, Netlify, Cloudflare Pages |
 
 ## Локальная разработка
 
@@ -25,6 +25,18 @@ npm run build
 ```
 
 Артефакт: папка `dist/`. На хостинге задайте те же переменные `VITE_*`.
+
+## Docker Compose (self-host)
+
+Один контейнер nginx со статикой; бэкенд — Supabase Cloud.
+
+```bash
+cp .env.docker.example .env
+# VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+docker compose up -d --build
+```
+
+Подробно: [DOCKER_COMPOSE.md](DOCKER_COMPOSE.md).
 
 ## Supabase
 

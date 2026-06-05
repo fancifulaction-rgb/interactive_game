@@ -80,8 +80,11 @@
 - [ ] Ошибка без секретов — понятное сообщение, ключи не в клиенте / Network
 - [ ] Сгенерированные choice-вопросы: 4 options, один answer
 
-### IMP-INF-004 Docker Compose — *ещё не реализован*
-- [ ] (добавить после реализации)
+### IMP-INF-004 Docker Compose
+- [ ] `cp .env.docker.example .env` + ключи Supabase
+- [ ] `docker compose up -d --build` — UI на :8080
+- [ ] SPA-роуты: `/admin/login`, `/team/register`, refresh на вложенном URL
+- [ ] С телефона по LAN-IP (не 172.18.x)
 
 ### IMP-DATA-001 Архив сессии
 - [ ] `npm run db:migrate:014` на Supabase + Reload schema

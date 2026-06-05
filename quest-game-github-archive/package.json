@@ -1,7 +1,7 @@
 {
   "name": "quest-game",
   "description": "Интерактивная система проведения квестов в реальном времени",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "type": "module",
   "author": "",
   "license": "MIT",
@@ -30,7 +30,10 @@
     "edge:deploy": "node scripts/deploy-edge-functions.mjs",
     "edge:verify": "node scripts/verify-edge-functions.mjs",
     "ci:secrets": "node scripts/setup-github-ci-secrets.mjs",
-    "cors:verify": "node scripts/verify-cors-origin.mjs"
+    "cors:verify": "node scripts/verify-cors-origin.mjs",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

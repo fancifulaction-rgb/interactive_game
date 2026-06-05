@@ -41,6 +41,7 @@
 | 13 | [DEVELOPMENT.md](DEVELOPMENT.md) | ✅ | Локальная разработка, скрипты |
 | 14 | [TESTING.md](TESTING.md) | ✅ | E2E, замеры, чеклисты |
 | 15 | [DEPLOYMENT.md](DEPLOYMENT.md) | 🔗 | Выкладка фронта |
+| 15b | [DOCKER_COMPOSE.md](DOCKER_COMPOSE.md) | ✅ | Self-host: `docker compose up` |
 | 16 | [OPERATIONS.md](OPERATIONS.md) | ✅ | Runbook мероприятия |
 | 17 | [ROADMAP.md](ROADMAP.md) | ✅ | 3 спринта |
 | 18 | [IMPROVEMENTS_CATALOG.md](IMPROVEMENTS_CATALOG.md) | ✅ | Каталог идей (ID) |

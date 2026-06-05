@@ -5,6 +5,11 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 и этот проект следует [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.15] — 2026-06-05
+
+### Добавлено
+- IMP-INF-004: Docker Compose self-host — `Dockerfile`, `docker-compose.yml`, nginx SPA, `docs/DOCKER_COMPOSE.md`
+
 ## [1.2.14] — 2026-06-05
 
 ### Добавлено

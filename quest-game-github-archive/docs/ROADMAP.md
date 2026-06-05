@@ -49,7 +49,7 @@
 | 3.2 | Убрать poll 5s на AdminScoreboard | IMP-RT-002 | Только Broadcast/один channel |
 | 3.3 | Серверная проверка авто-ответов | IMP-LOG-001 | done — RPC `submit_auto_answer` + миграция 013 |
 | 3.4 | AI-генерация вопросов (Qwen / DeepSeek Edge) | IMP-PRD-002 | done — панель в GameEditor + `generate-questions`; деплой Edge + secrets |
-| 3.5 | Docker Compose для self-host | IMP-INF-004 | `docker compose up` + README |
+| 3.5 | Docker Compose для self-host | IMP-INF-004 | done — `Dockerfile`, `docker-compose.yml`, [DOCKER_COMPOSE.md](DOCKER_COMPOSE.md) |
 | 3.6 | Архив сессии / CSV история | IMP-DATA-001 | done — `event_archive`, автосохранение при финише, CSV в AdminPanel |
 
 **Опционально в спринте 3:** CDN Storage (IMP-INF-007), load test report (IMP-INF-006).

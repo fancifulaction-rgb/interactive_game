@@ -1,0 +1,21 @@
+# Quest Game — self-host фронтенда (статика + nginx).
+# Бэкенд: Supabase Cloud (Postgres, Realtime, Storage, Edge Functions).
+#
+# Запуск:
+#   cp .env.docker.example .env
+#   # заполните VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY
+#   docker compose up -d --build
+#
+# UI: http://localhost:8080 (или QUEST_GAME_PORT из .env)
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL in .env}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY in .env}
+    ports:
+      - "${QUEST_GAME_PORT:-8080}:80"
+    restart: unless-stopped

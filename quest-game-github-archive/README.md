@@ -2,7 +2,7 @@
 
 Интерактивная платформа для **командных квестов** на мероприятиях: регистрация команд, вопросы с медиа, табло в реальном времени, админ-панель.
 
-**Версия:** 1.2.13  
+**Версия:** 1.2.15  
 **Аудитория:** гости корпоративов, ~20–60 лет, до **100** команд одновременно (см. [docs/SCALING.md](docs/SCALING.md)).
 
 ## Возможности
@@ -30,6 +30,15 @@ npm run dev
 
 Приложение: http://localhost:5173/
 
+### Self-host (Docker)
+
+```bash
+cp .env.docker.example .env
+docker compose up -d --build
+```
+
+→ http://localhost:8080 — см. [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md).
+
 ### Тестовый вход (если создан админ в БД)
 
 - Админ: `/admin/login` — email/пароль из `node scripts/create_admin_script.js` (по умолчанию `admin@quest.game` / `admin123`)
@@ -47,7 +56,7 @@ npm run dev
 | БД и Storage | [DATABASE](docs/DATABASE.md), [STORAGE](docs/STORAGE.md) |
 | Сеть и масштаб | [REALTIME_AND_NETWORKING](docs/REALTIME_AND_NETWORKING.md), [SCALING](docs/SCALING.md) |
 | Разработка | [DEVELOPMENT](docs/DEVELOPMENT.md), [TESTING](docs/TESTING.md) |
-| Деплой и мероприятие | [DEPLOYMENT](docs/DEPLOYMENT.md), [OPERATIONS](docs/OPERATIONS.md) |
+| Деплой и мероприятие | [DEPLOYMENT](docs/DEPLOYMENT.md), [DOCKER_COMPOSE](docs/DOCKER_COMPOSE.md), [OPERATIONS](docs/OPERATIONS.md) |
 | Supabase | [SUPABASE_SETUP](docs/SUPABASE_SETUP.md), [SUPABASE_NEW_PROJECT](docs/SUPABASE_NEW_PROJECT.md) |
 | План и идеи | [ROADMAP](docs/ROADMAP.md) (3 спринта), [IMPROVEMENTS_CATALOG](docs/IMPROVEMENTS_CATALOG.md) (ID фич) |
 | Качество | [BUGS_FOUND](docs/BUGS_FOUND.md), [SECURITY](docs/SECURITY.md) |

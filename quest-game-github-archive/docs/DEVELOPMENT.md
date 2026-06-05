@@ -43,6 +43,8 @@ URL: http://localhost:5173/
 | `npm run db:verify` | Проверка таблиц и buckets |
 | `npm run db:test-connection` | Postgres connect |
 | `npm run db:storage` | SQL 006 buckets |
+| `npm run docker:up` | Self-host: build + `docker compose up -d` |
+| `npm run docker:down` | Остановить compose |
 
 ## Скрипты `scripts/`
 
