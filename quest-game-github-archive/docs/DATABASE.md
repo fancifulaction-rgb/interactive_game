@@ -10,7 +10,7 @@ PostgreSQL в Supabase. Миграции: `docs/sql-migrations/`.
 | `002_add_cascade_delete_rules.sql` | ON DELETE CASCADE для связей с `games` |
 | `003_settings_and_themes.sql` | `settings`, `themes`, seed настроек квеста |
 | `004_production_schema.sql` | Поля `games`, `questions` под v1.2.13 |
-| `005_seed_from_backup.sql` | Данные из бэкапа (опционально) |
+| `005_seed_from_backup.sql` | Темы + дефолтные settings (без демо-игры; `ON CONFLICT DO NOTHING`) |
 | `006_storage_buckets.sql` | Buckets Storage |
 | `007_fix_mojibake.sql` | Исправление кодировки (если нужно) |
 | `008_teams_app_columns.sql` | `team_name`, `captain_name`, `avatar_url`, `total_score` |
