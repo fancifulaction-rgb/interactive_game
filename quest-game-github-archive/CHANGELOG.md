@@ -5,6 +5,23 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 и этот проект следует [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Спринт 1
+
+### Добавлено
+- RPC `increment_team_score` (миграция `010_increment_team_score.sql`)
+- CI: `.github/workflows/ci.yml` (build + e2e на PR)
+- Скрипты `npm run edge:deploy`, `npm run edge:verify`
+- Fallback upload через Edge `player-upload` в `storageUpload.ts`
+
+### Изменено
+- `teamScore.ts` — атомарный RPC вместо read-modify-write UPDATE
+- Табло и экспорт: явные поля вместо `select('*')` (Scoreboard, AdminScoreboard, ScoreboardDetailed, exportData)
+- Debug-скрипты: service role только из `.env`, без захардкоженных ключей
+
+### Инфраструктура
+- Edge Functions `player-upload`, `delete-game` задеплоены на `tvytsnnujaucoluoyvjq` (ACTIVE)
+- GitHub Actions e2e: добавить secrets `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+
 ## [1.2.13] - 2025-10-29
 
 ### 🚀 Добавлено

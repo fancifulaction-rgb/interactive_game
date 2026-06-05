@@ -30,3 +30,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 .gstack/
+
+# Supabase CLI (link/deploy cache)
+**/supabase/.temp/
+
+# Локальные CLI-утилиты (не в git)
+.tools/

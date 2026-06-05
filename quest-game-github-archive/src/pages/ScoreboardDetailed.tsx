@@ -65,7 +65,7 @@ export default function ScoreboardDetailed() {
     try {
       const { data: gameData, error: gameError } = await supabase
         .from('games')
-        .select('*')
+        .select('id, code, title, mask_board')
         .eq('code', gameCode)
         .maybeSingle()
 
@@ -76,7 +76,7 @@ export default function ScoreboardDetailed() {
 
       const { data: teamsData, error: teamsError } = await supabase
         .from('teams')
-        .select('*')
+        .select('id, team_name, captain_name, avatar_url, total_score, registration_time')
         .eq('game_id', gameData.id)
         .order('total_score', { ascending: false })
 
@@ -86,7 +86,7 @@ export default function ScoreboardDetailed() {
       // Загружаем вопросы игры
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
-        .select('*')
+        .select('id, order_index, prompt, question_text')
         .eq('game_id', gameData.id)
         .order('order_index', { ascending: true })
 
@@ -96,7 +96,7 @@ export default function ScoreboardDetailed() {
       // Загружаем ответы всех команд
       const { data: answersData, error: answersError } = await supabase
         .from('answers')
-        .select('*')
+        .select('team_id, question_id, is_correct, score, time_taken, answer_text, hints_used')
         .in('team_id', (teamsData || []).map(team => team.id))
 
       if (answersError) throw answersError

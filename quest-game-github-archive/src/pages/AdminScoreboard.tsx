@@ -81,7 +81,7 @@ export default function AdminScoreboard() {
     try {
       const { data: gameData, error: gameError } = await supabase
         .from('games')
-        .select('*')
+        .select('id, code, title, mask_board')
         .eq('code', gameCode)
         .maybeSingle()
 
@@ -107,7 +107,7 @@ export default function AdminScoreboard() {
       
       const { data: teamsData, error: teamsError } = await supabase
         .from('teams')
-        .select('*')
+        .select('id, team_name, captain_name, avatar_url, total_score, registration_time')
         .eq('game_id', game.id)
         .order('total_score', { ascending: false })
 

@@ -29,25 +29,30 @@ export interface ExportData {
 export async function loadExportData(gameId: string): Promise<ExportData> {
   const { data: game } = await supabase
     .from('games')
-    .select('*')
+    .select('id, title, description, created_at, code')
     .eq('id', gameId)
     .maybeSingle()
 
   const { data: teams } = await supabase
     .from('teams')
-    .select('*')
+    .select('id, team_name, captain_name, total_score, registration_time')
     .eq('game_id', gameId)
     .order('total_score', { ascending: false })
 
   const { data: questions } = await supabase
     .from('questions')
-    .select('*')
+    .select('id, prompt, type, difficulty, base_points, per_question_time_sec, order_index')
     .eq('game_id', gameId)
     .order('order_index', { ascending: true })
 
-  const { data: answers } = await supabase
-    .from('answers')
-    .select('*')
+  const teamIds = (teams ?? []).map((t) => t.id)
+  const { data: answers } =
+    teamIds.length > 0
+      ? await supabase
+          .from('answers')
+          .select('id, team_id, question_id, answer_text, time_taken, score, is_correct')
+          .in('team_id', teamIds)
+      : { data: [] as ExportData['answers'] }
 
   return {
     game: game || {},

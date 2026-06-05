@@ -42,10 +42,10 @@ export function bumpTeamScoreInBackground(teamId: string, delta: number, gameCod
   void enqueueBackground(async () => {
     debugLog('teamScore.ts', 'bump start', { teamId, next }, 'H')
     try {
-      const { error } = await supabase
-        .from('teams')
-        .update({ total_score: next })
-        .eq('id', teamId)
+      const { error } = await supabase.rpc('increment_team_score', {
+        p_team_id: teamId,
+        p_delta: delta,
+      })
 
       if (error) throw error
       debugLog('teamScore.ts', 'bump ok', { next }, 'H')

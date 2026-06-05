@@ -15,6 +15,7 @@ PostgreSQL в Supabase. Миграции: `docs/sql-migrations/`.
 | `007_fix_mojibake.sql` | Исправление кодировки (если нужно) |
 | `008_teams_app_columns.sql` | `team_name`, `captain_name`, `avatar_url`, `total_score` |
 | `009_game_state_pause.sql` | `is_paused`, `paused_at`, `paused_by` |
+| `010_increment_team_score.sql` | RPC `increment_team_score(team_id, delta)` |
 
 **Скрипт:** `npm run db:migrate` → `scripts/apply-migrations.mjs` (проверьте, какие файлы он включает).
 

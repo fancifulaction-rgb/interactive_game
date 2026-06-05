@@ -19,6 +19,7 @@ const files = [
   '005_seed_from_backup.sql',
   '008_teams_app_columns.sql',
   '009_game_state_pause.sql',
+  '010_increment_team_score.sql',
 ]
 
 const { client, label } = await connectPostgres()

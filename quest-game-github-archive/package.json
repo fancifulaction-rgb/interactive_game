@@ -24,7 +24,10 @@
     "db:verify": "node scripts/verify-db.mjs",
     "db:migrate": "node scripts/apply-migrations.mjs",
     "db:storage": "node scripts/run-sql.mjs docs/sql-migrations/006_storage_buckets.sql",
-    "db:test-connection": "node scripts/test-db-connection.mjs"
+    "db:test-connection": "node scripts/test-db-connection.mjs",
+    "edge:deploy": "node scripts/deploy-edge-functions.mjs",
+    "edge:verify": "node scripts/verify-edge-functions.mjs",
+    "ci:secrets": "node scripts/setup-github-ci-secrets.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

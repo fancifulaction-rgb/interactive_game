@@ -7,7 +7,7 @@
 - [ ] Supabase проект **Active** (не Paused)
 - [ ] Миграции 001–009 применены
 - [ ] Realtime publication включена
-- [ ] Edge Functions `player-upload`, `delete-game` задеплоены (желательно)
+- [ ] Edge Functions `player-upload`, `delete-game` задеплоены — см. [§ Edge Functions](#edge-functions)
 - [ ] Создана игра, код записан (например на бумаге для ведущего)
 - [ ] Все вопросы сохранены, превью в GameEditor
 - [ ] Тестовая команда прошла квест на телефоне
@@ -53,6 +53,37 @@
 - [ ] Экспорт результатов (Excel)
 - [ ] Удалить тестовые игры или вызвать `delete-game`
 - [ ] (Опционально) архив — IMP-DATA-001
+
+## Edge Functions
+
+Продакшен-функции: `player-upload` (upload с service role), `delete-game` (игра + Storage).
+
+**Деплой (один раз или после изменений в `supabase/functions/`):**
+
+```bash
+cd quest-game-github-archive
+npx supabase login
+npm run edge:deploy
+```
+
+**Проверка без CLI:**
+
+```bash
+npm run edge:verify
+```
+
+Ожидается HTTP ≠ 404 для обеих функций. Клиент: `storageUpload.ts` fallback на `player-upload` при ошибке Storage; `deleteGame.ts` — Edge с fallback на CASCADE.
+
+Секреты в Dashboard → Edge Functions → Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+
+**CI e2e (GitHub Actions):** один раз после `gh auth login`:
+
+```bash
+cd quest-game-github-archive
+npm run ci:secrets
+```
+
+Записывает `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` из `.env` в secrets репозитория.
 
 ## Мониторинг в Dashboard
 

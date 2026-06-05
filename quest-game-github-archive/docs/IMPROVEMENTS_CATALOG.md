@@ -22,11 +22,11 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-INF-001 | Deploy `player-upload` | Edge upload с service role, меньше сбоев RLS | Buzzr, Zappy | 1 | proposed |
-| IMP-INF-002 | Deploy `delete-game` | Удаление игры + Storage без сирот | DATA_LIFECYCLE | 1 | proposed |
-| IMP-INF-003 | RPC `increment_team_score` | Атомарный UPDATE счёта в Postgres | Quizz, best practice | 1 | proposed |
+| IMP-INF-001 | Deploy `player-upload` | Edge upload с service role, меньше сбоев RLS | Buzzr, Zappy | 1 | done |
+| IMP-INF-002 | Deploy `delete-game` | Удаление игры + Storage без сирот | DATA_LIFECYCLE | 1 | done |
+| IMP-INF-003 | RPC `increment_team_score` | Атомарный UPDATE счёта в Postgres | Quizz, best practice | 1 | done |
 | IMP-INF-004 | Docker Compose self-host | Один compose: static + env + docs | Quizz, ClassQuiz | 3 | proposed |
-| IMP-INF-005 | CI build + e2e | GitHub Actions на PR | Standard | 1 | proposed |
+| IMP-INF-005 | CI build + e2e | GitHub Actions на PR | Standard | 1 | done |
 | IMP-INF-006 | Load test 20–100 VU | k6/Artillery, отчёт LOAD_TEST | QuizLive scale | 3 | proposed |
 | IMP-INF-007 | CDN / Image Transform | Supabase transform или Cloudflare перед Storage | Production | 3 | proposed |
 | IMP-INF-008 | Мониторинг 429/reset | Алерты Supabase Dashboard + runbook | Operations | 1 | proposed |
@@ -104,7 +104,7 @@
 |----|----------|----------|----------|--------|--------|
 | IMP-SEC-001 | Ужесточить RLS | Игрок только своя game; админ auth | Security best practice | 1–2 | proposed |
 | IMP-SEC-002 | Private buckets + signed URLs | Медиа не по guess path | Production | 3 | proposed |
-| IMP-SEC-003 | Убрать service role с клиента | Только Edge/scripts | BACKLOG | 1 | proposed |
+| IMP-SEC-003 | Убрать service role с клиента | Только Edge/scripts | BACKLOG | 1 | done |
 | IMP-SEC-004 | Смена пароля админа без plaintext | AdminPanel | BACKLOG | proposed | proposed |
 | IMP-SEC-005 | Регистрация админа по email | Self-service | BACKLOG | proposed | proposed |
 | IMP-SEC-006 | Документ PRIVACY_GDPR | EU корпоративы | Optional doc | proposed | proposed |
@@ -125,7 +125,7 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-TD-001 | Заменить select('*') | AdminScoreboard, Scoreboard, export | Audit | 1 | proposed |
+| IMP-TD-001 | Заменить select('*') | AdminScoreboard, Scoreboard, export | Audit | 1 | done |
 | IMP-TD-002 | Удалить debug #region agent log | После подтверждения стабильности | BUGS_FOUND | proposed | proposed |
 | IMP-TD-003 | Playwright E2E | register→play→scoreboard | Testing | proposed | proposed |
 | IMP-TD-004 | Code-split xlsx/jspdf | Не грузить на player routes | Bundle size | proposed | proposed |
