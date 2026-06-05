@@ -9,7 +9,8 @@ alwaysApply: true
 
 ## Обязательно перед работой
 
-- Онбординг (новый чат): `quest-game-github-archive/docs/AI_AGENT_ONBOARDING_PROMPT.md`
+- Короткий paste: `quest-game-github-archive/docs/AI_AGENT_PROMPTS_SHORT.md`
+- gstack handoff/review: `.cursor/rules/quest-game-gstack.mdc`
 - Периодический фокус: `quest-game-github-archive/docs/AI_AGENT_FOCUS_REMINDER.md`
 - План: `quest-game-github-archive/docs/ROADMAP.md` (Спринт 1)
 - Задачи только по ID: `quest-game-github-archive/docs/IMPROVEMENTS_CATALOG.md`

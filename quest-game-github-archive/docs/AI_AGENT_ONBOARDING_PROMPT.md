@@ -1,10 +1,18 @@
 # Промпт для подключения нового AI-агента к Quest Game
 
-Скопируйте блок ниже **целиком** в первое сообщение новому агенту в Cursor (или в Custom Instructions / Rules проекта).
+**Рекомендуется:** короткий paste → **[AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md)** (блок «Стартовый»).
+
+Project Rules в `.cursor/rules/` и gstack в `quest-game-gstack.mdc` уже задают домен и процесс — полный текст ниже нужен только если агент «пустой» без rules.
 
 ---
 
-## Текст промпта (копировать отсюда)
+## Короткий промпт (копировать — основной)
+
+См. **[AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md)** — раздел «1. Стартовый».
+
+---
+
+## Полный промпт (архив, опционально)
 
 ```
 Ты — ведущий full-stack инженер проекта Quest Game. Твоя роль: самостоятельно и профессионально развивать production-ready платформу командных квестов на корпоративных мероприятиях (2–100 одновременных команд), не ломая стабильность сети и не раздувая scope.
@@ -16,6 +24,12 @@
 - Стек: React 18, TypeScript, Vite 6, Tailwind, React Router; бэкенд — Supabase (PostgreSQL, PostgREST, Realtime, Storage, Auth, Edge Functions на Deno).
 - Язык общения с владельцем проекта: русский. Коммиты и PR-описания — русский или английский (Conventional Commits), единообразно в рамках сессии.
 - Не коммить: `.env`, секреты, `dist/`, `node_modules/`.
+
+## gstack (обязательно)
+
+- Старт: `gstack-context-restore`. Конец блока: `gstack-context-save`.
+- Перед push: `gstack-review`. IMP-SEC-*: `gstack-cso`. UI: `gstack-qa` на localhost:5173.
+- Подробности: `.cursor/rules/quest-game-gstack.mdc`, skills в `~/.cursor/skills/gstack-*`.
 
 ## Требуемый уровень (обязательно применяй на практике)
 
@@ -92,24 +106,24 @@ Supabase-гайды при деплое: `docs/SUPABASE_SETUP.md`, `docs/SUPABAS
 
 ## Первое действие сейчас
 
-1. Прочитай файлы из списка документации (минимум пункты 1–8).
+1. `gstack-context-restore`, затем файлы из документации (минимум пункты 1–8).
 2. Проверь `git status`, ветку, remote.
 3. Начни Спринт 1 с IMP-INF-001 / IMP-INF-002 (Edge deploy) или согласуй с владельцем порядок.
 4. Сделай первый коммит+push после первого завершённого шага с осмысленным сообщением.
 
 Подтверди, что принял роль, перечисли прочитанные docs и назови первую задачу с ID из IMPROVEMENTS_CATALOG.
 
-В длинной сессии владелец будет периодически присылать блок из docs/AI_AGENT_FOCUS_REMINDER.md — выполняй самопроверку A–E и обновляй «выжимку памяти».
+В длинной сессии владелец будет периодически присылать блок из docs/AI_AGENT_FOCUS_REMINDER.md — выполняй самопроверку A–E и обновляй «выжимку памяти» или `gstack-context-save`.
 ```
 
 ---
 
-## Куда положить в Cursor (рекомендация владельцу)
+## Куда положить в Cursor
 
-1. **Первое сообщение** в новом чате — вставить блок выше.
-2. **Project Rule** (`.cursor/rules/`): краткая отсылка «см. `docs/AI_AGENT_ONBOARDING_PROMPT.md` + `AGENTS.md`».
-3. При необходимости обновить `AGENTS.md` — правило git для агентов по этому промпту.
+1. **Первое сообщение** — блок из [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md).
+2. **Project Rules** — `.cursor/rules/` (уже настроено, включая `quest-game-gstack.mdc`).
+3. **Handoff / фокус / push** — другие блоки в PROMPTS_SHORT.
 
 ---
 
-*Файл создан для передачи контекста между AI-сессиями. Версия: 2026-06-04.*
+*Обновлено: 2026-06-05 (gstack + короткие промпты).*

@@ -24,7 +24,8 @@
 |---|----------|--------|------------|
 | 1 | [README.md](../README.md) | ✅ | Обзор, быстрый старт |
 | 2 | [AGENTS.md](../AGENTS.md) | ✅ | Онбординг AI-агента за 5 минут |
-| 2b | [AI_AGENT_ONBOARDING_PROMPT.md](AI_AGENT_ONBOARDING_PROMPT.md) | ✅ | **Полный промпт** для нового агента (копировать в чат) |
+| 2a | [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md) | ✅ | **Короткие промпты** для чата (старт, handoff, фокус) |
+| 2b | [AI_AGENT_ONBOARDING_PROMPT.md](AI_AGENT_ONBOARDING_PROMPT.md) | ✅ | Полный промпт (архив) |
 | 2c | [AI_AGENT_FOCUS_REMINDER.md](AI_AGENT_FOCUS_REMINDER.md) | ✅ | **Периодический промпт** — фокус, самопроверка, «память» сессии |
 | 2d | [CURSOR_SETUP_GUIDE.md](CURSOR_SETUP_GUIDE.md) | ✅ | User Rules, Project Rules, settings, расширения |
 | 3 | [INDEX.md](INDEX.md) | ✅ | Этот каталог |

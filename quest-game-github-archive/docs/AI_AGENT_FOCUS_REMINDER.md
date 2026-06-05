@@ -74,7 +74,7 @@ E) **Git:** есть ли незакоммиченное? Нужен commit+push
 | Начало длинной сессии | Онбординг: `AI_AGENT_ONBOARDING_PROMPT.md` |
 | Каждые 1–2 ч / после обеда | Этот файл (блок выше) |
 | Агент предлагает «переписать архитектуру» | Этот файл + «работай только по IMP-___» |
-| Конец дня | Попроси «выжимку памяти» и сохрани в issue/заметку |
+| Конец дня | `gstack-context-save` или «выжимка памяти» в issue/заметку |
 
 ## Cursor Rules (уже в репозитории)
 
@@ -83,6 +83,7 @@ E) **Git:** есть ли незакоммиченное? Нужен commit+push
 | Файл | Режим | Назначение |
 |------|-------|------------|
 | `quest-game-focus.mdc` | `alwaysApply: true` | Фокус проекта, Спринт 1, ссылки на docs |
+| `quest-game-gstack.mdc` | `alwaysApply: true` | gstack: review, QA, context-save, security |
 | `quest-game-player-network.mdc` | при открытии `src/lib/**`, GamePlay, … | Очередь и optimistic UI |
 
 В Cursor: **Settings → Rules → Project Rules** — должны отображаться автоматически.

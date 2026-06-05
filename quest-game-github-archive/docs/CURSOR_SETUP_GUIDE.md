@@ -65,6 +65,7 @@ Team Rules (если есть)  →  Project Rules (.cursor/rules/*.mdc)  →  U
 | Файл | Режим | Зачем |
 |------|-------|--------|
 | `quest-game-focus.mdc` | alwaysApply | Якорь: квест, Спринт 1, IMP-ID, docs |
+| `quest-game-gstack.mdc` | alwaysApply | gstack: context-save/restore, review, QA, cso |
 | `quest-game-player-network.mdc` | globs: GamePlay, TeamRegister, src/lib | Очередь, optimistic UI |
 | `quest-game-typescript.mdc` | globs: **/*.ts, **/*.tsx | React/Vite соглашения |
 | `quest-game-supabase.mdc` | globs: src/lib/**, docs/sql-migrations/** | БД, миграции, Edge |
@@ -75,7 +76,9 @@ Team Rules (если есть)  →  Project Rules (.cursor/rules/*.mdc)  →  U
 
 ### Проверка в Cursor
 
-Settings → **Rules** → **Project Rules** — должны быть видны 4 файла. Если нет — откройте workspace `G:\Code\quest-game` (корень с `.cursor`), не только подпапку.
+Settings → **Rules** → **Project Rules** — должны быть видны 5+ файлов. Если нет — откройте workspace `G:\Code\quest-game` (корень с `.cursor`), не только подпапку.
+
+**gstack:** skills установлены глобально в `~/.cursor/skills/gstack-*`. Короткие paste для чата — [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md).
 
 ---
 

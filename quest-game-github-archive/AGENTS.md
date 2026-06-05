@@ -14,8 +14,26 @@
 
 | Когда | Документ |
 |-------|----------|
-| Первый вход в проект / новый чат | **[docs/AI_AGENT_ONBOARDING_PROMPT.md](docs/AI_AGENT_ONBOARDING_PROMPT.md)** |
-| Каждые 1–2 ч длинной сессии / агент «уплыл» | **[docs/AI_AGENT_FOCUS_REMINDER.md](docs/AI_AGENT_FOCUS_REMINDER.md)** |
+| Первый вход / новый агент | **[docs/AI_AGENT_PROMPTS_SHORT.md](docs/AI_AGENT_PROMPTS_SHORT.md)** — короткий paste |
+| Полный онбординг (опционально) | **[docs/AI_AGENT_ONBOARDING_PROMPT.md](docs/AI_AGENT_ONBOARDING_PROMPT.md)** |
+| Смена агента в том же чате | paste «Handoff» из PROMPTS_SHORT + **`gstack-context-restore`** |
+| Каждые 1–2 ч / агент «уплыл» | **[docs/AI_AGENT_FOCUS_REMINDER.md](docs/AI_AGENT_FOCUS_REMINDER.md)** |
+| gstack (review, QA, handoff) | Project Rule `.cursor/rules/quest-game-gstack.mdc` + skills `~/.cursor/skills/gstack-*` |
+
+## gstack (процесс, не домен)
+
+Cursor Rule **`quest-game-gstack.mdc`** задаёт, когда вызывать gstack-skills. Домен Quest Game остаётся здесь и в `docs/`.
+
+| Этап | Skill |
+|------|--------|
+| Старт / смена агента | `gstack-context-restore` |
+| Перед push | `gstack-review` |
+| Security (IMP-SEC-*) | `gstack-cso` |
+| UI / игрок / табло | `gstack-qa` (`localhost:5173`) |
+| Баг / сеть | `gstack-investigate` |
+| Конец блока | `gstack-context-save` |
+
+Подробная таблица — в `.cursor/rules/quest-game-gstack.mdc`.
 
 ## С чего начать
 

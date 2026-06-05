@@ -1,0 +1,52 @@
+---
+description: Quest Game — gstack workflow (review, QA, handoff, security)
+alwaysApply: true
+---
+
+# Quest Game + gstack
+
+Домен проекта — в `quest-game-*.mdc`, `AGENTS.md`, `docs/`. gstack — **процесс проверки и handoff**, skills в `~/.cursor/skills/` (глобально).
+
+Рабочая папка кода: `quest-game-github-archive/`. Supabase — через MCP проекта. UI-тесты — gstack browse (`$B`), не browser MCP.
+
+## Старт и смена агента
+
+1. **Новый агент / продолжение после перерыва:** выполни skill **`gstack-context-restore`** (прочитай SKILL.md, запусти preamble).
+2. Прочитай `quest-game-github-archive/AGENTS.md`, `docs/ROADMAP.md` (Спринт 1), актуальные IMP-* в `docs/IMPROVEMENTS_CATALOG.md`.
+3. **`git status`**, ветка, remote.
+4. **Конец блока / перед сменой агента:** skill **`gstack-context-save`**.
+
+## Маршрутизация gstack по задаче
+
+| Ситуация | Skill |
+|----------|--------|
+| Баг, «не работает», сеть/Realtime | `gstack-investigate`; при правках hot-path — `gstack-freeze` на `src/lib/`, `GamePlay` |
+| Закончен блок кода, **перед push** | `gstack-review` (очередь, select, service role, Edge) |
+| IMP-SEC-* / RLS / Edge / секреты | **`gstack-cso`** обязательно |
+| UI: GamePlay, табло, регистрация | `gstack-qa` на `http://localhost:5173` (`npm run dev` в `quest-game-github-archive/`) |
+| Схема БД, потоки, Edge, env | `gstack-document-release` |
+| IMP-INF-005 / релиз, CI + e2e | `gstack-ship` |
+| Идея **вне** IMP-* / ROADMAP | `gstack-office-hours` → согласовать ID с владельцем |
+| Деплой Edge, RPC, миграции | `gstack-review` + обновить docs |
+
+## Спринт 1 — усиленные gates
+
+- **IMP-SEC-003:** перед push — `gstack-cso`.
+- **IMP-TD-001** (табло): после правок — `gstack-qa` на scoreboard.
+- **IMP-INF-001/002/003:** после deploy/SQL — `gstack-review`.
+
+## После gstack-review / правок
+
+- `npm run build` в `quest-game-github-archive/`.
+- При сети/БД: `node scripts/e2e-game-flow.mjs`.
+- Commit + push по правилам владельца (Conventional Commits, feature-ветка, без force-push на main).
+
+## Windows
+
+- Bash-блоки в gstack skills — через Git Bash.
+- Browse: `BROWSE_SERVER_SCRIPT` в env пользователя; runtime `~/.cursor/skills/gstack/`.
+
+## Не дублировать
+
+- Не перечитывать весь онбординг, если rules уже в контексте — достаточно AGENTS + ROADMAP + текущий IMP-*.
+- MCP Supabase и gstack browse — разные инструменты; оба допустимы.
