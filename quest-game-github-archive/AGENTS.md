@@ -19,6 +19,7 @@
 | Смена агента в том же чате | paste «Handoff» из PROMPTS_SHORT + **`gstack-context-restore`** |
 | Каждые 1–2 ч / агент «уплыл» | **[docs/AI_AGENT_FOCUS_REMINDER.md](docs/AI_AGENT_FOCUS_REMINDER.md)** |
 | gstack (review, QA, handoff) | Project Rule `.cursor/rules/quest-game-gstack.mdc` + skills `~/.cursor/skills/gstack-*` |
+| Установка gstack (Windows) | `scripts/install-gstack-cursor.ps1` + [CURSOR_SETUP_GUIDE.md](docs/CURSOR_SETUP_GUIDE.md) §7 |
 
 ## gstack (процесс, не домен)
 

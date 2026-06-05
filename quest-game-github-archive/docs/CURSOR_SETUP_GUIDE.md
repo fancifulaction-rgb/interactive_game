@@ -195,7 +195,70 @@ powershell -ExecutionPolicy Bypass -File quest-game-github-archive/scripts/insta
 
 ---
 
-## 7. Чеклист настройки (галочки)
+## 7. gstack на Windows (обязательно для QA и handoff)
+
+gstack skills лежат **глобально** в `~/.cursor/skills/gstack-*`. Runtime (browse, bin) — в `~/.cursor/skills/gstack/`. Исходники для сборки — отдельный клон (у вас: `G:\Code\gstack-main\gstack-main`).
+
+### Требования
+
+| Компонент | Зачем |
+|-----------|--------|
+| **Git Bash** | Preamble и `bin/gstack-*` — shell-скрипты |
+| **Bun** + **Node.js** | Сборка browse; на Windows Playwright идёт через Node |
+| **gstack source** | `git clone https://github.com/garrytan/gstack.git` |
+
+### Установка / обновление (один скрипт)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File quest-game-github-archive/scripts/install-gstack-cursor.ps1
+```
+
+Скрипт: `./setup` в gstack-source → копирует `browse/dist`, `bin`, skills в `~/.cursor/skills/`.
+
+После `git pull` в gstack — **перезапустите** скрипт (на Windows setup копирует файлы, не symlink).
+
+### Терминал Cursor
+
+В корне workspace создан `.vscode/settings.json`: **терминал по умолчанию = Git Bash**. Без этого агент в PowerShell не выполнит preamble (`gstack-context-restore` / `save`).
+
+### Проверка (Git Bash, из `G:\Code\quest-game`)
+
+```bash
+~/.cursor/skills/gstack/bin/gstack-slug    # SLUG=... BRANCH=main
+~/.cursor/skills/gstack/browse/dist/browse.exe status
+```
+
+`NO_CHECKPOINTS` до первого `gstack-context-save` — нормально.
+
+### Skills для Quest Game
+
+| Skill | Когда |
+|-------|--------|
+| `gstack-context-restore` / `save` | Старт / конец блока, смена агента |
+| `gstack-review` | Перед push |
+| `gstack-cso` | IMP-SEC-*, RLS, Edge |
+| `gstack-qa` | UI на `http://localhost:5173` — см. ниже |
+| `gstack-investigate` | Баги сети / Realtime |
+
+### gstack-qa и `npm run dev` — что это значит
+
+Quest Game — React + Vite. Локально игра **не открывается сама**: нужен dev-сервер.
+
+| Шаг | Кто | Действие |
+|-----|-----|----------|
+| 1 | Вы или агент | В терминале: `cd quest-game-github-archive && npm run dev` — **оставить работать** |
+| 2 | Браузер | Проверить **http://localhost:5173** |
+| 3 | Агент | Skill **`gstack-qa`** — тестирует UI на этом адресе через gstack browse |
+
+**`gstack-qa` не поднимает сервер** — только проверяет уже запущенное приложение (GamePlay, регистрация, табло).
+
+**Без dev-сервера** работают: `gstack-review`, `gstack-cso`, `context-save/restore`, `npm run build`.
+
+Короткие paste для чата: [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md) (§5). Маршрутизация — Project Rule `quest-game-gstack.mdc`.
+
+---
+
+## 8. Чеклист настройки (галочки)
 
 - [ ] User Rules вставлены (раздел 1)
 - [ ] Workspace открыт как `G:\Code\quest-game`
@@ -204,6 +267,8 @@ powershell -ExecutionPolicy Bypass -File quest-game-github-archive/scripts/insta
 - [ ] **Install Recommended Extensions** (уведомление) или скрипт `install-cursor-extensions.ps1`
 - [ ] `formatOnSave` — в `quest-game-github-archive/.vscode/settings.json` (применено)
 - [ ] MCP: toggle off в UI по `.cursor/MCP_QUEST_GAME.md`
+- [ ] **gstack:** `install-gstack-cursor.ps1`; `gstack-slug` в Git Bash; browse.exe на месте
+- [ ] Терминал Cursor: **Git Bash** (`.vscode/settings.json` в корне workspace)
 - [ ] Режим коммитов: «по просьбе» или «спринт»
 
 ---

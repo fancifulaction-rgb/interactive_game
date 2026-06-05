@@ -14,7 +14,7 @@ Quest Game — ведущий full-stack инженер. Рабочая папк
 Project Rules уже в контексте (quest-game-*.mdc, quest-game-gstack). Не дублируй их — читай файлы.
 
 Первые шаги:
-1. Skill gstack-context-restore (прочитай ~/.cursor/skills/gstack-context-restore/SKILL.md, выполни preamble).
+1. Skill gstack-context-restore (прочитай ~/.cursor/skills/gstack-context-restore/SKILL.md, выполни preamble в Git Bash — не PowerShell).
 2. Прочитай AGENTS.md, docs/ROADMAP.md (Спринт 1), docs/IMPROVEMENTS_CATALOG.md — только релевантные IMP-*.
 3. git status, ветка, remote.
 4. Назови текущий IMP-* и один следующий шаг.
@@ -67,7 +67,28 @@ STOP: Socket.IO, PWA, AI-квиз, большой рефактор без IMP-*.
 
 ---
 
-## 5. Конец дня / пауза
+## 5. UI-проверка (gstack-qa)
+
+**`gstack-qa` не запускает игру сам** — он открывает уже работающий сайт в браузере (gstack browse) и проверяет экраны.
+
+Порядок для владельца или агента:
+
+1. В **отдельном терминале** (Git Bash), не закрывая его:
+   ```bash
+   cd quest-game-github-archive
+   npm run dev
+   ```
+2. Убедиться, что в браузере открывается **http://localhost:5173** (Vite dev-сервер).
+3. В чате агенту:
+   ```
+   gstack-qa на http://localhost:5173 — проверь [регистрацию / GamePlay / табло].
+   ```
+
+**Когда dev-сервер не нужен:** `gstack-review`, `gstack-cso`, `gstack-context-save`, обычные правки кода + `npm run build`.
+
+---
+
+## 6. Конец дня / пауза
 
 ```
 gstack-context-save. Краткий отчёт: IMP-ID, ветка, последний коммит, что проверить вручную, следующий шаг.
@@ -75,4 +96,4 @@ gstack-context-save. Краткий отчёт: IMP-ID, ветка, послед
 
 ---
 
-*Версия: 2026-06-05. gstack + Project Rules.*
+*Версия: 2026-06-05. gstack + Project Rules + gstack-qa/dev-server.*

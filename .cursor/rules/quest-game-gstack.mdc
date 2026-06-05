@@ -41,10 +41,12 @@ alwaysApply: true
 - При сети/БД: `node scripts/e2e-game-flow.mjs`.
 - Commit + push по правилам владельца (Conventional Commits, feature-ветка, без force-push на main).
 
-## Windows
+## Windows (обязательно)
 
-- Bash-блоки в gstack skills — через Git Bash.
-- Browse: `BROWSE_SERVER_SCRIPT` в env пользователя; runtime `~/.cursor/skills/gstack/`.
+- **Терминал агента:** Git Bash (в workspace `.vscode/settings.json` — `defaultProfile: Git Bash`). PowerShell **не** запускает `~/.cursor/skills/gstack/bin/*`.
+- **Runtime:** `~/.cursor/skills/gstack/` (`browse/dist/browse.exe`, `bin/`, `review/`). После `git pull` в gstack: `powershell -File quest-game-github-archive/scripts/install-gstack-cursor.ps1`.
+- **Источник сборки:** `G:\Code\gstack-main\gstack-main` (или `GSTACK_SRC`). Browse на Windows использует `server-node.mjs` из `browse/dist/` — отдельный `BROWSE_SERVER_SCRIPT` обычно не нужен.
+- **Preamble:** bash из `gstack-context-restore` / `save` — только в Git Bash из корня `G:\Code\quest-game`.
 
 ## Не дублировать
 
