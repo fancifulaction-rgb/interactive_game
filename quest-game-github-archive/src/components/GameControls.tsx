@@ -23,6 +23,7 @@ import {
   getGameStartedAt,
   type GameStateRow,
 } from '../lib/gameSessionState'
+import RegistrationQrCard from './RegistrationQrCard'
 
 interface Game {
   id: string
@@ -356,6 +357,10 @@ export default function GameControls() {
 
         {selectedGame && (
           <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+            {selectedGame.code && (
+              <RegistrationQrCard gameCode={selectedGame.code} gameTitle={selectedGame.title} />
+            )}
+
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Статус</p>

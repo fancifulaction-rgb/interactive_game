@@ -9,6 +9,7 @@
 
 ### Добавлено
 - IMP-UX-001: комната ожидания — `GameLobby`, старт игры из AdminPanel (`current_state` waiting → playing)
+- IMP-UX-002: QR и deep link на регистрацию — `/team/register?code=XXXX`, карточка QR в «Управление игрой»
 - IMP-PRD-007: клонирование игры — новый заезд с редактируемым кодом, названием и темой (`cloneGame.ts`)
 
 ### Исправлено

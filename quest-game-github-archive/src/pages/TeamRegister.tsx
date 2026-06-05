@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { registerTeam } from '../lib/teamRegister'
 import { enqueueCritical } from '../lib/requestQueue'
@@ -10,10 +10,12 @@ import { setGamePlayCache } from '../lib/gamePlayCache'
 import { prefetchQuestionsForGame } from '../lib/prefetchGameQuestions'
 import { saveTeamSession } from '../lib/playerSession'
 import { getRegistrationDenial } from '../lib/participantAccess'
+import { readRegistrationCodeFromSearch } from '../lib/registrationUrl'
 import { ArrowLeft, Users, User, Upload, Hash } from 'lucide-react'
 
 export default function TeamRegister() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [gameCode, setGameCode] = useState('')
   const [teamName, setTeamName] = useState('')
   const [captainName, setCaptainName] = useState('')
@@ -22,6 +24,13 @@ export default function TeamRegister() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const submittingRef = useRef(false)
+
+  useEffect(() => {
+    const fromUrl = readRegistrationCodeFromSearch(searchParams.toString())
+    if (fromUrl.length >= 4) {
+      setGameCode(fromUrl)
+    }
+  }, [searchParams])
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
