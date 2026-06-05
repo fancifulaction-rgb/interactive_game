@@ -37,8 +37,8 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-RT-001 | Realtime Broadcast для счёта | `channel.send` вместо части postgres_changes | Supabase docs | 3 | proposed |
-| IMP-RT-002 | Убрать poll 5s AdminScoreboard | Снизить REST при проекторе | Внутренний техдолг | 3 | proposed |
+| IMP-RT-001 | Realtime Broadcast для счёта | `channel.send` вместо части postgres_changes | Supabase docs | 3 | done |
+| IMP-RT-002 | Убрать poll 5s AdminScoreboard | Снизить REST при проекторе | Внутренний техдолг | 3 | done |
 | IMP-RT-003 | Единый канал на game_id | Один channel/game для state+score | Architecture | 3 | proposed |
 | IMP-RT-004 | Отложенный Realtime 8s → настройка | Флаг в settings игры | PlayerScoreboard | — | proposed |
 
@@ -48,7 +48,7 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-LOG-001 | Серверный scoring для авто-вопросов | Клиент шлёт answer+time; сервер считает points | QuizLive SCORING | 3 | proposed |
+| IMP-LOG-001 | Серверный scoring для авто-вопросов | RPC `submit_auto_answer`: answer+time+hints; сервер считает points | QuizLive SCORING | 3 | done |
 | IMP-LOG-002 | Speed-bonus режим (опционально) | 500 + бонус за скорость + streak | Quizz | — | proposed |
 | IMP-LOG-003 | Tie-aware ranking на табло | 1-2-2-4 как QuizLive | QuizLive | — | proposed |
 | IMP-LOG-004 | Пересмотр штрафов подсказок | Исправить пропадающие hints | BACKLOG | — | proposed |
@@ -64,8 +64,8 @@
 | IMP-UX-001 | Комната ожидания | Общий старт после регистрации всех | Zappy, BACKLOG | 2 | done |
 | IMP-UX-002 | QR-код на регистрацию | `?code=XXXX` deep link | QuizLive | 2 | done |
 | IMP-UX-003 | Экран ведущего (host view) | Проектор: код, QR, старт, пауза | TimesUp, QuizLive | 2 | done |
-| IMP-UX-004 | PWA | manifest + SW, иконка на телефоне | QuizLive, BACKLOG | 2 | proposed |
-| IMP-UX-005 | Скрыть табло до финиша | Настройка игры | BACKLOG | 2 | proposed |
+| IMP-UX-004 | PWA | manifest + SW, иконка на телефоне | QuizLive, BACKLOG | 2 | done |
+| IMP-UX-005 | Скрыть табло до финиша | Настройка игры | BACKLOG | 2 | done |
 | IMP-UX-006 | Финиш: только поздравление vs табло | `finish_page_type` расширить | BACKLOG | proposed | proposed |
 | IMP-UX-007 | Улучшить табло (фото команд) | Крупные аватары, анимации | BACKLOG | proposed | proposed |
 | IMP-UX-008 | Темы: фон без налезания на вопрос | Снег/анимации | BACKLOG | proposed | proposed |
@@ -76,11 +76,11 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-PRD-001 | Код игры 6 символов + буквы | Уникальность, читаемость | BACKLOG | 2 | proposed |
-| IMP-PRD-002 | AI-генерация вопросов | Edge + Gemini, как Zappy | Zappy, Buzzr | 3 | proposed |
+| IMP-PRD-001 | Код игры 6 символов + буквы | Уникальность, читаемость | BACKLOG | 2 | done |
+| IMP-PRD-002 | AI-генерация вопросов | Edge `generate-questions` + **Qwen или DeepSeek**; панель в GameEditor | Zappy, Buzzr | 3 | done |
 | IMP-PRD-003 | Team chat в discussion phase | Приватный чат команды | Zappy | — | proposed |
 | IMP-PRD-004 | Co-op mode (все ответили) | Режим гонки команд | Zappy | — | proposed |
-| IMP-PRD-005 | Дата создания в списке игр | AdminPanel | BACKLOG | proposed | proposed |
+| IMP-PRD-005 | Дата создания в списке игр | AdminPanel | BACKLOG | 2 | done |
 | IMP-PRD-007 | Клонирование игры (новый заезд) | Новый код, название, тема; без команд/ответов | BACKLOG | 2 | done |
 | IMP-PRD-006 | Упростить типы вопросов в редакторе | UX GameEditor | BACKLOG | proposed | proposed |
 | IMP-PRD-007 | Логотип на приветственной | Home + settings | BACKLOG | proposed | proposed |

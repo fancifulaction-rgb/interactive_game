@@ -1,11 +1,45 @@
 import path from "path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+import { VitePWA } from "vite-plugin-pwa"
 
 // const isProd = process.env.BUILD_MODE === 'prod'
 export default defineConfig({
   plugins: [
-    react()
+    react(),
+    VitePWA({
+      registerType: "autoUpdate",
+      includeAssets: ["icon.svg", "vite.svg"],
+      manifest: {
+        name: "Quest Game",
+        short_name: "Квест",
+        description: "Командные квесты на мероприятиях",
+        start_url: "/",
+        display: "standalone",
+        background_color: "#8b5cf6",
+        theme_color: "#8b5cf6",
+        lang: "ru",
+        icons: [
+          {
+            src: "/icon.svg",
+            sizes: "512x512",
+            type: "image/svg+xml",
+            purpose: "any",
+          },
+          {
+            src: "/icon.svg",
+            sizes: "512x512",
+            type: "image/svg+xml",
+            purpose: "maskable",
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,ico,svg,woff2}"],
+        navigateFallback: "/index.html",
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+      },
+    }),
   ],
   resolve: {
     alias: {

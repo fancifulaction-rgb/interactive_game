@@ -2,7 +2,13 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { uploadAnswerMediaQueued, cancelActiveStorageUpload } from '../lib/storageUpload'
-import { bumpTeamScoreInBackground, syncPlayerTeamScoreFromServer } from '../lib/teamScore'
+import {
+  applyOptimisticTeamScoreBump,
+  bumpTeamScoreInBackground,
+  syncPlayerTeamScoreFromServer,
+} from '../lib/teamScore'
+import { gradeUserAnswer, normalizeUserAnswers } from '../lib/answerGrading'
+import { enqueueSubmitAutoAnswer } from '../lib/submitAutoAnswer'
 import { postponeAvatarUntilAfterAnswer } from '../lib/pendingAvatar'
 import { calculateQuestionScore } from '../lib/scoring'
 import { debugLog } from '../lib/debugLog'
@@ -14,7 +20,7 @@ import {
   mapRevalidatedQuestions,
   pauseBackgroundRevalidate,
 } from '../lib/revalidateGamePlay'
-import { saveAnswerToServer, type AnswerInsertPayload } from '../lib/saveAnswer'
+import type { AnswerInsertPayload } from '../lib/saveAnswer'
 import { usePlayerExtrasReady } from '../lib/usePlayerExtrasReady'
 import { useTheme } from '../contexts/ThemeContext'
 import { Clock, HelpCircle, Send, Upload, X, Image, Film, Music } from 'lucide-react'
@@ -311,61 +317,12 @@ export default function GamePlay() {
         userAnswers = selectedOptions
       }
 
-      // Проверка правильности ответа
-      // Обеспечиваем обратную совместимость с разными форматами данных
-      const extractAnswers = (answers: any): string[] => {
-        if (!answers) return []
-        // Если это массив массивов (новая структура), извлекаем первый элемент
-        if (Array.isArray(answers) && answers.length > 0 && Array.isArray(answers[0])) {
-          return answers[0].map((a: any) => String(a || '').toLowerCase().trim()).filter(Boolean)
-        }
-        // Если это обычный массив (старая структура)
-        if (Array.isArray(answers)) {
-          return answers.map((a: any) => String(a || '').toLowerCase().trim()).filter(Boolean)
-        }
-        // Если это строка
-        return [String(answers || '').toLowerCase().trim()].filter(Boolean)
-      }
-      
-      const correctAnswers = extractAnswers(currentQuestion.answer)
-      const userAnswersNormalized = userAnswers.map(a => a.toLowerCase().trim())
-      
-      let isCorrect = false
-      let scoreMultiplier = 0
-      
-      if (currentQuestion.answer_count === 1) {
-        // Для текстового ввода - точное совпадение
-        isCorrect = correctAnswers.includes(userAnswerText)
-        scoreMultiplier = isCorrect ? 1 : 0
-      } else {
-        // Для множественного выбора - проверяем совпадение массивов
-        const correctSet = new Set(correctAnswers)
-        const userSet = new Set(userAnswersNormalized)
-        
-        // Все выбранные ответы должны быть правильными
-        const allCorrect = userAnswersNormalized.every(ans => correctSet.has(ans))
-        // Проверяем сколько правильных ответов выбрано
-        const correctCount = userAnswersNormalized.filter(ans => correctSet.has(ans)).length
-        const totalCorrect = correctAnswers.length
-        
-        if (allCorrect && correctCount === totalCorrect) {
-          // 100% правильно - все правильные ответы выбраны, лишних нет
-          isCorrect = true
-          scoreMultiplier = 1
-        } else if (correctCount > 0 && allCorrect) {
-          // Частично правильно - выбраны только правильные, но не все
-          isCorrect = true
-          scoreMultiplier = 0.5
-        } else if (correctCount > 0) {
-          // Частично правильно - есть правильные, но есть и неправильные
-          isCorrect = true
-          scoreMultiplier = 0.3
-        } else {
-          // Полностью неправильно
-          isCorrect = false
-          scoreMultiplier = 0
-        }
-      }
+      const userAnswersNormalized = normalizeUserAnswers(userAnswers)
+      const { isCorrect, scoreMultiplier } = gradeUserAnswer({
+        answerCount: currentQuestion.answer_count ?? 1,
+        correctAnswers: currentQuestion.answer,
+        userAnswers: userAnswersNormalized.length ? userAnswersNormalized : [userAnswerText],
+      })
 
       // Расчет времени и очков
       const maxTime = currentQuestion.per_question_time_sec || game.per_question_time_sec || 120
@@ -382,15 +339,22 @@ export default function GamePlay() {
         partialMultiplier: scoreMultiplier,
       })
 
-      const payload: AnswerInsertPayload = {
+      const questionNumber = currentQuestion.order_index ?? currentQuestionIndex + 1
+      const answerPayload = userAnswers.length ? userAnswers : [userAnswerText]
+
+      const fallbackPayload: AnswerInsertPayload = {
         game_id: game.id,
         team_id: teamId,
-        question_number: currentQuestion.order_index ?? currentQuestionIndex + 1,
-        answer: userAnswers.length ? userAnswers : [userAnswerText],
+        question_number: questionNumber,
+        answer: answerPayload,
         media_urls: mediaUrl ? [mediaUrl] : [],
         is_correct: isCorrect,
         points_earned: score,
         time_spent: timeTaken,
+      }
+
+      if (isCorrect && score > 0) {
+        applyOptimisticTeamScoreBump(teamId, score, gameCode ?? '')
       }
 
       debugLog('GamePlay.tsx:submit', 'advance ui', {
@@ -401,15 +365,40 @@ export default function GamePlay() {
       handleNextQuestion()
       setUploadingFile(false)
 
-      void saveAnswerToServer(payload)
-        .then(() => {
+      void enqueueSubmitAutoAnswer(
+        {
+          game_id: game.id,
+          team_id: teamId,
+          question_number: questionNumber,
+          answer: answerPayload,
+          media_urls: mediaUrl ? [mediaUrl] : [],
+          time_spent: timeTaken,
+          hints_used: hintLevel,
+        },
+        fallbackPayload
+      )
+        .then((result) => {
           debugLog('GamePlay.tsx:submit', 'saved', {
             totalMs: Date.now() - submitStarted,
-            isCorrect,
-            score,
+            via: result.via,
+            isCorrect: result.is_correct,
+            score: result.points_earned,
           }, 'H')
-          if (isCorrect && score > 0) {
-            bumpTeamScoreInBackground(teamId, score, gameCode ?? '')
+          if (result.via === 'rpc' && result.team_total_score >= 0) {
+            try {
+              const raw = localStorage.getItem('current_team')
+              if (raw) {
+                const team = JSON.parse(raw)
+                if (team?.id === teamId) {
+                  team.total_score = result.team_total_score
+                  localStorage.setItem('current_team', JSON.stringify(team))
+                }
+              }
+            } catch {
+              /* ignore */
+            }
+          } else if (result.via === 'fallback' && result.points_earned > 0) {
+            bumpTeamScoreInBackground(teamId, result.points_earned, gameCode ?? '')
           }
         })
         .catch((saveErr: unknown) => {

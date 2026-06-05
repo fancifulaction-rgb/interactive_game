@@ -16,7 +16,7 @@ if (!base || !anon) {
   process.exit(1)
 }
 
-const names = ['player-upload', 'delete-game']
+const names = ['player-upload', 'delete-game', 'generate-questions']
 let ok = true
 
 for (const name of names) {

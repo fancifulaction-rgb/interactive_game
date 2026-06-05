@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { fetchGameStateForGame } from './fetchGameState'
+import { isScoreboardHiddenUntilFinish } from './gameSettings'
 import {
   getGameStartedAt,
   isGameFinished,
@@ -85,7 +86,7 @@ export async function verifyFinishPageAccess(
   const code = gameCode.trim().toUpperCase()
   const { data: game, error: gameError } = await supabase
     .from('games')
-    .select('id')
+    .select('id, settings')
     .eq('code', code)
     .maybeSingle()
 
@@ -109,6 +110,8 @@ export async function verifyFinishPageAccess(
 
   const state = await fetchGameStateForGame(game.id)
 
+  const hideUntilFinish = isScoreboardHiddenUntilFinish(game.settings)
+
   if (isGameFinished(state)) {
     const startedAt = getGameStartedAt(state)
     if (
@@ -119,6 +122,10 @@ export async function verifyFinishPageAccess(
       return { allowed: false, message: FINISH_MESSAGES.not_participant }
     }
     return { allowed: true }
+  }
+
+  if (hideUntilFinish) {
+    return { allowed: false, message: FINISH_MESSAGES.not_yet }
   }
 
   const { count, error: answersError } = await supabase

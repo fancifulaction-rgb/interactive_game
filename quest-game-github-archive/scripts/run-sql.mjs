@@ -19,7 +19,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sqlPath = path.isAbsolute(sqlArg) ? sqlArg : path.join(root, sqlArg)
 const sql = fs.readFileSync(sqlPath, 'utf8')
 
-const { client, label } = await connectPostgres()
+const { client, label } = await connectPostgres({ preferDdl: true })
 console.log(`Подключение: ${label}`)
 console.log(`Файл: ${sqlArg}`)
 

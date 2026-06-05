@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { broadcastTeamsChanged } from './gameRealtime'
 
 export type ResetGameProgressResult = {
   success: boolean
@@ -60,6 +61,8 @@ export async function resetGameProgress(gameId: string): Promise<ResetGameProgre
   }
 
   await supabase.from('team_scores').delete().eq('game_id', gameId)
+
+  void broadcastTeamsChanged(gameId)
 
   return {
     success: true,

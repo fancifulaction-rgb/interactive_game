@@ -16,8 +16,14 @@ PostgreSQL в Supabase. Миграции: `docs/sql-migrations/`.
 | `008_teams_app_columns.sql` | `team_name`, `captain_name`, `avatar_url`, `total_score` |
 | `009_game_state_pause.sql` | `is_paused`, `paused_at`, `paused_by` |
 | `010_increment_team_score.sql` | RPC `increment_team_score(team_id, delta)` |
+| `011_…` … `012_…` | По мере спринтов (см. `docs/sql-migrations/`) |
+| `013_submit_auto_answer.sql` | RPC `submit_auto_answer` — серверная проверка авто-ответов (IMP-LOG-001) |
 
-**Скрипт:** `npm run db:migrate` → `scripts/apply-migrations.mjs` (проверьте, какие файлы он включает).
+**Скрипты:**
+- `npm run db:migrate` — все новые миграции; журнал `schema_migrations`, уже применённые пропускаются
+- `npm run db:migrate:013` — только 013 (если полный прогон «висит» на старой БД)
+
+На существующей БД без журнала скрипт один раз отмечает 001–012 как применённые и догоняет только новые файлы.
 
 После DDL: **Dashboard → Settings → API → Reload schema**.
 

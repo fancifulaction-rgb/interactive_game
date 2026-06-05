@@ -1,6 +1,10 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import {
+  applyScoreBroadcastToTeams,
+  subscribeGameRealtime,
+} from '../lib/gameRealtime'
 import { getGamePlayCache, updateTeamsSnapshot } from '../lib/gamePlayCache'
 import type { TeamSnapshot } from '../lib/gamePlayCache'
 import type { FinishNavigateState } from '../lib/finishNavigation'
@@ -27,7 +31,6 @@ export default function PlayerScoreboard() {
   const [loading, setLoading] = useState(true)
   const [accessDenied, setAccessDenied] = useState<string | null>(null)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
-  const realtimeEnabledRef = useRef(false)
 
   useEffect(() => {
     const code = (gameCode ?? '').trim().toUpperCase()
@@ -113,36 +116,35 @@ export default function PlayerScoreboard() {
   }, [gameCode, finishState])
 
   useEffect(() => {
-    if (!game?.id || realtimeEnabledRef.current) return
+    if (!game?.id) return
 
-    const timer = window.setTimeout(() => {
-      if (realtimeEnabledRef.current) return
-      realtimeEnabledRef.current = true
+    const code = (gameCode ?? '').trim().toUpperCase()
+    const reloadTeams = () => {
+      void fetchTeamsForScoreboard(game.id).then((data) => {
+        setTeams(data)
+        if (code) updateTeamsSnapshot(code, data)
+      })
+    }
 
-      const channel = supabase
-        .channel(`teams-scoreboard-${game.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'teams',
-            filter: `game_id=eq.${game.id}`,
-          },
-          () => {
-            void fetchTeamsForScoreboard(game.id).then((data) => {
-              setTeams(data)
-              const code = (gameCode ?? '').trim().toUpperCase()
-              if (code) updateTeamsSnapshot(code, data)
-            })
-          }
-        )
-        .subscribe()
+    const channel = subscribeGameRealtime(game.id, {
+      onScoreUpdate: (payload) => {
+        setTeams((prev) => {
+          const next = applyScoreBroadcastToTeams(prev, payload)
+          if (code) updateTeamsSnapshot(code, next)
+          return next
+        })
+      },
+      onTeamsChanged: reloadTeams,
+    })
 
-      channelRef.current = channel
-    }, 8000)
+    channelRef.current = channel
 
-    return () => window.clearTimeout(timer)
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
   }, [game?.id, gameCode])
 
   const getMedalIcon = (position: number) => {

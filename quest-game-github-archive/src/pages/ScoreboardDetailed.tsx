@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { subscribeGameRealtime } from '../lib/gameRealtime'
 import { Trophy, Medal, Award, ArrowLeft, Download, FileText, FileSpreadsheet, BarChart3 } from 'lucide-react'
 import { exportToExcel, exportToPDF, exportToCSV, exportAllFormats } from '../utils/exportData'
 
@@ -52,6 +53,7 @@ export default function ScoreboardDetailed() {
   const inFlightRef = useRef(false)
   const cachedGameIdRef = useRef<string | null>(null)
   const cachedQuestionsRef = useRef<any[]>([])
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
   useEffect(() => {
     const adminLoggedIn = localStorage.getItem('admin_logged_in')
@@ -218,13 +220,38 @@ export default function ScoreboardDetailed() {
     const interval = setInterval(() => {
       if (document.hidden) return
       void loadData({ refreshOnly: true })
-    }, 10_000)
+    }, 30_000)
 
     return () => {
       clearInterval(interval)
       loadSeqRef.current++
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
     }
   }, [gameCode, loadData])
+
+  useEffect(() => {
+    const gameId = cachedGameIdRef.current ?? game?.id
+    if (!gameId) return
+
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current)
+    }
+
+    channelRef.current = subscribeGameRealtime(gameId, {
+      onScoreUpdate: () => void loadData({ refreshOnly: true }),
+      onTeamsChanged: () => void loadData({ refreshOnly: true }),
+    })
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
+  }, [game?.id, loadData])
 
   const getMedalIcon = (position: number) => {
     if (position === 0) return <Trophy className="w-8 h-8 text-yellow-500" />

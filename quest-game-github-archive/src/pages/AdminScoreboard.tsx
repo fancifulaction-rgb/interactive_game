@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import {
+  applyScoreBroadcastToTeams,
+  subscribeGameRealtime,
+} from '../lib/gameRealtime'
 import { Trophy, Medal, Award, Settings, Download, FileText, FileSpreadsheet } from 'lucide-react'
 import { exportToExcel, exportToPDF, exportToCSV, exportAllFormats } from '../utils/exportData'
 
@@ -91,19 +95,12 @@ export default function AdminScoreboard() {
           supabase.removeChannel(channelRef.current)
         }
 
-        const channel = supabase
-          .channel(`admin-teams-scoreboard-${gameData.id}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'teams',
-              filter: `game_id=eq.${gameData.id}`,
-            },
-            () => scheduleTeamsReload(gameData.id)
-          )
-          .subscribe()
+        const channel = subscribeGameRealtime(gameData.id, {
+          onScoreUpdate: (payload) => {
+            setTeams((prev) => applyScoreBroadcastToTeams(prev, payload))
+          },
+          onTeamsChanged: () => scheduleTeamsReload(gameData.id),
+        })
 
         channelRef.current = channel
       } catch (err: unknown) {

@@ -31,15 +31,33 @@ export function getDatabaseUrlCandidates() {
   return urls
 }
 
-export async function connectPostgres() {
-  const candidates = getDatabaseUrlCandidates()
+function sortCandidatesForDdl(candidates) {
+  const score = (label) => {
+    if (label.includes('direct') || label === 'DATABASE_URL') return 0
+    if (label.includes('session pooler')) return 1
+    return 2
+  }
+  return [...candidates].sort((a, b) => score(a.label) - score(b.label))
+}
+
+function attachClientErrorGuard(client) {
+  client.on('error', (err) => {
+    console.error('Postgres connection error:', err.message)
+  })
+}
+
+export async function connectPostgres(options = {}) {
+  const preferDdl = options.preferDdl === true
+  let candidates = getDatabaseUrlCandidates()
   if (!candidates.length) {
     throw new Error('Задайте SUPABASE_DB_PASSWORD или DATABASE_URL в .env')
   }
+  if (preferDdl) candidates = sortCandidatesForDdl(candidates)
 
   const errors = []
   for (const { label, url } of candidates) {
     const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+    attachClientErrorGuard(client)
     try {
       await client.connect()
       await client.query('SELECT 1')

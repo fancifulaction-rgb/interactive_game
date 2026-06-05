@@ -3,7 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { isAdminPanelLoggedIn } from '../lib/adminAuth'
 import { uploadQuestionMediaQueued } from '../lib/storageUpload'
-import { ArrowLeft, Save, Plus, Trash2, Upload, X } from 'lucide-react'
+import { mergeGameSettings, parseGameSettings } from '../lib/gameSettings'
+import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown } from 'lucide-react'
+import { generateQuestionsWithAi, type AiQuestionProvider } from '../lib/generateQuestions'
+import CollapsibleSection from '../components/CollapsibleSection'
 
 interface Question {
   id?: string
@@ -29,6 +32,28 @@ export default function GameEditor() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [aiTopic, setAiTopic] = useState('')
+  const [aiCount, setAiCount] = useState(5)
+  const [aiProvider, setAiProvider] = useState<AiQuestionProvider>('groq')
+  const [aiDifficulty, setAiDifficulty] = useState('Средний')
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [expandedQuestions, setExpandedQuestions] = useState<Record<number, boolean>>({})
+
+  const showStatus = (message: string) => {
+    setStatusMessage(message)
+    window.setTimeout(() => setStatusMessage(null), 4000)
+  }
+
+  const isQuestionExpanded = (qIndex: number) =>
+    expandedQuestions[qIndex] ?? questions.length <= 2
+
+  const toggleQuestionExpanded = (qIndex: number) => {
+    setExpandedQuestions((prev) => ({
+      ...prev,
+      [qIndex]: !isQuestionExpanded(qIndex),
+    }))
+  }
 
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('admin_logged_in')
@@ -88,7 +113,9 @@ export default function GameEditor() {
     try {
       const { data: gameData, error: gameError } = await supabase
         .from('games')
-        .select('*')
+        .select(
+          'id, title, code, theme, finish_page_type, mask_board, settings, total_time_sec, per_question_time_sec, scoring'
+        )
         .eq('id', gameId)
         .maybeSingle()
 
@@ -114,7 +141,9 @@ export default function GameEditor() {
 
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
-        .select('*')
+        .select(
+          'id, game_id, question_number, order_index, question_text, prompt, question_type, type, options, answer, answer_count, difficulty, points, base_points, hint_levels, hint_penalties, per_question_time_sec, media_url'
+        )
         .eq('game_id', gameId)
         .order('question_number', { ascending: true })
 
@@ -139,6 +168,7 @@ export default function GameEditor() {
           theme: game?.theme || 'default',
           finish_page_type: game?.finish_page_type || 'scoreboard',
           mask_board: game?.mask_board || false,
+          settings: parseGameSettings(game?.settings),
           total_time_sec: game?.total_time_sec || 1200,
           per_question_time_sec: game?.per_question_time_sec || 120,
           scoring: game?.scoring || {
@@ -153,11 +183,72 @@ export default function GameEditor() {
         .eq('id', gameId)
 
       if (error) throw error
-      alert('Игра сохранена')
+      showStatus('Игра сохранена')
     } catch (err: any) {
       alert('Ошибка сохранения: ' + err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleGenerateAiQuestions = async () => {
+    if (!gameId) return
+    const topic = aiTopic.trim() || game?.title?.trim() || ''
+    if (!topic) {
+      alert('Укажите тему или название игры для генерации')
+      return
+    }
+
+    setAiGenerating(true)
+    try {
+      const drafts = await generateQuestionsWithAi({
+        topic,
+        count: aiCount,
+        provider: aiProvider,
+        difficulty: aiDifficulty,
+      })
+
+      const baseIndex = questions.length
+      const perQuestionTime = game?.per_question_time_sec ?? 120
+
+      const mapped: Question[] = drafts.map((d, i) => ({
+        game_id: gameId,
+        order_index: baseIndex + i + 1,
+        type: d.type || 'text',
+        prompt: d.prompt,
+        media_url: null,
+        answer: d.answer ?? [],
+        options: d.options ?? [],
+        answer_count: d.answer_count > 1 ? d.answer_count : 1,
+        difficulty: d.difficulty || aiDifficulty,
+        base_points: d.base_points ?? 100,
+        hint_levels: d.hint_levels?.length ? d.hint_levels : ['Подсказка'],
+        hint_penalties: d.hint_penalties?.length ? d.hint_penalties : [10],
+        per_question_time_sec: d.per_question_time_sec ?? perQuestionTime,
+      }))
+
+      setQuestions([...questions, ...mapped])
+      setExpandedQuestions((prev) => {
+        const next = { ...prev }
+        if (mapped.length > 2) {
+          mapped.forEach((_, i) => {
+            next[baseIndex + i] = i === 0
+          })
+        }
+        return next
+      })
+      showStatus(
+        `Сгенерировано ${mapped.length} вопросов (${aiProvider === 'groq' ? 'Groq' : aiProvider === 'qwen' ? 'Qwen' : 'DeepSeek'}). Проверьте и сохраните.`
+      )
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert(
+        'AI-генерация не удалась: ' +
+          msg +
+          '\n\nПроверьте: npm run edge:deploy и секрет GROQ_API_KEY (или другой провайдер) в Supabase Edge Secrets.'
+      )
+    } finally {
+      setAiGenerating(false)
     }
   }
 
@@ -270,24 +361,71 @@ export default function GameEditor() {
         }
       }
 
-      const { error: deleteError } = await supabase.from('questions').delete().eq('game_id', gameId)
-      if (deleteError) {
-        throw new Error(`Не удалось удалить старые вопросы: ${deleteError.message}`)
-      }
+      const keptIds = questions.map((q) => q.id).filter((id): id is string => !!id)
 
-      const rows = questions.map((q, i) => buildQuestionRow(q, i))
-      const { data: inserted, error: insertError } = await supabase
+      const { data: existingRows, error: existingError } = await supabase
         .from('questions')
-        .insert(rows)
-        .select()
+        .select('id')
+        .eq('game_id', gameId)
 
-      if (insertError) throw insertError
-      if (!inserted?.length) {
-        throw new Error('Вопросы не сохранились в базе')
+      if (existingError) {
+        throw new Error(`Не удалось прочитать вопросы: ${existingError.message}`)
       }
 
-      setQuestions(inserted.map((q) => normalizeQuestion(q)))
-      alert(`Вопросы сохранены: ${inserted.length}`)
+      const toDelete = (existingRows ?? [])
+        .map((row) => row.id as string)
+        .filter((id) => !keptIds.includes(id))
+
+      if (toDelete.length) {
+        const { error: deleteError } = await supabase.from('questions').delete().in('id', toDelete)
+        if (deleteError) {
+          throw new Error(`Не удалось удалить лишние вопросы: ${deleteError.message}`)
+        }
+      }
+
+      const updateTargets = questions
+        .map((q, index) => ({ q, index }))
+        .filter((item) => !!item.q.id)
+
+      for (let i = 0; i < updateTargets.length; i += 5) {
+        const chunk = updateTargets.slice(i, i + 5)
+        const results = await Promise.all(
+          chunk.map(({ q, index }) =>
+            supabase.from('questions').update(buildQuestionRow(q, index)).eq('id', q.id!)
+          )
+        )
+        const failed = results.find((r) => r.error)
+        if (failed?.error) throw failed.error
+      }
+
+      const newQuestions = questions
+        .map((q, index) => ({ q, index }))
+        .filter((item) => !item.q.id)
+
+      let merged = [...questions]
+
+      if (newQuestions.length) {
+        const rows = newQuestions.map(({ q, index }) => buildQuestionRow(q, index))
+        const { data: inserted, error: insertError } = await supabase
+          .from('questions')
+          .insert(rows)
+          .select('id, question_number')
+
+        if (insertError) throw insertError
+        if (!inserted?.length) {
+          throw new Error('Новые вопросы не сохранились в базе')
+        }
+
+        let insertOffset = 0
+        merged = questions.map((q) => {
+          if (q.id) return { ...q }
+          const row = inserted[insertOffset++]
+          return row ? { ...q, id: row.id as string } : q
+        })
+      }
+
+      setQuestions(merged.map((q, index) => ({ ...q, order_index: index + 1 })))
+      showStatus(`Вопросы сохранены: ${questions.length}`)
     } catch (err: any) {
       console.error('Ошибка сохранения вопросов:', err)
       alert('Ошибка сохранения вопросов: ' + (err?.message || String(err)))
@@ -549,6 +687,8 @@ export default function GameEditor() {
     theme: game?.theme || 'default',
     finish_page_type: game?.finish_page_type || 'scoreboard',
     mask_board: !!game?.mask_board,
+    hide_scoreboard_until_finish: parseGameSettings(game?.settings)
+      .hide_scoreboard_until_finish,
     total_time_sec: game?.total_time_sec || 1200,
     per_question_time_sec: game?.per_question_time_sec || 120,
     scoring: game?.scoring || {
@@ -572,7 +712,10 @@ export default function GameEditor() {
             <ArrowLeft className="w-5 h-5" />
             Назад к панели
           </button>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
+            {statusMessage && (
+              <span className="text-sm text-green-700 hidden sm:inline">{statusMessage}</span>
+            )}
             <button
               onClick={handleSaveGame}
               disabled={saving}
@@ -602,9 +745,12 @@ export default function GameEditor() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="bg-white rounded-lg p-6 mb-6">
-          <h2 className="text-2xl font-bold mb-6">Настройки игры</h2>
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
+        {statusMessage && (
+          <p className="text-sm text-green-700 sm:hidden">{statusMessage}</p>
+        )}
+
+        <CollapsibleSection title="Настройки игры" defaultOpen>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium mb-2">Название игры</label>
@@ -669,8 +815,29 @@ export default function GameEditor() {
                   onChange={(e) => setGame({ ...game, mask_board: e.target.checked })}
                   className="w-5 h-5"
                 />
-                <span className="text-sm font-medium">Маскировать табло</span>
+                <span className="text-sm font-medium">Маскировать табло (скрыть имена на экране)</span>
               </label>
+            </div>
+            <div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={safeGame.hide_scoreboard_until_finish}
+                  onChange={(e) =>
+                    setGame({
+                      ...game,
+                      settings: mergeGameSettings(game?.settings, {
+                        hide_scoreboard_until_finish: e.target.checked,
+                      }),
+                    })
+                  }
+                  className="w-5 h-5"
+                />
+                <span className="text-sm font-medium">Скрыть табло до финиша</span>
+              </label>
+              <p className="text-sm text-gray-600 mt-1 ml-7">
+                Игроки не смогут открыть табло результатов, пока ведущий не завершит игру
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">Общее время (секунд)</label>
@@ -691,9 +858,9 @@ export default function GameEditor() {
               />
             </div>
           </div>
+        </CollapsibleSection>
 
-          <div className="mt-8 border-t pt-6">
-            <h3 className="text-xl font-bold mb-4">Формула подсчета очков</h3>
+        <CollapsibleSection title="Формула подсчёта очков" defaultOpen={false}>
             <p className="text-sm text-gray-600 mb-4">
               Score_q = P_base × K_diff × K_time - H + S_combo_part
             </p>
@@ -777,12 +944,13 @@ export default function GameEditor() {
                 />
               </div>
             </div>
-          </div>
-        </div>
+        </CollapsibleSection>
 
-        <div className="bg-white rounded-lg p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Вопросы</h2>
+        <CollapsibleSection
+          title={`Вопросы (${questions.length})`}
+          defaultOpen={questions.length > 0}
+        >
+          <div className="flex justify-end mb-4">
             <button
               onClick={handleAddQuestion}
               className="flex items-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 min-h-[48px] text-sm sm:text-base"
@@ -793,20 +961,108 @@ export default function GameEditor() {
             </button>
           </div>
 
-          <div className="space-y-6">
-            {questions.map((question, qIndex) => (
-              <div key={qIndex} className="border rounded-lg p-3 sm:p-4 bg-gray-50">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-4">
-                  <h3 className="text-lg font-bold">Вопрос {qIndex + 1}</h3>
+          <div className="mb-6 p-4 border border-violet-200 rounded-lg bg-violet-50">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-5 h-5 text-violet-600" />
+              <h3 className="font-semibold text-violet-900">AI-генерация (Groq / Qwen / DeepSeek)</h3>
+            </div>
+            <p className="text-sm text-violet-800 mb-4">
+              Вопросы добавляются в список ниже — проверьте и нажмите «Сохранить вопросы». Ключи API
+              только в Supabase Edge secrets.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium mb-1">Тема</label>
+                <input
+                  type="text"
+                  value={aiTopic}
+                  onChange={(e) => setAiTopic(e.target.value)}
+                  placeholder={game?.title ? `По умолчанию: «${game.title}»` : 'Например: История России'}
+                  className="w-full px-3 py-2 border rounded-lg bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Количество</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={15}
+                  value={aiCount}
+                  onChange={(e) => setAiCount(Math.min(15, Math.max(1, parseInt(e.target.value, 10) || 5)))}
+                  className="w-full px-3 py-2 border rounded-lg bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Сложность</label>
+                <select
+                  value={aiDifficulty}
+                  onChange={(e) => setAiDifficulty(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg bg-white"
+                >
+                  <option value="Легкий">Легкий</option>
+                  <option value="Средний">Средний</option>
+                  <option value="Сложный">Сложный</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Провайдер</label>
+                <select
+                  value={aiProvider}
+                  onChange={(e) => setAiProvider(e.target.value as AiQuestionProvider)}
+                  className="w-full px-3 py-2 border rounded-lg bg-white"
+                >
+                  <option value="groq">Groq (бесплатно)</option>
+                  <option value="qwen">Qwen (DashScope)</option>
+                  <option value="deepseek">DeepSeek</option>
+                </select>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleGenerateAiQuestions}
+              disabled={aiGenerating || saving}
+              className="flex items-center gap-2 px-4 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 min-h-[48px]"
+            >
+              <Sparkles className="w-5 h-5" />
+              {aiGenerating ? 'Генерация…' : 'Сгенерировать вопросы'}
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {questions.map((question, qIndex) => {
+              const expanded = isQuestionExpanded(qIndex)
+              return (
+              <div key={question.id ?? `draft-${qIndex}`} className="border rounded-lg bg-gray-50 overflow-hidden">
+                <div className="flex items-stretch">
                   <button
+                    type="button"
+                    onClick={() => toggleQuestionExpanded(qIndex)}
+                    className="flex-1 flex items-center justify-between gap-3 p-3 sm:p-4 text-left hover:bg-gray-100"
+                  >
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-bold">Вопрос {qIndex + 1}</h3>
+                      {!expanded && (
+                        <p className="text-sm text-gray-600 truncate mt-1">
+                          {question.prompt?.trim() || 'Текст не задан'}
+                        </p>
+                      )}
+                    </div>
+                    <ChevronDown
+                      className={`w-5 h-5 shrink-0 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleDeleteQuestion(qIndex)}
-                    className="text-red-600 hover:text-red-800 p-2 min-w-[48px] min-h-[48px] flex items-center justify-center self-end sm:self-start"
+                    className="text-red-600 hover:text-red-800 hover:bg-red-50 px-3 border-l"
+                    title="Удалить вопрос"
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
 
-                <div className="grid gap-4">
+                {expanded && (
+                <div className="grid gap-4 p-3 sm:p-4 border-t">
                   <div>
                     <label className="block text-sm font-medium mb-2">Текст вопроса</label>
                     <textarea
@@ -1047,10 +1303,11 @@ export default function GameEditor() {
                     ))}
                   </div>
                 </div>
+                )}
               </div>
-            ))}
+            )})}
           </div>
-        </div>
+        </CollapsibleSection>
       </div>
     </div>
   )

@@ -9,7 +9,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const functions = ['player-upload', 'delete-game']
+const functions = ['player-upload', 'delete-game', 'generate-questions']
 const PROJECT_REF =
   process.env.SUPABASE_PROJECT_REF ||
   process.env.VITE_SUPABASE_PROJECT_ID ||

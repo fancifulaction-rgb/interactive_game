@@ -5,17 +5,38 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 и этот проект следует [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — Спринт 2
+## [Unreleased] — Спринт 3
+
+### Добавлено
+- IMP-LOG-001: серверный scoring — RPC `submit_auto_answer` (`013_submit_auto_answer.sql`), `answerGrading.ts`, `submitAutoAnswer.ts`
+- IMP-RT-001: Realtime Broadcast для счёта — `gameRealtime.ts`, канал `game:{id}`, broadcast `score_update` после ответа
+- IMP-PRD-002: AI-генерация вопросов — Edge `generate-questions` (Qwen / DeepSeek), панель в GameEditor, `generateQuestions.ts`
+- `docs/TEST_BACKLOG.md` — чеклист отложенного ручного тестирования
+- `npm run db:migrate:013` — только миграция серверного scoring; журнал `schema_migrations` в `apply-migrations.mjs`
+
+### Изменено
+- AdminScoreboard / PlayerScoreboard / ScoreboardDetailed: счёт через broadcast, postgres_changes только INSERT/DELETE команд
+- `db:migrate`: пропуск уже применённых миграций; bootstrap для существующей БД (без повторного 001)
+- `edge:deploy` / `verify-edge-functions`: добавлен `generate-questions`
+
+## [Unreleased] — Спринт 2 (закрыт)
 
 ### Добавлено
 - IMP-UX-001: комната ожидания — `GameLobby`, старт игры из AdminPanel (`current_state` waiting → playing)
 - IMP-UX-002: QR и deep link на регистрацию — `/team/register?code=XXXX`, карточка QR в «Управление игрой»
 - IMP-UX-003: экран ведущего — `/host/:gameCode` (код, QR, команды, старт/пауза для авторизованного админа)
+- IMP-UX-004: PWA — `vite-plugin-pwa`, service worker, `icon.svg`, `manifest.webmanifest`
+- IMP-UX-005: скрыть табло до финиша — флаг `games.settings.hide_scoreboard_until_finish`, чекбокс в GameEditor
+- IMP-PRD-001: код игры 4–6 символов (буквы и цифры) — `gameAccessCode.ts`, валидация в редакторе
+- IMP-PRD-005: дата создания в списке игр AdminPanel
 - IMP-PRD-007: клонирование игры — новый заезд с редактируемым кодом, названием и темой (`cloneGame.ts`)
 
 ### Исправлено
 - Синхронизация lobby → playing у игрока: Realtime для `game_state`, polling 2 с, устойчивый fetch состояния
 - AdminPanel: защита от двойного создания игры, быстрое удаление (БД сразу, Storage в фоне), ошибки загрузки списка, проверка Supabase-сессии
+- AdminPanel: единый источник списка игр; CollapsibleSection не дёргает `onOpen` на каждый ререндер
+- Управление командами: прямой запрос без `requestQueue`, fallback удаления без Edge `delete-teams`
+- AdminScoreboard / ScoreboardDetailed: realtime без утечек каналов, debounce, меньше REST (IMP-RT-002)
 
 ## [Unreleased] — Спринт 1 (закрыт)
 
