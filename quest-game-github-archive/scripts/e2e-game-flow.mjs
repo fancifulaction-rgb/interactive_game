@@ -3,17 +3,23 @@
  * Запуск: node scripts/e2e-game-flow.mjs
  */
 import { createClient } from '@supabase/supabase-js'
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 
-for (const line of readFileSync('.env', 'utf8').split('\n')) {
-  const m = line.match(/^\s*([^#][^=]+)=(.*)$/)
-  if (m) process.env[m[1].trim()] = m[2].trim()
+if (existsSync('.env')) {
+  for (const line of readFileSync('.env', 'utf8').split('\n')) {
+    const m = line.match(/^\s*([^#][^=]+)=(.*)$/)
+    if (m) process.env[m[1].trim()] = m[2].trim()
+  }
 }
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
-)
+const url = process.env.VITE_SUPABASE_URL
+const anon = process.env.VITE_SUPABASE_ANON_KEY
+if (!url || !anon) {
+  console.error('Нужны VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY (.env или переменные окружения)')
+  process.exit(1)
+}
+
+const supabase = createClient(url, anon)
 
 const bugs = []
 const ok = (msg) => console.log('✓', msg)
