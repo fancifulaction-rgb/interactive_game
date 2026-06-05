@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     // Получаем все ответы этих команд
     let answers = [];
     if (teamIds.length > 0) {
-      const answersResponse = await fetch(`${supabaseUrl}/rest/v1/answers?team_id=in.(${teamIds.join(',')})&select=id,media_url`, {
+      const answersResponse = await fetch(`${supabaseUrl}/rest/v1/answers?team_id=in.(${teamIds.join(',')})&select=id,media_urls`, {
         headers: {
           'Authorization': `Bearer ${supabaseServiceKey}`,
           'apikey': supabaseServiceKey
@@ -68,73 +68,94 @@ Deno.serve(async (req) => {
     }
     console.log(`Found ${answers.length} answers`);
 
-    // 2. Удаляем медиа файлы из Storage
-    console.log('Deleting media files from storage...');
-    const mediaFilesToDelete = [];
-    
-    // Добавляем медиа из вопросов
-    questions.forEach(q => {
+    const parsePublicUrl = (url: string) => {
+      const marker = '/storage/v1/object/public/';
+      const idx = url.indexOf(marker);
+      if (idx === -1) return null;
+      const rest = url.slice(idx + marker.length);
+      const slash = rest.indexOf('/');
+      if (slash <= 0) return null;
+      return { bucket: rest.slice(0, slash), path: decodeURIComponent(rest.slice(slash + 1)) };
+    };
+
+    const GAME_BUCKETS = ['answer-media', 'avatars', 'question-media'];
+    const pathsByBucket = new Map<string, Set<string>>();
+
+    const addPath = (bucket: string, path: string) => {
+      if (!pathsByBucket.has(bucket)) pathsByBucket.set(bucket, new Set());
+      pathsByBucket.get(bucket)!.add(path);
+    };
+
+    for (const q of questions) {
       if (q.media_url) {
-        const urlParts = q.media_url.split('/');
-        const fileName = urlParts[urlParts.length - 1];
-        mediaFilesToDelete.push({
-          bucket: 'question-media',
-          fileName: fileName
-        });
+        const p = parsePublicUrl(q.media_url);
+        if (p) addPath(p.bucket, p.path);
       }
-    });
-
-    // Добавляем аватары команд
-    teams.forEach(team => {
+    }
+    for (const team of teams) {
       if (team.avatar_url) {
-        const urlParts = team.avatar_url.split('/');
-        const fileName = urlParts[urlParts.length - 1];
-        mediaFilesToDelete.push({
-          bucket: 'answer-media', // Аватары хранятся в answer-media bucket
-          fileName: fileName
-        });
+        const p = parsePublicUrl(team.avatar_url);
+        if (p) addPath(p.bucket, p.path);
       }
-    });
+    }
+    for (const answer of answers) {
+      const urls = answer.media_urls;
+      if (Array.isArray(urls)) {
+        for (const u of urls) {
+          if (typeof u === 'string') {
+            const p = parsePublicUrl(u);
+            if (p) addPath(p.bucket, p.path);
+          }
+        }
+      }
+    }
 
-    // Добавляем медиа из ответов
-    answers.forEach(answer => {
-      if (answer.media_url) {
-        const urlParts = answer.media_url.split('/');
-        const fileName = urlParts[urlParts.length - 1];
-        mediaFilesToDelete.push({
-          bucket: 'answer-media',
-          fileName: fileName
-        });
+    // IMP-ST-003: всё под префиксом gameId/
+    for (const bucket of GAME_BUCKETS) {
+      const listRes = await fetch(`${supabaseUrl}/storage/v1/object/list/${bucket}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'apikey': supabaseServiceKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prefix: `${gameId}/`, limit: 1000, offset: 0 }),
+      });
+      if (listRes.ok) {
+        const listed = await listRes.json();
+        if (Array.isArray(listed)) {
+          for (const item of listed) {
+            if (item?.name) addPath(bucket, `${gameId}/${item.name}`);
+          }
+        }
       }
-    });
+    }
+
+    const mediaFilesToDelete: { bucket: string; path: string }[] = [];
+    for (const [bucket, paths] of pathsByBucket.entries()) {
+      for (const path of paths) {
+        mediaFilesToDelete.push({ bucket, path });
+      }
+    }
 
     console.log(`Need to delete ${mediaFilesToDelete.length} media files`);
-    
-    // Удаляем медиа файлы
-    const mediaDeletionPromises = mediaFilesToDelete.map(async (file) => {
+
+    await Promise.all(mediaFilesToDelete.map(async (file) => {
       try {
-        const deleteResponse = await fetch(`${supabaseUrl}/storage/v1/object/${file.bucket}/${file.fileName}`, {
+        const deleteResponse = await fetch(`${supabaseUrl}/storage/v1/object/${file.bucket}/${file.path}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${supabaseServiceKey}`,
             'apikey': supabaseServiceKey
           }
         });
-        
-        if (deleteResponse.ok) {
-          console.log(`Deleted media file: ${file.bucket}/${file.fileName}`);
-          return { success: true, file: `${file.bucket}/${file.fileName}` };
-        } else {
-          console.error(`Failed to delete media file: ${file.bucket}/${file.fileName}`, await deleteResponse.text());
-          return { success: false, file: `${file.bucket}/${file.fileName}` };
+        if (!deleteResponse.ok) {
+          console.error(`Failed to delete ${file.bucket}/${file.path}`, await deleteResponse.text());
         }
       } catch (error) {
-        console.error(`Error deleting media file: ${file.bucket}/${file.fileName}`, error);
-        return { success: false, file: `${file.bucket}/${file.fileName}`, error: error.message };
+        console.error(`Error deleting ${file.bucket}/${file.path}`, error);
       }
-    });
-
-    await Promise.all(mediaDeletionPromises);
+    }));
 
     // 3. Удаляем данные в правильном порядке (избегаем foreign key conflicts)
     console.log('Deleting related data...');
@@ -220,7 +241,7 @@ Deno.serve(async (req) => {
         answers: answers.length,
         mediaFiles: mediaFilesToDelete.length
       },
-      mediaFiles: mediaFilesToDelete.map(f => `${f.bucket}/${f.fileName}`)
+      mediaFiles: mediaFilesToDelete.map(f => `${f.bucket}/${f.path}`)
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

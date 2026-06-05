@@ -207,7 +207,7 @@ export default function GamePlay() {
 
       if (answerFile) {
         try {
-          mediaUrl = await uploadAnswerMediaQueued(answerFile)
+          mediaUrl = await uploadAnswerMediaQueued(answerFile, game.id)
           debugLog('GamePlay.tsx:submit', 'media ok', { ms: Date.now() - submitStarted }, 'H')
         } catch (err) {
           debugLog('GamePlay.tsx:submit', 'media fail', {

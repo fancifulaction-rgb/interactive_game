@@ -20,6 +20,11 @@ if (!url || !anon) {
 }
 
 const supabase = createClient(url, anon)
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const admin = serviceKey ? createClient(url, serviceKey) : supabase
+if (!serviceKey) {
+  console.warn('⚠ SUPABASE_SERVICE_ROLE_KEY не задан — админ-шаги e2e через anon (нужен после IMP-SEC-001)')
+}
 
 const bugs = []
 const ok = (msg) => console.log('✓', msg)
@@ -35,7 +40,7 @@ let teamId
 
 // 1. Создать игру
 {
-  const { data, error } = await supabase
+  const { data, error } = await admin
     .from('games')
     .insert({
       title: 'E2E тест',
@@ -58,8 +63,8 @@ let teamId
 
 // 2. Вопросы (batch)
 if (gameId) {
-  await supabase.from('questions').delete().eq('game_id', gameId)
-  const { data, error } = await supabase
+  await admin.from('questions').delete().eq('game_id', gameId)
+  const { data, error } = await admin
     .from('questions')
     .insert([
       {
@@ -135,17 +140,17 @@ if (gameId && teamId) {
   if (error) fail('Отправка ответа', error)
   else ok('Ответ сохранён')
 
-  const { error: uerr } = await supabase
-    .from('teams')
-    .update({ total_score: 100 })
-    .eq('id', teamId)
+  const { error: uerr } = await supabase.rpc('increment_team_score', {
+    p_team_id: teamId,
+    p_delta: 100,
+  })
   if (uerr) fail('Обновление счёта', uerr)
   else ok('Счёт команды обновлён')
 }
 
 // 5. Сообщения (messages, не admin_messages)
 if (gameId) {
-  const { error } = await supabase.from('messages').insert({
+  const { error } = await admin.from('messages').insert({
     game_id: gameId,
     content: 'Тестовое уведомление',
     message_type: 'info',
@@ -157,7 +162,7 @@ if (gameId) {
 
 // 6. game_state pause columns
 if (gameId) {
-  const { error } = await supabase.from('game_state').upsert(
+  const { error } = await admin.from('game_state').upsert(
     {
       game_id: gameId,
       is_paused: false,
@@ -166,7 +171,7 @@ if (gameId) {
     { onConflict: 'game_id' }
   )
   if (error && !error.message.includes('unique')) {
-    const { error: ins } = await supabase.from('game_state').insert({
+    const { error: ins } = await admin.from('game_state').insert({
       game_id: gameId,
       is_paused: false,
       current_state: 'active',
@@ -178,7 +183,7 @@ if (gameId) {
 
 // Cleanup
 if (gameId) {
-  await supabase.from('games').delete().eq('id', gameId)
+  await admin.from('games').delete().eq('id', gameId)
   ok('Тестовая игра удалена')
 }
 

@@ -2,15 +2,15 @@ import { uploadTeamAvatarInBackground } from './storageUpload'
 import { debugLog } from './debugLog'
 import { isAnswerSaveInFlight } from './networkMutex'
 
-let pending: { teamId: string; file: File } | null = null
+let pending: { teamId: string; gameId: string; file: File } | null = null
 
 export function hasPendingAvatar() {
   return pending !== null
 }
 
 /** Сохраняет аватар в памяти до успешной загрузки GamePlay (без параллельного Storage). */
-export function schedulePendingAvatar(teamId: string, file: File) {
-  pending = { teamId, file }
+export function schedulePendingAvatar(teamId: string, gameId: string, file: File) {
+  pending = { teamId, gameId, file }
   debugLog('pendingAvatar.ts', 'scheduled', { teamId, size: file.size }, 'B')
 }
 
@@ -26,11 +26,11 @@ export function flushPendingAvatarWhenIdle() {
 export async function runPendingAvatarUpload() {
   if (!pending || avatarFlushQueued) return
   avatarFlushQueued = true
-  const { teamId, file } = pending
+  const { teamId, gameId, file } = pending
   pending = null
   debugLog('pendingAvatar.ts', 'flush start', { teamId }, 'B')
   try {
-    await uploadTeamAvatarInBackground(teamId, file)
+    await uploadTeamAvatarInBackground(teamId, file, gameId)
   } finally {
     avatarFlushQueued = false
   }

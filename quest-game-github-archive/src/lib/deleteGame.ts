@@ -1,4 +1,6 @@
 import { supabase } from './supabase'
+import { deleteGameStorageBestEffort } from './deleteGameStorage'
+import { extractMediaUrlsFromAnswers } from './storagePaths'
 
 export type DeleteGameResult = {
   success: boolean
@@ -45,22 +47,33 @@ export async function deleteGameCompletely(gameId: string): Promise<DeleteGameRe
     // Edge Function не развёрнута или недоступна — удаляем через REST
   }
 
-  const [questionsRes, teamsRes] = await Promise.all([
+  const [questionsRes, teamsRes, questionsMediaRes, teamsMediaRes] = await Promise.all([
     supabase.from('questions').select('id', { count: 'exact', head: true }).eq('game_id', gameId),
     supabase.from('teams').select('id', { count: 'exact', head: true }).eq('game_id', gameId),
+    supabase.from('questions').select('media_url').eq('game_id', gameId),
+    supabase.from('teams').select('id, avatar_url').eq('game_id', gameId),
   ])
 
-  const teamIdsRes = await supabase.from('teams').select('id').eq('game_id', gameId)
-  const teamIds = (teamIdsRes.data ?? []).map((t) => t.id)
+  const teamIds = (teamsMediaRes.data ?? []).map((t) => t.id)
 
   let answersCount = 0
+  let answerMediaRows: { media_urls?: unknown; media_url?: string | null }[] = []
   if (teamIds.length > 0) {
-    const answersRes = await supabase
-      .from('answers')
-      .select('id', { count: 'exact', head: true })
-      .in('team_id', teamIds)
+    const [answersRes, answersMediaRes] = await Promise.all([
+      supabase.from('answers').select('id', { count: 'exact', head: true }).in('team_id', teamIds),
+      supabase.from('answers').select('media_urls').in('team_id', teamIds),
+    ])
     answersCount = answersRes.count ?? 0
+    answerMediaRows = answersMediaRes.data ?? []
   }
+
+  const mediaUrls = [
+    ...(questionsMediaRes.data ?? []).map((q) => q.media_url),
+    ...(teamsMediaRes.data ?? []).map((t) => t.avatar_url),
+    ...extractMediaUrlsFromAnswers(answerMediaRows),
+  ]
+
+  const mediaFiles = await deleteGameStorageBestEffort(gameId, mediaUrls)
 
   const { data: deletedRows, error: deleteError } = await supabase
     .from('games')
@@ -93,7 +106,7 @@ export async function deleteGameCompletely(gameId: string): Promise<DeleteGameRe
       questions: questionsRes.count ?? 0,
       teams: teamsRes.count ?? 0,
       answers: answersCount,
-      mediaFiles: 0,
+      mediaFiles,
     },
     usedEdgeFunction: false,
   }

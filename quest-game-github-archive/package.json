@@ -27,7 +27,8 @@
     "db:test-connection": "node scripts/test-db-connection.mjs",
     "edge:deploy": "node scripts/deploy-edge-functions.mjs",
     "edge:verify": "node scripts/verify-edge-functions.mjs",
-    "ci:secrets": "node scripts/setup-github-ci-secrets.mjs"
+    "ci:secrets": "node scripts/setup-github-ci-secrets.mjs",
+    "cors:verify": "node scripts/verify-cors-origin.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -29,7 +29,7 @@
 | IMP-INF-005 | CI build + e2e | GitHub Actions на PR | Standard | 1 | done |
 | IMP-INF-006 | Load test 20–100 VU | k6/Artillery, отчёт LOAD_TEST | QuizLive scale | 3 | proposed |
 | IMP-INF-007 | CDN / Image Transform | Supabase transform или Cloudflare перед Storage | Production | 3 | proposed |
-| IMP-INF-008 | Мониторинг 429/reset | Алерты Supabase Dashboard + runbook | Operations | 1 | proposed |
+| IMP-INF-008 | Мониторинг 429/reset | Алерты Supabase Dashboard + runbook | Operations | 1 | done |
 
 ---
 
@@ -93,7 +93,7 @@
 |----|----------|----------|----------|--------|--------|
 | IMP-DATA-001 | Архив сессии + CSV | История мероприятий | QuizLive | 3 | proposed |
 | IMP-DATA-002 | Мягкое удаление games | `deleted_at` + retention | DATA_LIFECYCLE | proposed | proposed |
-| IMP-DATA-003 | Очистка Storage в client fallback | deleteGame без Edge | DATA_LIFECYCLE | 1 | proposed |
+| IMP-DATA-003 | Очистка Storage в client fallback | deleteGame без Edge | DATA_LIFECYCLE | 1 | done |
 | IMP-DATA-004 | Таблица event_archive | Агрегаты после игры | GDPR/отчёты | proposed | proposed |
 
 ---
@@ -102,7 +102,7 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-SEC-001 | Ужесточить RLS | Игрок только своя game; админ auth | Security best practice | 1–2 | proposed |
+| IMP-SEC-001 | Ужесточить RLS | Игрок только своя game; админ auth | Security best practice | 1–2 | done |
 | IMP-SEC-002 | Private buckets + signed URLs | Медиа не по guess path | Production | 3 | proposed |
 | IMP-SEC-003 | Убрать service role с клиента | Только Edge/scripts | BACKLOG | 1 | done |
 | IMP-SEC-004 | Смена пароля админа без plaintext | AdminPanel | BACKLOG | proposed | proposed |
@@ -117,7 +117,7 @@
 |----|----------|----------|----------|--------|--------|
 | IMP-ST-001 | Лимит длительности видео на клиенте | Сжатие перед upload | Scale | proposed | proposed |
 | IMP-ST-002 | Серверное перекодирование видео | Edge ffmpeg (тяжело) | — | proposed | proposed |
-| IMP-ST-003 | Префикс game_id во всех paths | Упрощение delete-game | DATA_LIFECYCLE | 1 | proposed |
+| IMP-ST-003 | Префикс game_id во всех paths | Упрощение delete-game | DATA_LIFECYCLE | 1 | done |
 
 ---
 

@@ -75,4 +75,12 @@ function setSecret(name, value) {
 
 setSecret('VITE_SUPABASE_URL', url)
 setSecret('VITE_SUPABASE_ANON_KEY', anon)
+
+const serviceKey = vars.SUPABASE_SERVICE_ROLE_KEY
+if (serviceKey) {
+  setSecret('SUPABASE_SERVICE_ROLE_KEY', serviceKey)
+} else {
+  console.warn('⚠ SUPABASE_SERVICE_ROLE_KEY не в .env — e2e в CI не создаст игру после RLS')
+}
+
 console.log('GitHub Actions secrets настроены для CI e2e')

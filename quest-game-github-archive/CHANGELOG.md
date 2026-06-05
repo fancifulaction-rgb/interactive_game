@@ -10,17 +10,24 @@
 ### Добавлено
 - RPC `increment_team_score` (миграция `010_increment_team_score.sql`)
 - CI: `.github/workflows/ci.yml` (build + e2e на PR)
-- Скрипты `npm run edge:deploy`, `npm run edge:verify`
+- Скрипты `npm run edge:deploy`, `npm run edge:verify`, `npm run cors:verify`
 - Fallback upload через Edge `player-upload` в `storageUpload.ts`
+- `src/lib/storagePaths.ts`, `src/lib/deleteGameStorage.ts` — очистка Storage при удалении игры
+- Миграции `011_tighten_rls.sql`, `012_storage_delete_authenticated.sql`
+- Runbook 429/rate limit в `docs/OPERATIONS.md`
 
 ### Изменено
 - `teamScore.ts` — атомарный RPC вместо read-modify-write UPDATE
 - Табло и экспорт: явные поля вместо `select('*')` (Scoreboard, AdminScoreboard, ScoreboardDetailed, exportData)
 - Debug-скрипты: service role только из `.env`, без захардкоженных ключей
+- Upload paths: префикс `{gameId}/` в answer-media, avatars, question-media (IMP-ST-003)
+- `deleteGame` client fallback: best-effort очистка Storage перед CASCADE (IMP-DATA-003)
+- Edge `delete-game`: list+delete по префиксу, `media_urls`, bucket avatars
+- E2E: админ-шаги через `SUPABASE_SERVICE_ROLE_KEY`, счёт через RPC
 
 ### Инфраструктура
 - Edge Functions `player-upload`, `delete-game` задеплоены на `tvytsnnujaucoluoyvjq` (ACTIVE)
-- GitHub Actions e2e: добавить secrets `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- GitHub Actions e2e: secrets `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 
 ## [1.2.13] - 2025-10-29
 

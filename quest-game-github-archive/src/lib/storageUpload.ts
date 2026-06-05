@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { debugLog } from './debugLog'
 import { enqueueCritical, enqueueBackground } from './requestQueue'
+import { buildGameScopedFileName } from './storagePaths'
 
 const UPLOAD_TIMEOUT_MS = 90_000
 const UPLOAD_RETRIES = 3
@@ -14,10 +15,6 @@ export function cancelActiveStorageUpload() {
     activeUpload = null
     debugLog('storageUpload.ts', 'upload cancelled', {}, 'H')
   }
-}
-
-function buildFileName(file: File, prefix: string): string {
-  return `${prefix}${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
 }
 
 async function uploadViaEdgeFunction(
@@ -60,6 +57,7 @@ async function uploadViaEdgeFunction(
 async function uploadOnce(
   bucket: string,
   file: File,
+  gameId: string,
   prefix: string
 ): Promise<string> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -68,7 +66,7 @@ async function uploadOnce(
     throw new Error('Supabase не настроен')
   }
 
-  const fileName = buildFileName(file, prefix)
+  const fileName = buildGameScopedFileName(gameId, prefix, file)
   const url = `${supabaseUrl}/storage/v1/object/${bucket}/${fileName}`
 
   cancelActiveStorageUpload()
@@ -109,11 +107,16 @@ async function uploadOnce(
   }
 }
 
-async function uploadWithRetry(bucket: string, file: File, prefix: string): Promise<string> {
+async function uploadWithRetry(
+  bucket: string,
+  file: File,
+  gameId: string,
+  prefix: string
+): Promise<string> {
   let lastErr: unknown
   for (let attempt = 0; attempt < UPLOAD_RETRIES; attempt++) {
     try {
-      return await uploadOnce(bucket, file, prefix)
+      return await uploadOnce(bucket, file, gameId, prefix)
     } catch (err) {
       lastErr = err
       debugLog('storageUpload.ts', 'upload retry', {
@@ -131,33 +134,34 @@ async function uploadWithRetry(bucket: string, file: File, prefix: string): Prom
 /**
  * Загрузка медиа к ответу — в critical-очереди (не конкурирует с insert в той же вкладке).
  */
-export function uploadAnswerMediaQueued(file: File): Promise<string> {
-  return enqueueCritical(() => uploadWithRetry('answer-media', file, 'answer-'))
+export function uploadAnswerMediaQueued(file: File, gameId: string): Promise<string> {
+  return enqueueCritical(() => uploadWithRetry('answer-media', file, gameId, 'answer-'))
 }
 
 /**
  * Загрузка аватара — в background-очереди (после игры, с разнесением пиков).
  */
-export function uploadAvatarQueued(file: File): Promise<string> {
-  return enqueueBackground(() => uploadWithRetry('avatars', file, 'team-'))
+export function uploadAvatarQueued(file: File, gameId: string): Promise<string> {
+  return enqueueBackground(() => uploadWithRetry('avatars', file, gameId, 'team-'))
 }
 
 /** @deprecated Используйте uploadAnswerMediaQueued / uploadAvatarQueued */
 export async function uploadToPublicBucket(
   bucket: string,
   file: File,
+  gameId: string,
   prefix = ''
 ): Promise<string> {
   if (bucket === 'answer-media') {
-    return uploadAnswerMediaQueued(file)
+    return uploadAnswerMediaQueued(file, gameId)
   }
-  return uploadAvatarQueued(file)
+  return uploadAvatarQueued(file, gameId)
 }
 
 /** Загрузка аватара после окончания игры; ошибки не блокируют UI. */
-export async function uploadTeamAvatarInBackground(teamId: string, file: File) {
+export async function uploadTeamAvatarInBackground(teamId: string, file: File, gameId: string) {
   try {
-    const avatarUrl = await uploadAvatarQueued(file)
+    const avatarUrl = await uploadAvatarQueued(file, gameId)
     await enqueueCritical(async () => {
       const { error } = await supabase
         .from('teams')

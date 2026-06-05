@@ -85,6 +85,51 @@ npm run ci:secrets
 
 Записывает `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` из `.env` в secrets репозитория.
 
+## Тест с телефона в локальной Wi‑Fi
+
+Фронт только на ПК; Supabase — в облаке. Для телефона в той же сети:
+
+```bash
+cd quest-game-github-archive
+npm run dev -- --host
+```
+
+На телефоне: `http://192.168.3.65:5173` (IP из строки **Network** в терминале Vite).
+
+CORS: облачный проект отвечает `Access-Control-Allow-Origin: *` — отдельно добавлять origin в Dashboard **не нужно**. Проверка:
+
+```bash
+node scripts/verify-cors-origin.mjs http://192.168.3.65:5173
+```
+
+`172.18.0.x` — Docker/WSL; для телефона используй `192.168.x.x`.
+
+## Rate limit (429) — runbook (IMP-INF-008)
+
+**Симптомы:** в консоли браузера или в Network — `429 Too Many Requests`; Realtime отваливается; insert/update «молча» не проходят.
+
+**Где смотреть:** Supabase Dashboard → **Reports** → API requests (всплеск), **Database** → connection pool, **Logs** → API / Postgres.
+
+**Типичные причины в Quest Game:**
+
+| Источник | Что делать |
+|----------|------------|
+| Много вкладок табло / админки на одной игре | Закрыть лишние; табло — один экран на зал |
+| Realtime reconnect storm | Обновить страницу; проверить Wi‑Fi |
+| Массовый upload медиа | `uploadAnswerMediaQueued` уже с очередью; не гонять десятки файлов параллельно |
+| E2E / скрипты в цикле | Не запускать `e2e-game-flow` пачкой; пауза между прогонами |
+| План Supabase (free tier) | Dashboard → **Settings → Billing**; при постоянных 429 — апгрейд или кэш на табло |
+
+**Действия по приоритету:**
+
+1. Убедиться, что это не локальный баг: один клиент, одна игра, повторить через 60 с.
+2. Dashboard → Reports: если RPS вырос в 10× — найти источник (IP, время, endpoint).
+3. Временно снизить нагрузку: отключить лишние Realtime-подписки (закрыть AdminScoreboard на втором ПК).
+4. Если 429 на **Auth** — не долбить login; подождать reset окна (обычно 1 мин).
+5. Зафиксировать в [BUGS_FOUND.md](BUGS_FOUND.md): время, endpoint, `x-ratelimit-*` из ответа.
+
+**Профилактика:** узкие `select` (сделано в Спринте 1), RPC `increment_team_score` вместо read-modify-write, очередь upload.
+
 ## Мониторинг в Dashboard
 
 Supabase → Reports:

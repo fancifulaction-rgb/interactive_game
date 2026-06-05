@@ -49,7 +49,7 @@ async function registerTeamInternal(input: RegisterTeamInput) {
   debugLog('teamRegister.ts', 'team insert ok', { teamId: team.id }, 'C')
 
   if (input.avatarFile) {
-    schedulePendingAvatar(team.id, input.avatarFile)
+    schedulePendingAvatar(team.id, input.gameId, input.avatarFile)
   }
 
   return { team, gameCode: input.gameCode }

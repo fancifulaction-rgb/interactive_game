@@ -20,6 +20,8 @@ const files = [
   '008_teams_app_columns.sql',
   '009_game_state_pause.sql',
   '010_increment_team_score.sql',
+  '011_tighten_rls.sql',
+  '012_storage_delete_authenticated.sql',
 ]
 
 const { client, label } = await connectPostgres()

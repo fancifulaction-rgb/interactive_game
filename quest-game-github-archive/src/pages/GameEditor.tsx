@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { buildGameScopedFileName } from '../lib/storagePaths'
 import { ArrowLeft, Save, Plus, Trash2, Upload, X } from 'lucide-react'
 
 interface Question {
@@ -403,8 +404,10 @@ export default function GameEditor() {
       }
 
       const base64File = arrayBufferToBase64(fileData)
-      const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-      
+      const scopedGameId = gameId || game?.id
+      if (!scopedGameId) throw new Error('gameId не задан')
+      const fileName = buildGameScopedFileName(scopedGameId, '', file)
+
       const { data: uploadData, error: uploadError } = await supabase.functions.invoke('alternative-upload', {
         body: {
           file: base64File,
