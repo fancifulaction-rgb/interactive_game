@@ -1,93 +1,104 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Pause } from 'lucide-react'
+import { fetchGameStateForGame } from '../lib/fetchGameState'
+import {
+  type GameStateRow,
+  isGameFinished,
+  isGameInLobby,
+  isGamePausedDuringPlay,
+} from '../lib/gameSessionState'
 
-interface GameState {
-  id: number
-  game_id: string
-  is_paused: boolean
-  paused_at: string | null
-  paused_by: string | null
+export type GameSessionSnapshot = {
+  inLobby: boolean
+  isPaused: boolean
+  isFinished: boolean
 }
 
 interface GameStateManagerProps {
   gameId: string
-  onPauseChange: (isPaused: boolean) => void
+  onSessionChange: (session: GameSessionSnapshot) => void
 }
 
-export default function GameStateManager({ gameId, onPauseChange }: GameStateManagerProps) {
-  const [gameState, setGameState] = useState<GameState | null>(null)
+function snapshotFromRow(row: GameStateRow | null): GameSessionSnapshot {
+  return {
+    inLobby: isGameInLobby(row),
+    isPaused: isGamePausedDuringPlay(row),
+    isFinished: isGameFinished(row),
+  }
+}
+
+const LOBBY_POLL_MS = 2000
+
+export default function GameStateManager({ gameId, onSessionChange }: GameStateManagerProps) {
+  const [gameState, setGameState] = useState<GameStateRow | null>(null)
 
   useEffect(() => {
     if (!gameId) return
 
     let channel: ReturnType<typeof supabase.channel> | null = null
     let cancelled = false
+    let pollTimer: ReturnType<typeof setInterval> | null = null
+
+    const apply = (row: GameStateRow | null) => {
+      setGameState(row)
+      onSessionChange(snapshotFromRow(row))
+    }
+
+    const loadGameState = async () => {
+      try {
+        const data = await fetchGameStateForGame(gameId)
+        if (!cancelled) apply(data)
+      } catch (err: unknown) {
+        console.error('Ошибка загрузки состояния игры:', err)
+      }
+    }
 
     const setup = async () => {
       await loadGameState()
       if (cancelled) return
 
       channel = supabase
-      .channel(`game-state-${gameId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'game_state',
-          filter: `game_id=eq.${gameId}`
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const newState = payload.new as GameState
-            setGameState(newState)
-            onPauseChange(newState.is_paused)
-          } else if (payload.eventType === 'DELETE') {
-            setGameState(null)
-            onPauseChange(false)
+        .channel(`game-state-${gameId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'game_state',
+            filter: `game_id=eq.${gameId}`,
+          },
+          (payload) => {
+            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+              apply(payload.new as GameStateRow)
+            } else if (payload.eventType === 'DELETE') {
+              void loadGameState()
+            }
           }
-        }
-      )
+        )
         .subscribe()
     }
 
-    if (typeof requestIdleCallback === 'function') {
-      const idleId = requestIdleCallback(() => void setup(), { timeout: 5000 })
-      return () => {
-        cancelled = true
-        cancelIdleCallback(idleId)
-        if (channel) supabase.removeChannel(channel)
-      }
-    }
-
     void setup()
+
+    pollTimer = setInterval(() => {
+      void loadGameState()
+    }, LOBBY_POLL_MS)
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadGameState()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
     return () => {
       cancelled = true
+      if (pollTimer) clearInterval(pollTimer)
+      document.removeEventListener('visibilitychange', onVisible)
       if (channel) supabase.removeChannel(channel)
     }
-  }, [gameId])
+  }, [gameId, onSessionChange])
 
-  const loadGameState = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('game_state')
-        .select('id, game_id, is_paused, paused_at, paused_by')
-        .eq('game_id', gameId)
-        .maybeSingle()
-
-      if (error && error.code !== 'PGRST116') throw error
-      
-      if (data) {
-        setGameState(data)
-        onPauseChange(data.is_paused)
-      }
-    } catch (err: any) {
-      console.error('Ошибка загрузки состояния игры:', err)
-    }
-  }
-
-  if (!gameState?.is_paused) return null
+  if (!gameState || isGameInLobby(gameState) || !gameState.is_paused) return null
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 flex items-center justify-center p-4">

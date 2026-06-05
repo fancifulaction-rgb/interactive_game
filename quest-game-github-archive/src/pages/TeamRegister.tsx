@@ -2,13 +2,14 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { registerTeam } from '../lib/teamRegister'
-import { enqueueBackground, enqueueCritical } from '../lib/requestQueue'
+import { enqueueCritical } from '../lib/requestQueue'
 import type { TeamSnapshot } from '../lib/gamePlayCache'
 import { compressImageForAvatar } from '../lib/compressImage'
 import { debugLog } from '../lib/debugLog'
 import { setGamePlayCache } from '../lib/gamePlayCache'
 import { prefetchQuestionsForGame } from '../lib/prefetchGameQuestions'
 import { saveTeamSession } from '../lib/playerSession'
+import { getRegistrationDenial } from '../lib/participantAccess'
 import { ArrowLeft, Users, User, Upload, Hash } from 'lucide-react'
 
 export default function TeamRegister() {
@@ -79,7 +80,12 @@ export default function TeamRegister() {
       }
       debugLog('TeamRegister.tsx', 'game found', { gameId: game.id }, 'D')
 
-      setGamePlayCache(normalizedCode, { game, questions: [] })
+      const registrationDenial = await getRegistrationDenial(game.id)
+      if (registrationDenial) {
+        setError(registrationDenial)
+        setLoading(false)
+        return
+      }
 
       const { team } = await registerTeam({
         gameId: game.id,
@@ -98,9 +104,19 @@ export default function TeamRegister() {
         registration_time: (team.registration_time || team.created_at) as string,
       }
 
+      let questions: Awaited<ReturnType<typeof prefetchQuestionsForGame>> = []
+      try {
+        questions = await prefetchQuestionsForGame(game.id)
+        debugLog('TeamRegister.tsx', 'questions prefetched', { count: questions.length }, 'F')
+      } catch (cacheErr) {
+        debugLog('TeamRegister.tsx', 'questions prefetch failed', {
+          msg: cacheErr instanceof Error ? cacheErr.message : String(cacheErr),
+        }, 'F')
+      }
+
       setGamePlayCache(normalizedCode, {
         game,
-        questions: [],
+        questions,
         teamsSnapshot: [teamSnapshot],
       })
 
@@ -121,22 +137,6 @@ export default function TeamRegister() {
       debugLog('TeamRegister.tsx', 'navigate', { path: `/game/${normalizedCode}` }, 'E')
       setLoading(false)
       navigate(`/game/${normalizedCode}`)
-
-      void enqueueBackground(async () => {
-        try {
-          const questions = await prefetchQuestionsForGame(game.id)
-          setGamePlayCache(normalizedCode, {
-            game,
-            questions,
-            teamsSnapshot: [teamSnapshot],
-          })
-          debugLog('TeamRegister.tsx', 'play cache saved', { questions: questions.length }, 'F')
-        } catch (cacheErr) {
-          debugLog('TeamRegister.tsx', 'play cache skip', {
-            msg: cacheErr instanceof Error ? cacheErr.message : String(cacheErr),
-          }, 'F')
-        }
-      })
       return
     } catch (err: any) {
       const msg = err?.message || String(err)

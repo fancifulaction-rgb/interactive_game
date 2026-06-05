@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { debugLog } from './debugLog'
 import { enqueueBackground } from './requestQueue'
-import { mergeTeamScoreInCache } from './gamePlayCache'
+import { getGamePlayCache, mergeTeamScoreInCache, updateTeamsSnapshot } from './gamePlayCache'
 
 function readLocalTotalScore(teamId: string): number {
   try {
@@ -27,6 +27,30 @@ function writeLocalTotalScore(teamId: string, next: number) {
   } catch {
     /* ignore */
   }
+}
+
+/** Подтянуть счёт с сервера (после сброса заезда админом). */
+export async function syncPlayerTeamScoreFromServer(teamId: string, gameCode?: string) {
+  const { data, error } = await supabase
+    .from('teams')
+    .select('total_score')
+    .eq('id', teamId)
+    .maybeSingle()
+
+  if (error || !data) return
+
+  const score = Number(data.total_score) || 0
+  writeLocalTotalScore(teamId, score)
+
+  if (!gameCode) return
+  const code = gameCode.trim().toUpperCase()
+  const cached = getGamePlayCache(code)
+  if (!cached?.teamsSnapshot?.length) return
+
+  updateTeamsSnapshot(
+    code,
+    cached.teamsSnapshot.map((t) => ({ ...t, total_score: t.id === teamId ? score : 0 }))
+  )
 }
 
 /** Оптимистичный счёт: localStorage + кэш табло, один UPDATE в фоне. */

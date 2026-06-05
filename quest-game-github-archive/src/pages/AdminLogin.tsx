@@ -34,6 +34,7 @@ export default function AdminLogin() {
         if (data.user) {
           localStorage.setItem('admin_logged_in', 'true');
           localStorage.setItem('admin_email', email);
+          localStorage.setItem('admin_username', email);
           localStorage.setItem('admin_user_id', data.user.id);
           navigate('/admin/panel');
         } else {

@@ -4,8 +4,9 @@ import { supabase } from '../lib/supabase'
 import { getGamePlayCache } from '../lib/gamePlayCache'
 import type { FinishNavigateState } from '../lib/finishNavigation'
 import { tryUploadAvatarAfterGame } from '../lib/avatarAfterGame'
-import { enqueueBackground } from '../lib/requestQueue'
 import { Trophy, Star } from 'lucide-react'
+import AccessDeniedScreen from '../components/AccessDeniedScreen'
+import { verifyFinishPageAccess } from '../lib/participantAccess'
 
 const GAME_SELECT = 'id, code, title, theme, finish_page_type'
 
@@ -17,24 +18,37 @@ export default function Congratulation() {
 
   const [game, setGame] = useState<{ title?: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [accessDenied, setAccessDenied] = useState<string | null>(null)
   const [finalTexts, setFinalTexts] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const code = (gameCode ?? '').trim().toUpperCase()
-    if (finishState?.game) {
-      setGame({ title: finishState.game.title as string })
-      setLoading(false)
-    } else {
-      const cached = getGamePlayCache(code)
-      if (cached?.game) {
-        setGame({ title: cached.game.title as string })
+    if (!code) return
+
+    setAccessDenied(null)
+    setLoading(true)
+
+    void (async () => {
+      const access = await verifyFinishPageAccess(code, {
+        hasFinishNavigation: !!finishState?.game,
+      })
+      if (!access.allowed) {
+        setAccessDenied(access.message ?? 'Доступ закрыт')
         setLoading(false)
+        return
       }
-    }
 
-    tryUploadAvatarAfterGame(localStorage.getItem('team_id'))
+      if (finishState?.game) {
+        setGame({ title: finishState.game.title as string })
+      } else {
+        const cached = getGamePlayCache(code)
+        if (cached?.game) {
+          setGame({ title: cached.game.title as string })
+        }
+      }
 
-    void enqueueBackground(async () => {
+      tryUploadAvatarAfterGame(localStorage.getItem('team_id'))
+
       try {
         if (!finishState?.game && !getGamePlayCache(code)) {
           const { data, error } = await supabase
@@ -67,10 +81,14 @@ export default function Congratulation() {
       } finally {
         setLoading(false)
       }
-    })
+    })()
   }, [gameCode, navigate, finishState])
 
   const getText = (key: string, defaultValue: string) => finalTexts[key] || defaultValue
+
+  if (accessDenied) {
+    return <AccessDeniedScreen message={accessDenied} />
+  }
 
   if (loading && !game) {
     return (

@@ -61,7 +61,7 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-UX-001 | Комната ожидания | Общий старт после регистрации всех | Zappy, BACKLOG | 2 | proposed |
+| IMP-UX-001 | Комната ожидания | Общий старт после регистрации всех | Zappy, BACKLOG | 2 | done |
 | IMP-UX-002 | QR-код на регистрацию | `?code=XXXX` deep link | QuizLive | 2 | proposed |
 | IMP-UX-003 | Экран ведущего (host view) | Проектор: код, QR, старт, пауза | TimesUp, QuizLive | 2 | proposed |
 | IMP-UX-004 | PWA | manifest + SW, иконка на телефоне | QuizLive, BACKLOG | 2 | proposed |
@@ -81,6 +81,7 @@
 | IMP-PRD-003 | Team chat в discussion phase | Приватный чат команды | Zappy | — | proposed |
 | IMP-PRD-004 | Co-op mode (все ответили) | Режим гонки команд | Zappy | — | proposed |
 | IMP-PRD-005 | Дата создания в списке игр | AdminPanel | BACKLOG | proposed | proposed |
+| IMP-PRD-007 | Клонирование игры (новый заезд) | Новый код, название, тема; без команд/ответов | BACKLOG | 2 | done |
 | IMP-PRD-006 | Упростить типы вопросов в редакторе | UX GameEditor | BACKLOG | proposed | proposed |
 | IMP-PRD-007 | Логотип на приветственной | Home + settings | BACKLOG | proposed | proposed |
 | IMP-PRD-008 | Расширить оповещения админа | Broadcast всем игрокам | BACKLOG | proposed | proposed |

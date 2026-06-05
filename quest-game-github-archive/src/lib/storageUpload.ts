@@ -138,6 +138,11 @@ export function uploadAnswerMediaQueued(file: File, gameId: string): Promise<str
   return enqueueCritical(() => uploadWithRetry('answer-media', file, gameId, 'answer-'))
 }
 
+/** Медиа к вопросу в GameEditor (bucket question-media). */
+export function uploadQuestionMediaQueued(file: File, gameId: string): Promise<string> {
+  return enqueueCritical(() => uploadWithRetry('question-media', file, gameId, 'q-'))
+}
+
 /**
  * Загрузка аватара — в background-очереди (после игры, с разнесением пиков).
  */

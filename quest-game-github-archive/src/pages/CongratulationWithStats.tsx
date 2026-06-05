@@ -4,8 +4,9 @@ import { supabase } from '../lib/supabase'
 import { getGamePlayCache } from '../lib/gamePlayCache'
 import type { FinishNavigateState } from '../lib/finishNavigation'
 import { tryUploadAvatarAfterGame } from '../lib/avatarAfterGame'
-import { enqueueBackground } from '../lib/requestQueue'
 import { Trophy, Crown } from 'lucide-react'
+import AccessDeniedScreen from '../components/AccessDeniedScreen'
+import { verifyFinishPageAccess } from '../lib/participantAccess'
 
 interface Team {
   id: string
@@ -25,45 +26,58 @@ export default function CongratulationWithStats() {
   const [game, setGame] = useState<{ code?: string; title?: string } | null>(null)
   const [team, setTeam] = useState<Team | null>(null)
   const [loading, setLoading] = useState(true)
+  const [accessDenied, setAccessDenied] = useState<string | null>(null)
   const [finalTexts, setFinalTexts] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const code = (gameCode ?? '').trim().toUpperCase()
+    if (!code) return
 
-    if (finishState?.game) {
-      setGame({
-        code: finishState.game.code as string,
-        title: finishState.game.title as string,
+    setAccessDenied(null)
+    setLoading(true)
+
+    void (async () => {
+      const access = await verifyFinishPageAccess(code, {
+        hasFinishNavigation: !!finishState?.game,
       })
-    } else {
-      const cached = getGamePlayCache(code)
-      if (cached?.game) {
+      if (!access.allowed) {
+        setAccessDenied(access.message ?? 'Доступ закрыт')
+        setLoading(false)
+        return
+      }
+
+      if (finishState?.game) {
         setGame({
-          code: cached.game.code as string,
-          title: cached.game.title as string,
+          code: finishState.game.code as string,
+          title: finishState.game.title as string,
         })
+      } else {
+        const cached = getGamePlayCache(code)
+        if (cached?.game) {
+          setGame({
+            code: cached.game.code as string,
+            title: cached.game.title as string,
+          })
+        }
       }
-    }
 
-    const teamInfo = localStorage.getItem('current_team')
-    if (teamInfo) {
-      try {
-        const parsed = JSON.parse(teamInfo)
-        setTeam({
-          id: parsed.id,
-          name: parsed.name || 'Команда',
-          captain_name: parsed.captain_name || 'Капитан',
-          total_score: Number(parsed.total_score) || 0,
-        })
-      } catch {
-        /* ignore */
+      const teamInfo = localStorage.getItem('current_team')
+      if (teamInfo) {
+        try {
+          const parsed = JSON.parse(teamInfo)
+          setTeam({
+            id: parsed.id,
+            name: parsed.name || 'Команда',
+            captain_name: parsed.captain_name || 'Капитан',
+            total_score: Number(parsed.total_score) || 0,
+          })
+        } catch {
+          /* ignore */
+        }
       }
-    }
 
-    setLoading(false)
-    tryUploadAvatarAfterGame(localStorage.getItem('team_id'))
+      tryUploadAvatarAfterGame(localStorage.getItem('team_id'))
 
-    void enqueueBackground(async () => {
       try {
         if (!finishState?.game && !getGamePlayCache(code)) {
           const { data, error } = await supabase
@@ -93,11 +107,17 @@ export default function CongratulationWithStats() {
         }
       } catch (err) {
         console.error('Ошибка загрузки статистики:', err)
+      } finally {
+        setLoading(false)
       }
-    })
+    })()
   }, [gameCode, navigate, finishState])
 
   const getText = (key: string, defaultValue: string) => finalTexts[key] || defaultValue
+
+  if (accessDenied) {
+    return <AccessDeniedScreen message={accessDenied} />
+  }
 
   if (loading && !game) {
     return (

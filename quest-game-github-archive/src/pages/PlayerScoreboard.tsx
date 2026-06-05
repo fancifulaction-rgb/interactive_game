@@ -7,6 +7,8 @@ import type { FinishNavigateState } from '../lib/finishNavigation'
 import { fetchTeamsForScoreboard } from '../lib/loadScoreboardTeams'
 import { tryUploadAvatarAfterGame } from '../lib/avatarAfterGame'
 import { Trophy, Medal, Award } from 'lucide-react'
+import AccessDeniedScreen from '../components/AccessDeniedScreen'
+import { verifyFinishPageAccess } from '../lib/participantAccess'
 
 const GAME_SELECT = 'id, code, title, mask_board'
 
@@ -23,6 +25,7 @@ export default function PlayerScoreboard() {
     mask_board?: boolean
   } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [accessDenied, setAccessDenied] = useState<string | null>(null)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const realtimeEnabledRef = useRef(false)
 
@@ -31,34 +34,44 @@ export default function PlayerScoreboard() {
     if (!code) return
 
     let cancelled = false
+    setAccessDenied(null)
+    setLoading(true)
 
-    const applyInstant = () => {
+    void (async () => {
+      const access = await verifyFinishPageAccess(code, {
+        hasFinishNavigation: !!finishState?.game,
+      })
+      if (cancelled) return
+      if (!access.allowed) {
+        setAccessDenied(access.message ?? 'Доступ закрыт')
+        setLoading(false)
+        return
+      }
+
       if (finishState?.game) {
         const g = finishState.game as { id: string; title?: string; mask_board?: boolean }
         setGame({ id: g.id, title: g.title, mask_board: g.mask_board })
         if (finishState.teamsPreview?.length) {
           setTeams(finishState.teamsPreview)
         }
-        setLoading(false)
-        return true
-      }
-      const cached = getGamePlayCache(code)
-      if (cached?.game?.id) {
-        const g = cached.game as { id: string; code?: string; title?: string; mask_board?: boolean }
-        setGame({ id: g.id, code: g.code as string, title: g.title as string, mask_board: g.mask_board as boolean })
-        if (cached.teamsSnapshot?.length) {
-          setTeams(cached.teamsSnapshot)
+      } else {
+        const cached = getGamePlayCache(code)
+        if (cached?.game?.id) {
+          const g = cached.game as { id: string; code?: string; title?: string; mask_board?: boolean }
+          setGame({
+            id: g.id,
+            code: g.code as string,
+            title: g.title as string,
+            mask_board: g.mask_board as boolean,
+          })
+          if (cached.teamsSnapshot?.length) {
+            setTeams(cached.teamsSnapshot)
+          }
         }
-        setLoading(false)
-        return true
       }
-      return false
-    }
 
-    applyInstant()
-    tryUploadAvatarAfterGame(localStorage.getItem('team_id'))
+      tryUploadAvatarAfterGame(localStorage.getItem('team_id'))
 
-    void (async () => {
       try {
         let gameId =
           finishState?.gameId ??
@@ -97,7 +110,7 @@ export default function PlayerScoreboard() {
         channelRef.current = null
       }
     }
-  }, [gameCode])
+  }, [gameCode, finishState])
 
   useEffect(() => {
     if (!game?.id || realtimeEnabledRef.current) return
@@ -137,6 +150,10 @@ export default function PlayerScoreboard() {
     if (position === 1) return <Medal className="w-8 h-8 text-gray-400" />
     if (position === 2) return <Award className="w-8 h-8 text-amber-700" />
     return null
+  }
+
+  if (accessDenied) {
+    return <AccessDeniedScreen message={accessDenied} />
   }
 
   if (loading && teams.length === 0) {

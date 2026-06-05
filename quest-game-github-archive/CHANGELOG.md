@@ -5,7 +5,17 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 и этот проект следует [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — Спринт 1
+## [Unreleased] — Спринт 2
+
+### Добавлено
+- IMP-UX-001: комната ожидания — `GameLobby`, старт игры из AdminPanel (`current_state` waiting → playing)
+- IMP-PRD-007: клонирование игры — новый заезд с редактируемым кодом, названием и темой (`cloneGame.ts`)
+
+### Исправлено
+- Синхронизация lobby → playing у игрока: Realtime для `game_state`, polling 2 с, устойчивый fetch состояния
+- AdminPanel: защита от двойного создания игры, быстрое удаление (БД сразу, Storage в фоне), ошибки загрузки списка, проверка Supabase-сессии
+
+## [Unreleased] — Спринт 1 (закрыт)
 
 ### Добавлено
 - RPC `increment_team_score` (миграция `010_increment_team_score.sql`)

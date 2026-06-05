@@ -16,3 +16,19 @@ export function buildFinishNavigateState(
     teamsPreview,
   }
 }
+
+export function getFinishPagePath(
+  gameCode: string,
+  finishPageType: string | null | undefined
+): string {
+  const code = gameCode.trim().toUpperCase()
+  switch (finishPageType) {
+    case 'congratulation':
+      return `/congratulation/${code}`
+    case 'congratulation_stats':
+      return `/congratulation-with-stats/${code}`
+    case 'scoreboard':
+    default:
+      return `/scoreboard/${code}`
+  }
+}

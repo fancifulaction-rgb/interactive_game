@@ -1,13 +1,13 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { uploadAnswerMediaQueued, cancelActiveStorageUpload } from '../lib/storageUpload'
-import { bumpTeamScoreInBackground } from '../lib/teamScore'
+import { bumpTeamScoreInBackground, syncPlayerTeamScoreFromServer } from '../lib/teamScore'
 import { postponeAvatarUntilAfterAnswer } from '../lib/pendingAvatar'
 import { calculateQuestionScore } from '../lib/scoring'
 import { debugLog } from '../lib/debugLog'
 import { getGamePlayCache, isGamePlayCacheFresh } from '../lib/gamePlayCache'
-import { buildFinishNavigateState } from '../lib/finishNavigation'
+import { buildFinishNavigateState, getFinishPagePath } from '../lib/finishNavigation'
 import { mapQuestionsForPlay } from '../lib/prefetchGameQuestions'
 import {
   revalidateGamePlayFromServer,
@@ -19,7 +19,10 @@ import { usePlayerExtrasReady } from '../lib/usePlayerExtrasReady'
 import { useTheme } from '../contexts/ThemeContext'
 import { Clock, HelpCircle, Send, Upload, X, Image, Film, Music } from 'lucide-react'
 import NotificationPopup from '../components/NotificationPopup'
-import GameStateManager from '../components/GameStateManager'
+import GameStateManager, { type GameSessionSnapshot } from '../components/GameStateManager'
+import GameLobby from '../components/GameLobby'
+import AccessDeniedScreen from '../components/AccessDeniedScreen'
+import { getPlayAccessDenial, readStoredPlayerSession } from '../lib/participantAccess'
 
 interface Question {
   id: string
@@ -55,9 +58,20 @@ export default function GamePlay() {
   const [showHint, setShowHint] = useState(false)
   const [hintLevel, setHintLevel] = useState(0)
   const [currentHintDisplay, setCurrentHintDisplay] = useState(0)
+  const [sessionKnown, setSessionKnown] = useState(false)
+  const [inLobby, setInLobby] = useState(true)
   const [isPaused, setIsPaused] = useState(false)
+  const [isFinished, setIsFinished] = useState(false)
+  const [accessDenied, setAccessDenied] = useState<string | null>(null)
+  const handleSessionChange = useCallback((session: GameSessionSnapshot) => {
+    setSessionKnown(true)
+    setInLobby(session.inLobby)
+    setIsPaused(session.isPaused)
+    setIsFinished(session.isFinished)
+  }, [])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const loadGenRef = useRef(0)
+  const finishedNavRef = useRef(false)
   const teamId = localStorage.getItem('team_id')
   const extrasReady = usePlayerExtrasReady(game?.id, loading)
 
@@ -77,6 +91,29 @@ export default function GamePlay() {
   }
 
   useEffect(() => {
+    setSessionKnown(false)
+    setAccessDenied(null)
+  }, [gameCode])
+
+  useEffect(() => {
+    if (!game?.id || !teamId || !gameCode || !sessionKnown) return
+
+    const code = (gameCode ?? '').trim().toUpperCase()
+    if (!readStoredPlayerSession(code)) {
+      setAccessDenied('Сессия команды недействительна. Зарегистрируйтесь для этой игры.')
+      setLoading(false)
+      return
+    }
+
+    void getPlayAccessDenial(game.id as string, teamId).then((msg) => {
+      if (msg) {
+        setAccessDenied(msg)
+        setLoading(false)
+      }
+    })
+  }, [game?.id, teamId, gameCode, sessionKnown, inLobby])
+
+  useEffect(() => {
     if (!teamId) {
       navigate('/team/register')
       return
@@ -84,18 +121,62 @@ export default function GamePlay() {
 
     const code = (gameCode ?? '').trim().toUpperCase()
     const cached = getGamePlayCache(code)
+    const gen = ++loadGenRef.current
 
     if (cached && isGamePlayCacheFresh(code)) {
       const mapped = mapQuestionsForPlay(cached.questions) as Question[]
       applyPlayData(cached.game, mapped)
       debugLog('GamePlay.tsx', 'hydrate from cache', { questions: mapped.length }, 'F')
       postponeAvatarUntilAfterAnswer()
-      return
+      if (mapped.length > 0) {
+        void loadGameData(gen, true)
+        return
+      }
     }
 
-    const gen = ++loadGenRef.current
     void loadGameData(gen, !!cached)
   }, [gameCode, teamId, navigate])
+
+  useEffect(() => {
+    if (inLobby || !gameCode || questions.length > 0) return
+    const gen = ++loadGenRef.current
+    setLoading(true)
+    void loadGameData(gen, false)
+  }, [inLobby, gameCode, questions.length])
+
+  useEffect(() => {
+    if (!isFinished || !game || !gameCode || finishedNavRef.current) return
+    finishedNavRef.current = true
+    const code = (gameCode ?? '').trim().toUpperCase()
+    const cached = getGamePlayCache(code)
+    const finishState = buildFinishNavigateState(game, cached?.teamsSnapshot)
+    navigate(getFinishPagePath(code, game.finish_page_type as string | undefined), {
+      state: finishState,
+    })
+  }, [isFinished, game, gameCode, navigate])
+
+  useEffect(() => {
+    if (!inLobby || !teamId) return
+
+    setCurrentQuestionIndex(0)
+    setAnswer('')
+    setSelectedOptions([])
+    setAnswerFile(null)
+    setAnswerFilePreview(null)
+    setShowHint(false)
+    setHintLevel(0)
+    setCurrentHintDisplay(0)
+    finishedNavRef.current = false
+
+    if (questions.length > 0) {
+      const first = questions[0]
+      setTimeLeft(
+        first.per_question_time_sec || (game?.per_question_time_sec as number) || 120
+      )
+    }
+
+    void syncPlayerTeamScoreFromServer(teamId, gameCode ?? undefined)
+  }, [inLobby, teamId, gameCode])
 
   useEffect(() => {
     // Очистить предыдущий таймер
@@ -103,8 +184,7 @@ export default function GamePlay() {
       clearTimeout(timerRef.current)
     }
 
-    // Если игра на паузе, не запускать таймер
-    if (isPaused) {
+    if (inLobby || isPaused || isFinished) {
       return
     }
 
@@ -119,7 +199,7 @@ export default function GamePlay() {
         clearTimeout(timerRef.current)
       }
     }
-  }, [timeLeft, isPaused])
+  }, [timeLeft, inLobby, isPaused, isFinished])
 
   // Очистка состояния при смене вопроса
   useEffect(() => {
@@ -379,20 +459,9 @@ export default function GamePlay() {
       const code = (gameCode ?? '').trim().toUpperCase()
       const cached = getGamePlayCache(code)
       const finishState = buildFinishNavigateState(game, cached?.teamsSnapshot)
-      const finishType = game?.finish_page_type || 'congratulation'
-      const navOpts = { state: finishState }
-      switch (finishType) {
-        case 'congratulation':
-          navigate(`/congratulation/${gameCode}`, navOpts)
-          break
-        case 'congratulation_stats':
-          navigate(`/congratulation-with-stats/${gameCode}`, navOpts)
-          break
-        case 'scoreboard':
-        default:
-          navigate(`/scoreboard/${gameCode}`, navOpts)
-          break
-      }
+      navigate(getFinishPagePath(code, game?.finish_page_type as string | undefined), {
+        state: finishState,
+      })
     }
   }
 
@@ -427,32 +496,100 @@ export default function GamePlay() {
     setAnswerFilePreview(null)
   }
 
-  if (loading) {
+  if (accessDenied) {
+    return <AccessDeniedScreen message={accessDenied} showRegisterLink />
+  }
+
+  if (loading || (game && !sessionKnown) || isFinished) {
     return (
-      <div className="min-h-screen theme-background flex items-center justify-center" style={{
-        background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)'
-      }}>
-        <div className="text-white text-xl">Загрузка...</div>
-      </div>
+      <>
+        <div className="min-h-screen theme-background flex items-center justify-center" style={{
+          background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)'
+        }}>
+          <div className="text-white text-xl">Загрузка...</div>
+        </div>
+        {game?.id && (
+          <GameStateManager gameId={game.id as string} onSessionChange={handleSessionChange} />
+        )}
+      </>
+    )
+  }
+
+  const myTeamName =
+    (() => {
+      try {
+        const raw = localStorage.getItem('current_team')
+        if (!raw) return null
+        const t = JSON.parse(raw) as { name?: string }
+        return t.name ?? null
+      } catch {
+        return null
+      }
+    })()
+
+  if (inLobby && game) {
+    return (
+      <>
+        <GameLobby
+          gameId={game.id as string}
+          gameTitle={(game.title as string) || 'Квест'}
+          myTeamName={myTeamName}
+        />
+        <GameStateManager gameId={game.id as string} onSessionChange={handleSessionChange} />
+      </>
     )
   }
 
   if (questions.length === 0) {
+    const reloadQuestions = () => {
+      const gen = ++loadGenRef.current
+      setLoading(true)
+      void loadGameData(gen, false)
+    }
+
     return (
-      <div className="min-h-screen theme-background flex items-center justify-center p-4" style={{
-        background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)'
-      }}>
-        <div className="bg-white rounded-2xl p-8 max-w-md text-center">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Вопросов пока нет</h2>
-          <p className="text-gray-600 mb-6">Администратор еще не добавил вопросы для этой игры</p>
-          <button
-            onClick={() => navigate('/')}
-            className="px-6 py-3 theme-primary rounded-lg theme-hover-primary"
-          >
-            Вернуться на главную
-          </button>
+      <>
+        <div className="min-h-screen theme-background flex items-center justify-center p-4" style={{
+          background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
+        }}>
+          <div className="bg-white rounded-2xl p-8 max-w-md text-center">
+            {loading ? (
+              <>
+                <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mb-4" />
+                <h2 className="text-xl font-bold text-gray-800 mb-2">Загрузка вопросов…</h2>
+                <p className="text-gray-600 text-sm">Подождите, обновляем данные с сервера</p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Вопросов пока нет</h2>
+                <p className="text-gray-600 mb-6">
+                  Вопросы не найдены. Если администратор только что их добавил, нажмите «Обновить».
+                  Иначе попросите ведущего сохранить вопросы в редакторе игры.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button
+                    type="button"
+                    onClick={reloadQuestions}
+                    className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                  >
+                    Обновить
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/team/register')}
+                    className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    К регистрации
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+        {game?.id && (
+          <GameStateManager gameId={game.id as string} onSessionChange={handleSessionChange} />
+        )}
+      </>
     )
   }
 
@@ -763,7 +900,7 @@ export default function GamePlay() {
 
       {/* Компонент управления состоянием игры (пауза) */}
       {extrasReady && game && (
-        <GameStateManager gameId={game.id} onPauseChange={setIsPaused} />
+        <GameStateManager gameId={game.id} onSessionChange={handleSessionChange} />
       )}
 
       {/* Компонент уведомлений от админа */}

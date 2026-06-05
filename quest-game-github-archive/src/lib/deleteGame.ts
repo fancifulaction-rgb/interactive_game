@@ -15,21 +15,18 @@ export type DeleteGameResult = {
   error?: string
 }
 
-/** Удаление игры через Edge Function (если развёрнута) или напрямую из БД (CASCADE). */
-export async function deleteGameCompletely(gameId: string): Promise<DeleteGameResult> {
-  const empty = {
-    game: 0,
-    questions: 0,
-    teams: 0,
-    answers: 0,
-    mediaFiles: 0,
-  }
+const EDGE_DELETE_TIMEOUT_MS = 6000
 
+async function tryEdgeDelete(gameId: string): Promise<DeleteGameResult | null> {
   try {
-    const { data, error } = await supabase.functions.invoke('delete-game', {
-      body: { gameId },
-    })
+    const result = await Promise.race([
+      supabase.functions.invoke('delete-game', { body: { gameId } }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('edge-timeout')), EDGE_DELETE_TIMEOUT_MS)
+      ),
+    ])
 
+    const { data, error } = result
     if (!error && data?.success) {
       return {
         success: true,
@@ -44,8 +41,23 @@ export async function deleteGameCompletely(gameId: string): Promise<DeleteGameRe
       }
     }
   } catch {
-    // Edge Function не развёрнута или недоступна — удаляем через REST
+    // Edge Function не развёрнута, таймаут или недоступна
   }
+  return null
+}
+
+/** Удаление игры через Edge Function (если развёрнута) или напрямую из БД (CASCADE). */
+export async function deleteGameCompletely(gameId: string): Promise<DeleteGameResult> {
+  const empty = {
+    game: 0,
+    questions: 0,
+    teams: 0,
+    answers: 0,
+    mediaFiles: 0,
+  }
+
+  const edgeResult = await tryEdgeDelete(gameId)
+  if (edgeResult) return edgeResult
 
   const [questionsRes, teamsRes, questionsMediaRes, teamsMediaRes] = await Promise.all([
     supabase.from('questions').select('id', { count: 'exact', head: true }).eq('game_id', gameId),
@@ -73,8 +85,6 @@ export async function deleteGameCompletely(gameId: string): Promise<DeleteGameRe
     ...extractMediaUrlsFromAnswers(answerMediaRows),
   ]
 
-  const mediaFiles = await deleteGameStorageBestEffort(gameId, mediaUrls)
-
   const { data: deletedRows, error: deleteError } = await supabase
     .from('games')
     .delete()
@@ -99,6 +109,11 @@ export async function deleteGameCompletely(gameId: string): Promise<DeleteGameRe
     }
   }
 
+  // Очистка Storage в фоне — не блокируем UI
+  void deleteGameStorageBestEffort(gameId, mediaUrls).catch((err) =>
+    console.warn('Фоновая очистка Storage:', err)
+  )
+
   return {
     success: true,
     deleted: {
@@ -106,7 +121,7 @@ export async function deleteGameCompletely(gameId: string): Promise<DeleteGameRe
       questions: questionsRes.count ?? 0,
       teams: teamsRes.count ?? 0,
       answers: answersCount,
-      mediaFiles,
+      mediaFiles: 0,
     },
     usedEdgeFunction: false,
   }

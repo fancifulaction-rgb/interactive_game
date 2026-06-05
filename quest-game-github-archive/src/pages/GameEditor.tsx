@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { buildGameScopedFileName } from '../lib/storagePaths'
+import { isAdminPanelLoggedIn } from '../lib/adminAuth'
+import { uploadQuestionMediaQueued } from '../lib/storageUpload'
 import { ArrowLeft, Save, Plus, Trash2, Upload, X } from 'lucide-react'
 
 interface Question {
@@ -382,49 +383,23 @@ export default function GameEditor() {
   }
 
   const handleMediaUpload = async (index: number, file: File) => {
-    // Проверка прав администратора
-    const isLoggedIn = localStorage.getItem('admin_logged_in')
-    const adminUsername = localStorage.getItem('admin_username')
-    
-    if (!isLoggedIn || !adminUsername) {
-      alert('Ошибка доступа: Вы не авторизованы как администратор. Пожалуйста, войдите снова.')
+    if (!isAdminPanelLoggedIn()) {
+      alert('Ошибка доступа: сессия администратора не найдена. Войдите снова.')
       navigate('/admin/login')
       return
     }
 
+    const scopedGameId = gameId || game?.id
+    if (!scopedGameId) {
+      alert('Сначала сохраните игру — не задан идентификатор.')
+      return
+    }
+
     try {
-      const fileData = await file.arrayBuffer()
-      const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
-        const bytes = new Uint8Array(buffer)
-        let binary = ''
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i])
-        }
-        return btoa(binary)
-      }
+      const publicUrl = await uploadQuestionMediaQueued(file, scopedGameId)
 
-      const base64File = arrayBufferToBase64(fileData)
-      const scopedGameId = gameId || game?.id
-      if (!scopedGameId) throw new Error('gameId не задан')
-      const fileName = buildGameScopedFileName(scopedGameId, '', file)
-
-      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('alternative-upload', {
-        body: {
-          file: base64File,
-          bucket: 'question-media',
-          fileName: fileName
-        }
-      })
-      
-      if (uploadError || !uploadData?.success) {
-        throw new Error(uploadError?.message || 'Upload failed')
-      }
-      
-      const publicUrl = uploadData.url
-
-      // Определение типа медиафайла на основе расширения
-      const getMediaType = (fileName: string): string => {
-        const ext = fileName.toLowerCase().split('.').pop()
+      const getMediaType = (name: string): string => {
+        const ext = name.toLowerCase().split('.').pop()
         if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) {
           return 'image'
         }
@@ -434,16 +409,16 @@ export default function GameEditor() {
         if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext || '')) {
           return 'audio'
         }
-        return 'image' // по умолчанию
+        return 'image'
       }
 
-      const mediaType = getMediaType(fileName)
+      const mediaType = getMediaType(file.name)
 
       const newQuestions = [...questions]
       newQuestions[index].media_url = publicUrl
       newQuestions[index].type = mediaType
       setQuestions(newQuestions)
-      
+
       alert('Файл успешно загружен')
     } catch (err: any) {
       console.error('Upload error:', err)
