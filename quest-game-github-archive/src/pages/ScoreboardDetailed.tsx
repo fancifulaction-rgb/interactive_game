@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Trophy, Medal, Award, ArrowLeft, Download, FileText, FileSpreadsheet, BarChart3 } from 'lucide-react'
@@ -48,122 +48,183 @@ export default function ScoreboardDetailed() {
     result: QuestionResult
     question: any
   } | null>(null)
+  const loadSeqRef = useRef(0)
+  const inFlightRef = useRef(false)
+  const cachedGameIdRef = useRef<string | null>(null)
+  const cachedQuestionsRef = useRef<any[]>([])
 
-  // Проверяем статус администратора
   useEffect(() => {
     const adminLoggedIn = localStorage.getItem('admin_logged_in')
     setIsAdmin(!!adminLoggedIn)
   }, [])
 
-  useEffect(() => {
-    loadData()
-    const interval = setInterval(loadData, 5000)
-    return () => clearInterval(interval)
-  }, [gameCode])
+  const buildTeamDetails = (
+    teamsData: TeamScore[],
+    questionsData: any[],
+    answersData: Array<{
+      team_id: string
+      question_id: string
+      is_correct: boolean | null
+      score: number | null
+      time_taken: number | null
+      answer_text: string | null
+      hints_used: unknown
+    }>
+  ) => {
+    const details: { [teamId: string]: TeamDetails } = {}
 
-  const loadData = async () => {
-    try {
-      const { data: gameData, error: gameError } = await supabase
-        .from('games')
-        .select('id, code, title, mask_board')
-        .eq('code', gameCode)
-        .maybeSingle()
+    for (const team of teamsData) {
+      const teamAnswers = answersData.filter((answer) => answer.team_id === team.id)
+      const questionsResults: QuestionResult[] = []
+      let totalTime = 0
+      let correctAnswers = 0
+      let hintPenalties = 0
 
-      if (gameError) throw gameError
-      if (!gameData) return
+      for (const question of questionsData) {
+        const answer = teamAnswers.find((a) => a.question_id === question.id)
 
-      setGame(gameData)
+        if (answer) {
+          const hintsUsed = Array.isArray(answer.hints_used) ? answer.hints_used.length : 0
+          const hintPenalty = hintsUsed * 10
 
-      const { data: teamsData, error: teamsError } = await supabase
-        .from('teams')
-        .select('id, team_name, captain_name, avatar_url, total_score, registration_time')
-        .eq('game_id', gameData.id)
-        .order('total_score', { ascending: false })
+          questionsResults.push({
+            question_id: question.id,
+            question_text: question.prompt,
+            question_number: question.order_index,
+            is_correct: answer.is_correct || false,
+            score: answer.score || 0,
+            time_taken: answer.time_taken || 0,
+            answer_text: answer.answer_text || '',
+            hints_used: hintsUsed,
+          })
 
-      if (teamsError) throw teamsError
-      setTeams(teamsData || [])
-
-      // Загружаем вопросы игры
-      const { data: questionsData, error: questionsError } = await supabase
-        .from('questions')
-        .select('id, order_index, prompt, question_text')
-        .eq('game_id', gameData.id)
-        .order('order_index', { ascending: true })
-
-      if (questionsError) throw questionsError
-      setQuestions(questionsData || [])
-
-      // Загружаем ответы всех команд
-      const { data: answersData, error: answersError } = await supabase
-        .from('answers')
-        .select('team_id, question_id, is_correct, score, time_taken, answer_text, hints_used')
-        .in('team_id', (teamsData || []).map(team => team.id))
-
-      if (answersError) throw answersError
-
-      // Рассчитываем детальную статистику для каждой команды
-      const details: {[teamId: string]: TeamDetails} = {}
-      
-      for (const team of teamsData || []) {
-        const teamAnswers = (answersData || []).filter(answer => answer.team_id === team.id)
-        const questionsResults: QuestionResult[] = []
-        
-        let totalTime = 0
-        let correctAnswers = 0
-        let hintPenalties = 0
-
-        for (const question of questionsData || []) {
-          const answer = teamAnswers.find(a => a.question_id === question.id)
-          
-          if (answer) {
-            const hintsUsed = answer.hints_used ? answer.hints_used.length : 0
-            const hintPenalty = hintsUsed * 10 // 10% штрафа за каждую подсказку
-            
-            questionsResults.push({
-              question_id: question.id,
-              question_text: question.prompt,
-              question_number: question.order_index,
-              is_correct: answer.is_correct || false,
-              score: answer.score || 0,
-              time_taken: answer.time_taken || 0,
-              answer_text: answer.answer_text || '',
-              hints_used: hintsUsed
-            })
-
-            totalTime += answer.time_taken || 0
-            if (answer.is_correct) correctAnswers++
-            hintPenalties += hintPenalty
-          } else {
-            // Если команда не ответила на вопрос
-            questionsResults.push({
-              question_id: question.id,
-              question_text: question.prompt,
-              question_number: question.order_index,
-              is_correct: false,
-              score: 0,
-              time_taken: 0,
-              answer_text: 'Не отвечено',
-              hints_used: 0
-            })
-          }
-        }
-
-        details[team.id] = {
-          total_time: totalTime,
-          correct_answers: correctAnswers,
-          total_questions: questionsData?.length || 0,
-          hint_penalties: hintPenalties,
-          questions: questionsResults
+          totalTime += answer.time_taken || 0
+          if (answer.is_correct) correctAnswers++
+          hintPenalties += hintPenalty
+        } else {
+          questionsResults.push({
+            question_id: question.id,
+            question_text: question.prompt,
+            question_number: question.order_index,
+            is_correct: false,
+            score: 0,
+            time_taken: 0,
+            answer_text: 'Не отвечено',
+            hints_used: 0,
+          })
         }
       }
 
-      setTeamDetails(details)
-    } catch (err: any) {
-      console.error('Ошибка загрузки табло:', err)
-    } finally {
-      setLoading(false)
+      details[team.id] = {
+        total_time: totalTime,
+        correct_answers: correctAnswers,
+        total_questions: questionsData.length,
+        hint_penalties: hintPenalties,
+        questions: questionsResults,
+      }
     }
+
+    return details
   }
+
+  const loadData = useCallback(
+    async (options?: { refreshOnly?: boolean }) => {
+      if (!gameCode || inFlightRef.current) return
+
+      const refreshOnly = options?.refreshOnly ?? false
+      const seq = ++loadSeqRef.current
+      inFlightRef.current = true
+
+      if (!refreshOnly) {
+        setLoading(true)
+      }
+
+      try {
+        let gameId = cachedGameIdRef.current
+        let questionsData = cachedQuestionsRef.current
+
+        if (!refreshOnly || !gameId) {
+          const { data: gameData, error: gameError } = await supabase
+            .from('games')
+            .select('id, code, title, mask_board')
+            .eq('code', gameCode)
+            .maybeSingle()
+
+          if (gameError) throw gameError
+          if (!gameData || seq !== loadSeqRef.current) return
+
+          gameId = gameData.id
+          cachedGameIdRef.current = gameId
+          setGame(gameData)
+
+          const questionsRes = await supabase
+            .from('questions')
+            .select('id, order_index, prompt, question_text')
+            .eq('game_id', gameId)
+            .order('order_index', { ascending: true })
+
+          if (questionsRes.error) throw questionsRes.error
+          if (seq !== loadSeqRef.current) return
+
+          questionsData = questionsRes.data ?? []
+          cachedQuestionsRef.current = questionsData
+          setQuestions(questionsData)
+        }
+
+        if (!gameId) return
+
+        const teamsRes = await supabase
+          .from('teams')
+          .select('id, team_name, captain_name, avatar_url, total_score, registration_time')
+          .eq('game_id', gameId)
+          .order('total_score', { ascending: false })
+
+        if (teamsRes.error) throw teamsRes.error
+        if (seq !== loadSeqRef.current) return
+
+        const teamsData = teamsRes.data ?? []
+        setTeams(teamsData)
+
+        const answersRes = await supabase
+          .from('answers')
+          .select('team_id, question_id, is_correct, score, time_taken, answer_text, hints_used')
+          .eq('game_id', gameId)
+
+        if (answersRes.error) throw answersRes.error
+        if (seq !== loadSeqRef.current) return
+
+        setTeamDetails(buildTeamDetails(teamsData, questionsData, answersRes.data ?? []))
+      } catch (err: unknown) {
+        if (seq === loadSeqRef.current) {
+          console.error('Ошибка загрузки табло:', err)
+        }
+      } finally {
+        inFlightRef.current = false
+        if (seq === loadSeqRef.current) {
+          setLoading(false)
+        }
+      }
+    },
+    [gameCode]
+  )
+
+  useEffect(() => {
+    if (!gameCode) return
+
+    cachedGameIdRef.current = null
+    cachedQuestionsRef.current = []
+    void loadData({ refreshOnly: false })
+
+    const interval = setInterval(() => {
+      if (document.hidden) return
+      void loadData({ refreshOnly: true })
+    }, 10_000)
+
+    return () => {
+      clearInterval(interval)
+      loadSeqRef.current++
+    }
+  }, [gameCode, loadData])
 
   const getMedalIcon = (position: number) => {
     if (position === 0) return <Trophy className="w-8 h-8 text-yellow-500" />

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 interface CollapsibleSectionProps {
@@ -7,6 +7,8 @@ interface CollapsibleSectionProps {
   defaultOpen?: boolean
   children: React.ReactNode
   className?: string
+  /** Вызывается при каждом раскрытии секции (удобно для подгрузки данных). */
+  onOpen?: () => void
 }
 
 export default function CollapsibleSection({ 
@@ -14,9 +16,18 @@ export default function CollapsibleSection({
   icon, 
   defaultOpen = false, 
   children, 
-  className = "" 
+  className = "",
+  onOpen,
 }: CollapsibleSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
+  const wasOpenRef = useRef(defaultOpen)
+
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      onOpen?.()
+    }
+    wasOpenRef.current = isOpen
+  }, [isOpen, onOpen])
 
   return (
     <div className={`bg-white rounded-lg shadow-sm border ${className}`}>

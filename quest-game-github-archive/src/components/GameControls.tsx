@@ -30,10 +30,17 @@ import {
 import RegistrationQrCard from './RegistrationQrCard'
 import { useNavigate } from 'react-router-dom'
 
-interface Game {
+export interface GameControlsGame {
   id: string
   title: string
   code: string | null
+}
+
+interface GameControlsProps {
+  games: GameControlsGame[]
+  gamesLoading?: boolean
+  gamesError?: string
+  onRefreshGames?: () => void
 }
 
 type LobbyTeam = {
@@ -43,9 +50,13 @@ type LobbyTeam = {
   captain_name: string | null
 }
 
-export default function GameControls() {
+export default function GameControls({
+  games,
+  gamesLoading = false,
+  gamesError = '',
+  onRefreshGames,
+}: GameControlsProps) {
   const navigate = useNavigate()
-  const [games, setGames] = useState<Game[]>([])
   const [selectedGameId, setSelectedGameId] = useState<string>('')
   const [gameState, setGameState] = useState<GameStateRow | null>(null)
   const [teams, setTeams] = useState<LobbyTeam[]>([])
@@ -53,8 +64,12 @@ export default function GameControls() {
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
-    void loadGames()
-  }, [])
+    setSelectedGameId((current) => {
+      if (games.length === 0) return ''
+      if (games.some((g) => g.id === current)) return current
+      return games[0].id
+    })
+  }, [games])
 
   useEffect(() => {
     if (!selectedGameId) return
@@ -69,23 +84,6 @@ export default function GameControls() {
       unsubTeams?.()
     }
   }, [selectedGameId])
-
-  const loadGames = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('games')
-        .select('id, title, code')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setGames(data || [])
-      if (data && data.length > 0 && !selectedGameId) {
-        setSelectedGameId(data[0].id)
-      }
-    } catch (err: unknown) {
-      console.error('Ошибка загрузки игр:', err)
-    }
-  }
 
   const loadGameState = async () => {
     try {
@@ -226,9 +224,6 @@ export default function GameControls() {
     }
 
     setDeleting(true)
-    const snapshot = games
-    setGames((prev) => prev.filter((g) => g.id !== selectedGameId))
-
     try {
       const result = await deleteGameCompletely(selectedGameId)
       if (!result.success) {
@@ -237,11 +232,10 @@ export default function GameControls() {
       setSelectedGameId('')
       setGameState(null)
       setTeams([])
-      await loadGames()
+      onRefreshGames?.()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('Ошибка удаления игры:', err)
-      setGames(snapshot)
       alert('Ошибка удаления игры: ' + msg)
     } finally {
       setDeleting(false)
@@ -277,9 +271,12 @@ export default function GameControls() {
           <select
             value={selectedGameId}
             onChange={(e) => setSelectedGameId(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            disabled={gamesLoading && games.length === 0}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
           >
-            {games.length === 0 ? (
+            {gamesLoading && games.length === 0 ? (
+              <option value="">Загрузка игр…</option>
+            ) : games.length === 0 ? (
               <option value="">Нет игр</option>
             ) : (
               games.map((game) => (
@@ -289,6 +286,28 @@ export default function GameControls() {
               ))
             )}
           </select>
+          {gamesError && (
+            <p className="mt-2 text-sm text-red-600">
+              {gamesError}{' '}
+              {onRefreshGames && (
+                <button
+                  type="button"
+                  onClick={onRefreshGames}
+                  className="underline hover:text-red-800"
+                >
+                  Повторить
+                </button>
+              )}
+            </p>
+          )}
+          {!gamesError && games.length === 0 && !gamesLoading && onRefreshGames && (
+            <p className="mt-2 text-sm text-gray-500">
+              Список пуст.{' '}
+              <button type="button" onClick={onRefreshGames} className="text-purple-600 underline">
+                Обновить
+              </button>
+            </p>
+          )}
         </div>
 
         {selectedGame && (

@@ -2,10 +2,17 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Send, AlertTriangle, Info, AlertCircle, Zap, Users, UserCheck } from 'lucide-react'
 
-interface Game {
+interface MessagePanelGame {
   id: string
   title: string
   code: string | null
+}
+
+interface MessagePanelProps {
+  games: MessagePanelGame[]
+  gamesLoading?: boolean
+  gamesError?: string
+  onRefreshGames?: () => void
 }
 
 interface Team {
@@ -48,8 +55,12 @@ const priorityConfig = {
   }
 }
 
-export default function MessagePanel() {
-  const [games, setGames] = useState<Game[]>([])
+export default function MessagePanel({
+  games,
+  gamesLoading = false,
+  gamesError = '',
+  onRefreshGames,
+}: MessagePanelProps) {
   const [teams, setTeams] = useState<Team[]>([])
   const [selectedGameId, setSelectedGameId] = useState<string>('')
   const [message, setMessage] = useState('')
@@ -60,8 +71,12 @@ export default function MessagePanel() {
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
-    loadGames()
-  }, [])
+    setSelectedGameId((current) => {
+      if (games.length === 0) return ''
+      if (games.some((g) => g.id === current)) return current
+      return games[0].id
+    })
+  }, [games])
 
   useEffect(() => {
     if (selectedGameId) {
@@ -70,23 +85,6 @@ export default function MessagePanel() {
       setSelectedTeamIds([])
     }
   }, [selectedGameId])
-
-  const loadGames = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('games')
-        .select('id, title, code')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setGames(data || [])
-      if (data && data.length > 0) {
-        setSelectedGameId(data[0].id)
-      }
-    } catch (err: any) {
-      console.error('Ошибка загрузки игр:', err)
-    }
-  }
 
   const loadTeams = async () => {
     if (!selectedGameId) return
@@ -204,14 +202,24 @@ export default function MessagePanel() {
           <select
             value={selectedGameId}
             onChange={(e) => setSelectedGameId(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            disabled={gamesLoading && games.length === 0}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
           >
-            {games.map(game => (
-              <option key={game.id} value={game.id}>
-                {game.title} ({game.code})
-              </option>
-            ))}
+            {gamesLoading && games.length === 0 ? (
+              <option value="">Загрузка игр…</option>
+            ) : games.length === 0 ? (
+              <option value="">Нет игр</option>
+            ) : (
+              games.map((game) => (
+                <option key={game.id} value={game.id}>
+                  {game.title} ({game.code})
+                </option>
+              ))
+            )}
           </select>
+          {gamesError && (
+            <p className="mt-2 text-sm text-red-600">{gamesError}</p>
+          )}
         </div>
 
         <div>

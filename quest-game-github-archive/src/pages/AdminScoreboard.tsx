@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Trophy, Medal, Award, Settings, Download, FileText, FileSpreadsheet } from 'lucide-react'
@@ -13,112 +13,124 @@ interface TeamScore {
   registration_time: string
 }
 
+const TEAM_SELECT =
+  'id, team_name, captain_name, avatar_url, total_score, registration_time'
+
 export default function AdminScoreboard() {
   const { gameCode } = useParams()
   const navigate = useNavigate()
   const [teams, setTeams] = useState<TeamScore[]>([])
-  const [game, setGame] = useState<any>(null)
+  const [game, setGame] = useState<{
+    id: string
+    code: string
+    title: string
+    mask_board: boolean
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadSeqRef = useRef(0)
 
-  // Проверяем статус администратора
   useEffect(() => {
     const adminLoggedIn = localStorage.getItem('admin_logged_in')
     setIsAdmin(!!adminLoggedIn)
   }, [])
 
+  const loadTeamsForGame = useCallback(async (gameId: string, seq: number) => {
+    const { data: teamsData, error: teamsError } = await supabase
+      .from('teams')
+      .select(TEAM_SELECT)
+      .eq('game_id', gameId)
+      .order('total_score', { ascending: false })
+
+    if (teamsError) throw teamsError
+    if (seq !== loadSeqRef.current) return
+    setTeams(teamsData ?? [])
+  }, [])
+
   useEffect(() => {
-    loadData()
-    
-    // 🚀 НОВАЯ ФИЧА: Realtime подписка на teams для мгновенного обновления админского табло
-    let teamsChannel: any = null
-    
-    const setupRealtimeSubscription = async () => {
-      if (!game?.id) return
-      
-      console.log('🔄 Настраиваем realtime подписку на teams для админского табло, игра:', game.id)
-      
-      teamsChannel = supabase
-        .channel(`admin-teams-scoreboard-${game.id}`)
-        .on('postgres_changes', {
-          event: '*', // Слушаем все изменения: INSERT, UPDATE, DELETE
-          schema: 'public',
-          table: 'teams',
-          filter: `game_id=eq.${game.id}`
-        }, (payload) => {
-          console.log('📊 Realtime изменение в teams (админское табло):', payload)
-          
-          // При любом изменении в teams - перезагружаем данные
-          loadData()
-        })
-        .subscribe((status) => {
-          console.log('📡 Статус realtime подписки admin teams:', status)
-        })
+    if (!gameCode) return
+
+    let cancelled = false
+    const seq = ++loadSeqRef.current
+
+    const scheduleTeamsReload = (gameId: string) => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = setTimeout(() => {
+        void loadTeamsForGame(gameId, loadSeqRef.current).catch((err) =>
+          console.error('Ошибка обновления команд админского табло:', err)
+        )
+      }, 400)
     }
-    
-    // Настраиваем подписку после загрузки данных
-    if (game?.id) {
-      setupRealtimeSubscription()
+
+    const init = async () => {
+      setLoading(true)
+      try {
+        const { data: gameData, error: gameError } = await supabase
+          .from('games')
+          .select('id, code, title, mask_board')
+          .eq('code', gameCode)
+          .maybeSingle()
+
+        if (cancelled || seq !== loadSeqRef.current) return
+        if (gameError) throw gameError
+        if (!gameData) {
+          setGame(null)
+          setTeams([])
+          return
+        }
+
+        setGame(gameData)
+        await loadTeamsForGame(gameData.id, seq)
+        if (cancelled || seq !== loadSeqRef.current) return
+
+        if (channelRef.current) {
+          supabase.removeChannel(channelRef.current)
+        }
+
+        const channel = supabase
+          .channel(`admin-teams-scoreboard-${gameData.id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'teams',
+              filter: `game_id=eq.${gameData.id}`,
+            },
+            () => scheduleTeamsReload(gameData.id)
+          )
+          .subscribe()
+
+        channelRef.current = channel
+      } catch (err: unknown) {
+        if (!cancelled && seq === loadSeqRef.current) {
+          console.error('Ошибка загрузки админского табло:', err)
+        }
+      } finally {
+        if (!cancelled && seq === loadSeqRef.current) {
+          setLoading(false)
+        }
+      }
     }
-    
+
+    void init()
+
     return () => {
-      // Отписываемся от realtime при размонтировании
-      if (teamsChannel) {
-        console.log('🔄 Отписываемся от realtime admin teams')
-        supabase.removeChannel(teamsChannel)
+      cancelled = true
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current)
+        reloadTimerRef.current = null
+      }
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
       }
     }
-  }, [gameCode, game?.id])
-  
-  // Отдельный useEffect для первоначальной загрузки
-  useEffect(() => {
-    loadInitialData()
-  }, [gameCode])
-  
-  const loadInitialData = async () => {
-    try {
-      const { data: gameData, error: gameError } = await supabase
-        .from('games')
-        .select('id, code, title, mask_board')
-        .eq('code', gameCode)
-        .maybeSingle()
-
-      if (gameError) throw gameError
-      if (!gameData) return
-
-      setGame(gameData)
-      setLoading(false)
-    } catch (err: any) {
-      console.error('Ошибка загрузки игры (admin):', err)
-      setLoading(false)
-    }
-  }
-
-  const loadData = async () => {
-    try {
-      if (!game?.id) {
-        console.log('🔄 loadData (admin): game.id не найден, пропускаем загрузку teams')
-        return
-      }
-      
-      console.log('📊 Загружаем команды для админского табло, game_id:', game.id)
-      
-      const { data: teamsData, error: teamsError } = await supabase
-        .from('teams')
-        .select('id, team_name, captain_name, avatar_url, total_score, registration_time')
-        .eq('game_id', game.id)
-        .order('total_score', { ascending: false })
-
-      if (teamsError) throw teamsError
-      
-      console.log('📊 Загружено команд для админского табло:', teamsData?.length || 0)
-      setTeams(teamsData || [])
-    } catch (err: any) {
-      console.error('Ошибка загрузки команд админского табло:', err)
-    }
-  }
+  }, [gameCode, loadTeamsForGame])
 
   const getMedalIcon = (position: number) => {
     if (position === 0) return <Trophy className="w-8 h-8 text-yellow-500" />
@@ -129,10 +141,10 @@ export default function AdminScoreboard() {
 
   const handleExport = async (format: 'excel' | 'pdf' | 'csv' | 'all') => {
     if (!game) return
-    
+
     setExporting(true)
     setShowExportMenu(false)
-    
+
     try {
       switch (format) {
         case 'excel':
@@ -231,7 +243,7 @@ export default function AdminScoreboard() {
         <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6">
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-white mb-2">
-              {game?.title || 'Загрузка...'}
+              {game?.title || 'Игра не найдена'}
             </h2>
             <p className="text-white/80">
               Код игры: {gameCode} • {teams.length} команд участвует
@@ -301,9 +313,7 @@ export default function AdminScoreboard() {
           </div>
 
           <div className="mt-6 text-center">
-            <p className="text-white/80 text-sm">
-              Обновляется автоматически каждые 5 секунд
-            </p>
+            <p className="text-white/80 text-sm">Обновляется автоматически при изменении результатов</p>
           </div>
         </div>
       </div>

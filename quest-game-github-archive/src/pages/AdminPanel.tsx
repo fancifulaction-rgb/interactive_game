@@ -84,22 +84,7 @@ export default function AdminPanel() {
     setAdminSessionOk(await hasSupabaseAdminSession())
   }, [])
 
-  useEffect(() => {
-    const isLoggedIn = localStorage.getItem('admin_logged_in')
-    if (!isLoggedIn) {
-      navigate('/admin/login')
-      return
-    }
-    void refreshAdminSession()
-    if (activeTab === 'games') {
-      void loadGames()
-    } else if (activeTab === 'settings') {
-      loadSettings()
-      loadThemes()
-    }
-  }, [navigate, activeTab, refreshAdminSession])
-
-  const loadGames = async () => {
+  const loadGames = useCallback(async () => {
     const seq = ++gamesLoadSeq.current
     setGamesLoading(true)
     setGamesError('')
@@ -122,7 +107,27 @@ export default function AdminPanel() {
         setGamesLoading(false)
       }
     }
-  }
+  }, [])
+
+  const refreshGamesList = useCallback(() => {
+    void loadGames()
+  }, [loadGames])
+
+  useEffect(() => {
+    const isLoggedIn = localStorage.getItem('admin_logged_in')
+    if (!isLoggedIn) {
+      navigate('/admin/login')
+      return
+    }
+    void refreshAdminSession()
+    if (activeTab === 'games') {
+      void loadGames()
+    } else if (activeTab === 'settings') {
+      void loadGames()
+      loadSettings()
+      loadThemes()
+    }
+  }, [navigate, activeTab, refreshAdminSession, loadGames])
 
   const loadThemes = async () => {
     try {
@@ -597,6 +602,7 @@ export default function AdminPanel() {
             <CollapsibleSection
               title="Управление игрой"
               icon={<Radio className="w-5 h-5" />}
+              onOpen={refreshGamesList}
             >
               <div className="space-y-6">
                 <div>
@@ -606,8 +612,18 @@ export default function AdminPanel() {
                   </p>
                 </div>
                 <div className="grid md:grid-cols-2 gap-6">
-                  <GameControls />
-                  <MessagePanel />
+                  <GameControls
+                    games={games}
+                    gamesLoading={gamesLoading}
+                    gamesError={gamesError}
+                    onRefreshGames={refreshGamesList}
+                  />
+                  <MessagePanel
+                    games={games}
+                    gamesLoading={gamesLoading}
+                    gamesError={gamesError}
+                    onRefreshGames={refreshGamesList}
+                  />
                 </div>
               </div>
             </CollapsibleSection>
@@ -810,7 +826,12 @@ export default function AdminPanel() {
                 <p className="text-sm text-gray-600 mb-4">
                   Управляйте командами в играх: удаляйте все команды или выбранные команды для очистки табло результатов
                 </p>
-                <TeamManagementManager />
+                <TeamManagementManager
+                  games={games}
+                  gamesLoading={gamesLoading}
+                  gamesError={gamesError}
+                  onRefreshGames={refreshGamesList}
+                />
               </div>
             </CollapsibleSection>
           </div>
