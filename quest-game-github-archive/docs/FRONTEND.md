@@ -11,7 +11,8 @@ React 18 + TypeScript + Vite 6 + Tailwind. Точка входа: `src/main.tsx`
 | `/admin/reset-password` | `ResetPassword` | Публичный |
 | `/admin/panel` | `AdminPanel` | Auth |
 | `/admin/game/:gameId/edit` | `GameEditor` | Auth |
-| `/team/register` | `TeamRegister` | Публичный (anon) |
+| `/team/register` | `TeamRegister` | Публичный (anon); `?code=XXXX` deep link |
+| `/host/:gameCode` | `HostView` | Публичный дисплей; управление при Supabase Auth |
 | `/game/:gameCode` | `GamePlay` | Команда (localStorage) |
 | `/scoreboard/:gameCode` | `PlayerScoreboard` | Публичный |
 | `/scoreboard-admin/:gameCode` | `AdminScoreboard` | Админ/публичный |

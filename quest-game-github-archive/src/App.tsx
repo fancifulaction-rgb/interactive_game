@@ -13,6 +13,7 @@ const TeamRegister = lazy(() => import('./pages/TeamRegister'))
 const GamePlay = lazy(() => import('./pages/GamePlay'))
 const PlayerScoreboard = lazy(() => import('./pages/PlayerScoreboard'))
 const AdminScoreboard = lazy(() => import('./pages/AdminScoreboard'))
+const HostView = lazy(() => import('./pages/HostView'))
 const ScoreboardDetailed = lazy(() => import('./pages/ScoreboardDetailed'))
 const Congratulation = lazy(() => import('./pages/Congratulation'))
 const CongratulationWithStats = lazy(() => import('./pages/CongratulationWithStats'))
@@ -39,6 +40,7 @@ function App() {
             <Route path="/team/register" element={<TeamRegister />} />
             <Route path="/game/:gameCode" element={<GamePlay />} />
             <Route path="/scoreboard/:gameCode" element={<PlayerScoreboard />} />
+            <Route path="/host/:gameCode" element={<HostView />} />
             <Route path="/scoreboard-admin/:gameCode" element={<AdminScoreboard />} />
             <Route path="/scoreboard-detailed/:gameCode" element={<ScoreboardDetailed />} />
             <Route path="/congratulation/:gameCode" element={<Congratulation />} />

@@ -9,21 +9,26 @@ import {
   Flag,
   RotateCcw,
   Trash2,
+  Presentation,
 } from 'lucide-react'
 import { fetchGameStateForGame } from '../lib/fetchGameState'
 import { deleteGameCompletely } from '../lib/deleteGame'
-import { resetGameProgress } from '../lib/resetGameProgress'
 import { ADMIN_SESSION_HINT, hasSupabaseAdminSession } from '../lib/adminAuth'
 import {
-  GAME_STATE_FINISHED,
-  GAME_STATE_PLAYING,
-  GAME_STATE_WAITING,
+  finishGameSession,
+  pauseGameSession,
+  restartGameSessionToLobby,
+  resumeGameSession,
+  startGameSession,
+} from '../lib/gameSessionControl'
+import {
   getGameSessionStatus,
   getGameSessionStatusLabel,
   getGameStartedAt,
   type GameStateRow,
 } from '../lib/gameSessionState'
 import RegistrationQrCard from './RegistrationQrCard'
+import { useNavigate } from 'react-router-dom'
 
 interface Game {
   id: string
@@ -39,6 +44,7 @@ type LobbyTeam = {
 }
 
 export default function GameControls() {
+  const navigate = useNavigate()
   const [games, setGames] = useState<Game[]>([])
   const [selectedGameId, setSelectedGameId] = useState<string>('')
   const [gameState, setGameState] = useState<GameStateRow | null>(null)
@@ -154,31 +160,12 @@ export default function GameControls() {
     }
   }
 
-  const upsertGameState = async (patch: Partial<GameStateRow>) => {
-    const { data, error } = await supabase
-      .from('game_state')
-      .update({ ...patch, updated_at: new Date().toISOString() })
-      .eq('game_id', selectedGameId)
-      .select('id')
-
-    if (error) throw error
-
-    if (!data?.length) {
-      const { error: insErr } = await supabase.from('game_state').insert({
-        game_id: selectedGameId,
-        ...patch,
-      })
-      if (insErr) throw insErr
-    }
-
-    await loadGameState()
-  }
-
   const runAction = async (action: () => Promise<void>) => {
     if (!selectedGameId) return
     setLoading(true)
     try {
       await action()
+      await loadGameState()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('Ошибка управления игрой:', err)
@@ -188,42 +175,11 @@ export default function GameControls() {
     }
   }
 
-  const startGame = () =>
-    runAction(async () => {
-      const current = await fetchGameStateForGame(selectedGameId)
-      const pd = { ...((current?.player_data as Record<string, unknown>) ?? {}) }
-      if (!getGameStartedAt(current)) {
-        pd.startedAt = new Date().toISOString()
-      }
-      await upsertGameState({
-        current_state: GAME_STATE_PLAYING,
-        is_paused: false,
-        paused_at: null,
-        paused_by: null,
-        player_data: pd,
-      })
-    })
+  const startGame = () => runAction(() => startGameSession(selectedGameId))
 
-  const resumeGame = () =>
-    runAction(() =>
-      upsertGameState({
-        current_state: GAME_STATE_PLAYING,
-        is_paused: false,
-        paused_at: null,
-        paused_by: null,
-      })
-    )
+  const resumeGame = () => runAction(() => resumeGameSession(selectedGameId))
 
-  const pauseGame = () =>
-    runAction(async () => {
-      const adminUsername = localStorage.getItem('admin_username') || 'Администратор'
-      await upsertGameState({
-        current_state: GAME_STATE_PLAYING,
-        is_paused: true,
-        paused_at: new Date().toISOString(),
-        paused_by: adminUsername,
-      })
-    })
+  const pauseGame = () => runAction(() => pauseGameSession(selectedGameId))
 
   const finishGame = () => {
     if (
@@ -233,14 +189,7 @@ export default function GameControls() {
     ) {
       return
     }
-    void runAction(() =>
-      upsertGameState({
-        current_state: GAME_STATE_FINISHED,
-        is_paused: false,
-        paused_at: null,
-        paused_by: null,
-      })
-    )
+    void runAction(() => finishGameSession(selectedGameId))
   }
 
   const restartToLobby = () => {
@@ -252,20 +201,7 @@ export default function GameControls() {
       return
     }
     void runAction(async () => {
-      const result = await resetGameProgress(selectedGameId)
-      if (!result.success) {
-        throw new Error(result.error || 'Не удалось сбросить прогресс')
-      }
-      const current = await fetchGameStateForGame(selectedGameId)
-      const pd = { ...((current?.player_data as Record<string, unknown>) ?? {}) }
-      delete pd.startedAt
-      await upsertGameState({
-        current_state: GAME_STATE_WAITING,
-        is_paused: false,
-        paused_at: null,
-        paused_by: null,
-        player_data: pd,
-      })
+      await restartGameSessionToLobby(selectedGameId)
       await loadTeams()
     })
   }
@@ -358,7 +294,17 @@ export default function GameControls() {
         {selectedGame && (
           <div className="bg-gray-50 rounded-lg p-4 space-y-4">
             {selectedGame.code && (
-              <RegistrationQrCard gameCode={selectedGame.code} gameTitle={selectedGame.title} />
+              <>
+                <RegistrationQrCard gameCode={selectedGame.code} gameTitle={selectedGame.title} />
+                <button
+                  type="button"
+                  onClick={() => navigate(`/host/${selectedGame.code}`)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm font-medium"
+                >
+                  <Presentation className="w-4 h-4" />
+                  Открыть экран ведущего (проектор)
+                </button>
+              </>
             )}
 
             <div className="flex items-center justify-between">

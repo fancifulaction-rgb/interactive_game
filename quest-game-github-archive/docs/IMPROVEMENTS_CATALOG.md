@@ -63,7 +63,7 @@
 |----|----------|----------|----------|--------|--------|
 | IMP-UX-001 | Комната ожидания | Общий старт после регистрации всех | Zappy, BACKLOG | 2 | done |
 | IMP-UX-002 | QR-код на регистрацию | `?code=XXXX` deep link | QuizLive | 2 | done |
-| IMP-UX-003 | Экран ведущего (host view) | Проектор: код, QR, старт, пауза | TimesUp, QuizLive | 2 | proposed |
+| IMP-UX-003 | Экран ведущего (host view) | Проектор: код, QR, старт, пауза | TimesUp, QuizLive | 2 | done |
 | IMP-UX-004 | PWA | manifest + SW, иконка на телефоне | QuizLive, BACKLOG | 2 | proposed |
 | IMP-UX-005 | Скрыть табло до финиша | Настройка игры | BACKLOG | 2 | proposed |
 | IMP-UX-006 | Финиш: только поздравление vs табло | `finish_page_type` расширить | BACKLOG | proposed | proposed |

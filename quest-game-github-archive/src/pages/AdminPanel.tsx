@@ -21,7 +21,8 @@ import TeamManagementManager from '../components/TeamManagementManager'
 import CollapsibleSection from '../components/CollapsibleSection'
 import {
   LogOut, Plus, Edit, Trash2, Play, Settings,
-  Download, Users, Trophy, Palette, FileText, BarChart3, Type, Key, Radio, Calendar, Copy, X
+  Download, Users, Trophy, Palette, FileText, BarChart3, Type, Key, Radio, Calendar, Copy, X,
+  Presentation,
 } from 'lucide-react'
 
 interface Game {
@@ -528,6 +529,15 @@ export default function AdminPanel() {
                         </div>
                       </div>
                       <div className="flex gap-1 sm:gap-2 ml-2 sm:ml-4 flex-shrink-0">
+                        {game.code && (
+                          <button
+                            onClick={() => navigate(`/host/${game.code}`)}
+                            className="p-3 sm:p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center"
+                            title="Экран ведущего (проектор)"
+                          >
+                            <Presentation className="w-5 h-5 sm:w-6 sm:h-6" />
+                          </button>
+                        )}
                         <button
                           onClick={() => navigate(`/scoreboard-admin/${game.code}`)}
                           className="p-3 sm:p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center"
