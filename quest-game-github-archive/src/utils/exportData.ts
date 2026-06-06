@@ -41,7 +41,7 @@ export async function loadExportData(gameId: string): Promise<ExportData> {
 
   const { data: questions } = await supabase
     .from('questions')
-    .select('id, prompt, type, difficulty, base_points, per_question_time_sec, order_index')
+    .select('id, question_text, type, difficulty, points, per_question_time_sec, order_index')
     .eq('game_id', gameId)
     .order('order_index', { ascending: true })
 
@@ -76,10 +76,10 @@ export async function exportToExcel(gameId: string, gameName: string) {
 
   const questionsData = data.questions.map((q, index) => ({
     'Номер': index + 1,
-    'Вопрос': q.prompt,
+    'Вопрос': (q as { question_text?: string }).question_text ?? '',
     'Тип': q.type,
     'Сложность': q.difficulty,
-    'Базовые очки': q.base_points,
+    'Базовые очки': (q as { points?: number }).points ?? 0,
     'Время (сек)': q.per_question_time_sec
   }))
 

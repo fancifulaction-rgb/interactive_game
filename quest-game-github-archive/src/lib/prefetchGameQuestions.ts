@@ -1,12 +1,13 @@
 import { supabase } from './supabase'
 
-const QUESTION_SELECT =
-  'id, game_id, question_number, question_text, question_type, type, options, answer, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url'
+/** Колонки таблицы questions в Supabase (без prompt/base_points — только в UI). */
+export const QUESTION_DB_SELECT =
+  'id, game_id, question_number, order_index, question_text, question_type, type, options, answer, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url'
 
 export async function prefetchQuestionsForGame(gameId: string) {
   const { data, error } = await supabase
     .from('questions')
-    .select(QUESTION_SELECT)
+    .select(QUESTION_DB_SELECT)
     .eq('game_id', gameId)
     .order('question_number', { ascending: true })
 

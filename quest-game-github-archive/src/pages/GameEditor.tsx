@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { isAdminPanelLoggedIn } from '../lib/adminAuth'
 import { uploadQuestionMediaQueued } from '../lib/storageUpload'
 import { mergeGameSettings, parseGameSettings } from '../lib/gameSettings'
+import { QUESTION_DB_SELECT } from '../lib/prefetchGameQuestions'
+import { formatErrorMessage } from '../lib/errorMessage'
+import { saveQuestionsForGame } from '../lib/saveGameQuestions'
 import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown } from 'lucide-react'
 import { generateQuestionsWithAi, type AiQuestionProvider } from '../lib/generateQuestions'
 import CollapsibleSection from '../components/CollapsibleSection'
@@ -30,6 +33,7 @@ export default function GameEditor() {
   const navigate = useNavigate()
   const [game, setGame] = useState<any>(null)
   const [questions, setQuestions] = useState<Question[]>([])
+  const loadGenRef = useRef(0)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [aiTopic, setAiTopic] = useState('')
@@ -67,8 +71,8 @@ export default function GameEditor() {
       navigate('/admin/panel')
       return
     }
-    loadGameData()
-  }, [gameId, navigate])
+    void loadGameData()
+  }, [gameId])
 
   const normalizeQuestion = (q: Record<string, unknown>): Question => {
     let answer: string[] = []
@@ -109,6 +113,7 @@ export default function GameEditor() {
   }
 
   const loadGameData = async () => {
+    const gen = ++loadGenRef.current
     setLoading(true)
     try {
       const { data: gameData, error: gameError } = await supabase
@@ -120,6 +125,7 @@ export default function GameEditor() {
         .maybeSingle()
 
       if (gameError) throw gameError
+      if (gen !== loadGenRef.current) return
       if (!gameData) {
         alert('Игра не найдена')
         navigate('/admin/panel')
@@ -137,23 +143,26 @@ export default function GameEditor() {
               k_fast: 1.2,
               combo_bonus: 10,
             }
+      if (gen !== loadGenRef.current) return
       setGame({ ...gameData, scoring })
 
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
-        .select(
-          'id, game_id, question_number, order_index, question_text, prompt, question_type, type, options, answer, answer_count, difficulty, points, base_points, hint_levels, hint_penalties, per_question_time_sec, media_url'
-        )
+        .select(QUESTION_DB_SELECT)
         .eq('game_id', gameId)
         .order('question_number', { ascending: true })
 
       if (questionsError) throw questionsError
+      if (gen !== loadGenRef.current) return
       setQuestions((questionsData || []).map((q) => normalizeQuestion(q)))
-    } catch (err: any) {
+    } catch (err: unknown) {
+      if (gen !== loadGenRef.current) return
       console.error('Ошибка загрузки:', err)
-      alert('Ошибка: ' + err.message)
+      alert('Ошибка: ' + formatErrorMessage(err))
     } finally {
-      setLoading(false)
+      if (gen === loadGenRef.current) {
+        setLoading(false)
+      }
     }
   }
 
@@ -289,34 +298,6 @@ export default function GameEditor() {
     setQuestions(questions.filter((_, i) => i !== index))
   }
 
-  const buildQuestionRow = (question: Question, index: number) => {
-    let finalOptions = question.options ?? []
-    let finalAnswer = question.answer ?? []
-
-    if (question.answer_count > 1) {
-      finalOptions = finalOptions.filter((opt) => opt && typeof opt === 'string' && opt.trim())
-      finalAnswer = finalAnswer.filter((ans) => finalOptions.includes(ans))
-    }
-
-    return {
-      game_id: gameId,
-      question_number: index + 1,
-      question_type: question.type || 'text',
-      type: question.type || 'text',
-      question_text: question.prompt.trim(),
-      media_url: question.media_url,
-      answer: finalAnswer,
-      options: finalOptions,
-      answer_count: question.answer_count > 1 ? finalOptions.length : 1,
-      difficulty: question.difficulty,
-      points: question.base_points,
-      hint_levels: question.hint_levels ?? [],
-      hint_penalties: question.hint_penalties ?? [],
-      per_question_time_sec: question.per_question_time_sec,
-      order_index: index + 1,
-    }
-  }
-
   const handleSaveQuestions = async () => {
     if (!gameId) {
       alert('Игра не выбрана')
@@ -328,107 +309,45 @@ export default function GameEditor() {
       return
     }
 
-    setSaving(true)
-    try {
-      for (let i = 0; i < questions.length; i++) {
-        const question = questions[i]
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i]
 
-        if (!question.prompt?.trim()) {
-          alert(`Вопрос ${i + 1}: заполните текст вопроса`)
+      if (!question.prompt?.trim()) {
+        alert(`Вопрос ${i + 1}: заполните текст вопроса`)
+        return
+      }
+
+      if (question.answer_count === 1) {
+        if (!question.answer?.[0]?.trim()) {
+          alert(`Вопрос ${i + 1}: укажите правильный ответ`)
           return
         }
-
-        if (question.answer_count === 1) {
-          if (!question.answer?.[0]?.trim()) {
-            alert(`Вопрос ${i + 1}: укажите правильный ответ`)
-            return
-          }
-        } else {
-          const filledOptions = (question.options ?? []).filter(
-            (opt) => opt && typeof opt === 'string' && opt.trim()
-          )
-          if (filledOptions.length < 2) {
-            alert(`Вопрос ${i + 1}: заполните минимум 2 варианта ответа`)
-            return
-          }
-          const validAnswers = (question.answer ?? []).filter((ans) =>
-            filledOptions.includes(ans)
-          )
-          if (validAnswers.length === 0) {
-            alert(`Вопрос ${i + 1}: отметьте хотя бы один правильный вариант`)
-            return
-          }
-        }
-      }
-
-      const keptIds = questions.map((q) => q.id).filter((id): id is string => !!id)
-
-      const { data: existingRows, error: existingError } = await supabase
-        .from('questions')
-        .select('id')
-        .eq('game_id', gameId)
-
-      if (existingError) {
-        throw new Error(`Не удалось прочитать вопросы: ${existingError.message}`)
-      }
-
-      const toDelete = (existingRows ?? [])
-        .map((row) => row.id as string)
-        .filter((id) => !keptIds.includes(id))
-
-      if (toDelete.length) {
-        const { error: deleteError } = await supabase.from('questions').delete().in('id', toDelete)
-        if (deleteError) {
-          throw new Error(`Не удалось удалить лишние вопросы: ${deleteError.message}`)
-        }
-      }
-
-      const updateTargets = questions
-        .map((q, index) => ({ q, index }))
-        .filter((item) => !!item.q.id)
-
-      for (let i = 0; i < updateTargets.length; i += 5) {
-        const chunk = updateTargets.slice(i, i + 5)
-        const results = await Promise.all(
-          chunk.map(({ q, index }) =>
-            supabase.from('questions').update(buildQuestionRow(q, index)).eq('id', q.id!)
-          )
+      } else {
+        const filledOptions = (question.options ?? []).filter(
+          (opt) => opt && typeof opt === 'string' && opt.trim()
         )
-        const failed = results.find((r) => r.error)
-        if (failed?.error) throw failed.error
-      }
-
-      const newQuestions = questions
-        .map((q, index) => ({ q, index }))
-        .filter((item) => !item.q.id)
-
-      let merged = [...questions]
-
-      if (newQuestions.length) {
-        const rows = newQuestions.map(({ q, index }) => buildQuestionRow(q, index))
-        const { data: inserted, error: insertError } = await supabase
-          .from('questions')
-          .insert(rows)
-          .select('id, question_number')
-
-        if (insertError) throw insertError
-        if (!inserted?.length) {
-          throw new Error('Новые вопросы не сохранились в базе')
+        if (filledOptions.length < 2) {
+          alert(`Вопрос ${i + 1}: заполните минимум 2 варианта ответа`)
+          return
         }
-
-        let insertOffset = 0
-        merged = questions.map((q) => {
-          if (q.id) return { ...q }
-          const row = inserted[insertOffset++]
-          return row ? { ...q, id: row.id as string } : q
-        })
+        const validAnswers = (question.answer ?? []).filter((ans) =>
+          filledOptions.includes(ans)
+        )
+        if (validAnswers.length === 0) {
+          alert(`Вопрос ${i + 1}: отметьте хотя бы один правильный вариант`)
+          return
+        }
       }
+    }
 
-      setQuestions(merged.map((q, index) => ({ ...q, order_index: index + 1 })))
+    setSaving(true)
+    try {
+      const merged = await saveQuestionsForGame(gameId, questions)
+      setQuestions(merged as Question[])
       showStatus(`Вопросы сохранены: ${questions.length}`)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Ошибка сохранения вопросов:', err)
-      alert('Ошибка сохранения вопросов: ' + (err?.message || String(err)))
+      alert('Ошибка сохранения вопросов: ' + formatErrorMessage(err))
     } finally {
       setSaving(false)
     }

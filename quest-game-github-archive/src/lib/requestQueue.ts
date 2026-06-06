@@ -1,3 +1,5 @@
+import { debugLog } from './debugLog'
+
 type Task<T> = () => Promise<T>
 
 let criticalRunning = 0
@@ -50,6 +52,19 @@ function drainCritical() {
 /** Критичные действия игрока: регистрация, ответ, загрузка табло. */
 export function enqueueCritical<T>(task: Task<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    // #region agent log
+    debugLog(
+      'requestQueue.ts',
+      'enqueueCritical',
+      {
+        queueLen: criticalQueue.length,
+        running: criticalRunning,
+        bgQueueLen: backgroundQueue.length,
+        bgRunning: backgroundRunning,
+      },
+      'H2'
+    )
+    // #endregion
     criticalQueue.push({
       task: task as Task<unknown>,
       resolve: resolve as (v: unknown) => void,

@@ -91,7 +91,7 @@ export default function ScoreboardDetailed() {
 
           questionsResults.push({
             question_id: question.id,
-            question_text: question.prompt,
+            question_text: question.question_text,
             question_number: question.order_index,
             is_correct: answer.is_correct || false,
             score: answer.score || 0,
@@ -106,7 +106,7 @@ export default function ScoreboardDetailed() {
         } else {
           questionsResults.push({
             question_id: question.id,
-            question_text: question.prompt,
+            question_text: question.question_text,
             question_number: question.order_index,
             is_correct: false,
             score: 0,
@@ -161,7 +161,7 @@ export default function ScoreboardDetailed() {
 
           const questionsRes = await supabase
             .from('questions')
-            .select('id, order_index, prompt, question_text')
+            .select('id, order_index, question_text')
             .eq('game_id', gameId)
             .order('order_index', { ascending: true })
 

@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { debugLog } from './debugLog'
 import { fetchGameStateForGame } from './fetchGameState'
 import { isScoreboardHiddenUntilFinish } from './gameSettings'
 import {
@@ -104,13 +105,21 @@ export async function verifyFinishPageAccess(
     return { allowed: false, message: FINISH_MESSAGES.wrong_team }
   }
 
-  if (options?.hasFinishNavigation) {
-    return { allowed: true }
-  }
-
   const state = await fetchGameStateForGame(game.id)
 
   const hideUntilFinish = isScoreboardHiddenUntilFinish(game.settings)
+
+  if (options?.hasFinishNavigation && !hideUntilFinish) {
+    // #region agent log
+    debugLog(
+      'participantAccess.ts',
+      'finish access via navigation',
+      { code, teamId: session.teamId },
+      'H3'
+    )
+    // #endregion
+    return { allowed: true }
+  }
 
   if (isGameFinished(state)) {
     const startedAt = getGameStartedAt(state)
@@ -125,6 +134,14 @@ export async function verifyFinishPageAccess(
   }
 
   if (hideUntilFinish) {
+    // #region agent log
+    debugLog(
+      'participantAccess.ts',
+      'finish blocked hide_until_finish',
+      { code, gameFinished: false },
+      'H3'
+    )
+    // #endregion
     return { allowed: false, message: FINISH_MESSAGES.not_yet }
   }
 

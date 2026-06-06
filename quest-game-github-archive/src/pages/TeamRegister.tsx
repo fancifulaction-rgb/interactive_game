@@ -89,7 +89,7 @@ export default function TeamRegister() {
       }
       debugLog('TeamRegister.tsx', 'game found', { gameId: game.id }, 'D')
 
-      const registrationDenial = await getRegistrationDenial(game.id)
+      const registrationDenial = await enqueueCritical(() => getRegistrationDenial(game.id))
       if (registrationDenial) {
         setError(registrationDenial)
         setLoading(false)
@@ -153,7 +153,9 @@ export default function TeamRegister() {
       setError(
         msg.includes('listener indicated an asynchronous response')
           ? 'Сбой расширения браузера. Отключите блокировщики на этом сайте или попробуйте в режиме инкогнито.'
-          : 'Ошибка регистрации: ' + msg
+          : msg.includes('Failed to fetch') || msg.includes('aborted') || msg.includes('timeout')
+            ? 'Нет связи с Supabase. Закройте лишние вкладки с игрой, подождите 10 с и повторите. На телефоне открывайте http://192.168.3.65:5173 (не localhost).'
+            : 'Ошибка регистрации: ' + msg
       )
     } finally {
       submittingRef.current = false

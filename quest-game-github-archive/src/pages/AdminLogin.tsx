@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { formatErrorMessage } from '../lib/errorMessage'
 import { Lock, User, ArrowLeft, Shield } from 'lucide-react'
 
 export default function AdminLogin() {
@@ -59,11 +60,12 @@ export default function AdminLogin() {
           setError('Неверное имя пользователя или пароль')
         }
       }
-    } catch (err: any) {
-      if (err.message.includes('Invalid login credentials')) {
+    } catch (err: unknown) {
+      const msg = formatErrorMessage(err)
+      if (msg.includes('Invalid login credentials')) {
         setError('Неверный email или пароль')
       } else {
-        setError('Ошибка входа: ' + err.message)
+        setError('Ошибка входа: ' + msg)
       }
     } finally {
       setLoading(false)

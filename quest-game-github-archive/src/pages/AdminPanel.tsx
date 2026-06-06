@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { deleteGameCompletely } from '../lib/deleteGame'
 import { cloneGame } from '../lib/cloneGame'
 import { createNewGame } from '../lib/createGame'
+import { formatErrorMessage } from '../lib/errorMessage'
+import { debugLog } from '../lib/debugLog'
 import { ADMIN_SESSION_HINT, getAdminDisplayName, hasSupabaseAdminSession } from '../lib/adminAuth'
 import {
   generateGameAccessCode,
@@ -101,7 +103,10 @@ export default function AdminPanel() {
       setGames(data || [])
     } catch (err: unknown) {
       if (seq !== gamesLoadSeq.current) return
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = formatErrorMessage(err)
+      // #region agent log
+      debugLog('AdminPanel.tsx', 'loadGames failed', { msg }, 'H6')
+      // #endregion
       console.error('Ошибка загрузки игр:', err)
       setGamesError(msg)
     } finally {

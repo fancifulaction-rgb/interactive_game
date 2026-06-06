@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { broadcastTeamsChanged } from './gameRealtime'
 import { schedulePendingAvatar } from './pendingAvatar'
 import { debugLog } from './debugLog'
 import { enqueueCritical } from './requestQueue'
@@ -51,6 +52,8 @@ async function registerTeamInternal(input: RegisterTeamInput) {
   if (input.avatarFile) {
     schedulePendingAvatar(team.id, input.gameId, input.avatarFile)
   }
+
+  void broadcastTeamsChanged(input.gameId)
 
   return { team, gameCode: input.gameCode }
 }

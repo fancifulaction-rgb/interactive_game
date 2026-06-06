@@ -93,10 +93,27 @@ export async function submitAutoAnswerToServer(
       return result
     } catch (rpcErr) {
       const msg = rpcErr instanceof Error ? rpcErr.message : String(rpcErr)
+      const errName = rpcErr instanceof Error ? rpcErr.name : 'Error'
       const missingRpc =
         msg.includes('submit_auto_answer') ||
         msg.includes('Could not find the function') ||
         msg.includes('schema cache')
+
+      // #region agent log
+      debugLog(
+        'submitAutoAnswer.ts',
+        'rpc error',
+        {
+          ms: Date.now() - started,
+          q: req.question_number,
+          errName,
+          msg: msg.slice(0, 200),
+          missingRpc,
+          hasFallback: !!fallback,
+        },
+        missingRpc ? 'H5' : 'H1'
+      )
+      // #endregion
 
       if (!missingRpc || !fallback) throw rpcErr
 
