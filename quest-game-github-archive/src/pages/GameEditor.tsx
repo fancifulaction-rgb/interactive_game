@@ -289,10 +289,9 @@ export default function GameEditor() {
     const question = questions[index]
     if (question.id) {
       try {
-        const { error } = await supabase
-          .from('questions')
-          .delete()
-          .eq('id', question.id)
+        const { error } = await enqueueCritical(async () =>
+          supabase.from('questions').delete().eq('id', question.id)
+        )
 
         if (error) throw error
       } catch (err: any) {

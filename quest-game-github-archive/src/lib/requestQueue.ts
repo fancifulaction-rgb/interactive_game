@@ -3,6 +3,8 @@ import { debugLog } from './debugLog'
 type Task<T> = () => Promise<T>
 
 let criticalRunning = 0
+/** >0 внутри выполняющейся critical-задачи — вложенный enqueueCritical не ждёт очередь (иначе deadlock). */
+let criticalDepth = 0
 let backgroundRunning = 0
 
 const criticalQueue: Array<{
@@ -38,11 +40,13 @@ function drainCritical() {
 
   const item = criticalQueue.shift()!
   criticalRunning++
-  item
-    .task()
+  criticalDepth++
+  Promise.resolve()
+    .then(() => item.task())
     .then(item.resolve)
     .catch(item.reject)
     .finally(() => {
+      criticalDepth--
       criticalRunning--
       drainCritical()
       tryDrainBackground()
@@ -51,6 +55,9 @@ function drainCritical() {
 
 /** Критичные действия игрока: регистрация, ответ, загрузка табло. */
 export function enqueueCritical<T>(task: Task<T>): Promise<T> {
+  if (criticalDepth > 0) {
+    return task()
+  }
   return new Promise<T>((resolve, reject) => {
     // #region agent log
     debugLog(

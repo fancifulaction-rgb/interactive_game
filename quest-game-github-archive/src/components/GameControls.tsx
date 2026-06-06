@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   Pause,
@@ -64,6 +64,7 @@ export default function GameControls({
   const [teams, setTeams] = useState<LobbyTeam[]>([])
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const teamsLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setSelectedGameId((current) => {
@@ -82,6 +83,7 @@ export default function GameControls({
     const unsubTeams = subscribeToTeams()
 
     return () => {
+      if (teamsLoadTimer.current) clearTimeout(teamsLoadTimer.current)
       unsubState?.()
       unsubTeams?.()
     }
@@ -150,7 +152,11 @@ export default function GameControls({
           filter: `game_id=eq.${selectedGameId}`,
         },
         () => {
-          void loadTeams()
+          if (teamsLoadTimer.current) clearTimeout(teamsLoadTimer.current)
+          teamsLoadTimer.current = setTimeout(() => {
+            teamsLoadTimer.current = null
+            void loadTeams()
+          }, 400)
         }
       )
       .subscribe()
@@ -228,7 +234,7 @@ export default function GameControls({
 
     setDeleting(true)
     try {
-      const result = await deleteGameCompletely(selectedGameId)
+      const result = await enqueueCritical(() => deleteGameCompletely(selectedGameId))
       if (!result.success) {
         throw new Error(result.error || 'Неизвестная ошибка')
       }

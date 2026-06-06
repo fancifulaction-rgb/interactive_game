@@ -1,5 +1,16 @@
 # Баги и статус (2026-06-06)
 
+## Исправлено 2026-06-06 (пауза игры и управление сессией)
+
+| # | Проблема | Причина | Исправление |
+|---|----------|---------|-------------|
+| 15 | «Приостановить» / «Завершить» / «Запустить заново» зависают в админке | **Deadlock:** `GameControls.runAction` → `enqueueCritical` → `pauseGameSession` → `upsertGameStateForGame` → второй `enqueueCritical` (очередь serial=1) | Reentrant `enqueueCritical` (`criticalDepth`) в `requestQueue.ts` |
+| 16 | Удаление игры конкурирует с игроками | `deleteGameCompletely` без очереди | `GameControls` → `enqueueCritical` при удалении |
+| 17 | Удаление вопроса в редакторе вне очереди | Прямой `supabase.delete` | `GameEditor` → `enqueueCritical` |
+| 18 | Шторм запросов teams при Realtime | Каждое событие → `loadTeams()` | Debounce 400 ms в `GameControls` |
+
+Проверка: `node scripts/test-critical-reentrant.mjs`, `node scripts/test-game-session-control.mjs`, `node scripts/qa-extended.mjs`.
+
 ## Исправлено 2026-06-06 (аудит данных и подвисания)
 
 | # | Проблема | Причина | Исправление |
