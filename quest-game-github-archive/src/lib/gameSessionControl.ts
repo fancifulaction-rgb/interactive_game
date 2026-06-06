@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { enqueueCritical } from './requestQueue'
 import { archiveGameSession } from './eventArchive'
 import { fetchGameStateForGame } from './fetchGameState'
 import { resetGameProgress } from './resetGameProgress'
@@ -11,7 +12,7 @@ import {
   type GameStateRow,
 } from './gameSessionState'
 
-export async function upsertGameStateForGame(
+async function upsertGameStateForGameInner(
   gameId: string,
   patch: Partial<GameStateRow>
 ): Promise<void> {
@@ -30,6 +31,13 @@ export async function upsertGameStateForGame(
     })
     if (insErr) throw insErr
   }
+}
+
+export function upsertGameStateForGame(
+  gameId: string,
+  patch: Partial<GameStateRow>
+): Promise<void> {
+  return enqueueCritical(() => upsertGameStateForGameInner(gameId, patch))
 }
 
 export async function startGameSession(gameId: string): Promise<void> {

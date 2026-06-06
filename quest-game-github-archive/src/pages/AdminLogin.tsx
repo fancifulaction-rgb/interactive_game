@@ -45,7 +45,7 @@ export default function AdminLogin() {
         // Временный fallback на старую систему (для миграции)
         const { data, error: dbError } = await supabase
           .from('admins')
-          .select('*')
+          .select('id, username')
           .eq('username', email)
           .eq('password_hash', password)
           .maybeSingle()
@@ -55,6 +55,9 @@ export default function AdminLogin() {
         if (data) {
           localStorage.setItem('admin_logged_in', 'true')
           localStorage.setItem('admin_username', email)
+          alert(
+            'Вход по учётным данным не даёт сессии Supabase — сохранение вопросов и игр не сработает. Используйте вход по email.'
+          )
           navigate('/admin/panel')
         } else {
           setError('Неверное имя пользователя или пароль')

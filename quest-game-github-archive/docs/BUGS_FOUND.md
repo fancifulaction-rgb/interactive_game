@@ -1,6 +1,28 @@
-# Баги и статус (2026-06-04)
+# Баги и статус (2026-06-06)
 
-## Исправлено в этой сессии
+## Исправлено 2026-06-06 (аудит данных и подвисания)
+
+| # | Проблема | Причина | Исправление |
+|---|----------|---------|-------------|
+| 9 | Пустое детальное табло / экспорт | Чтение legacy-колонок `question_id`, `answer_text`, `score` | `ScoreboardDetailed.tsx`, `exportData.ts` → `question_number`, `answer`, `points_earned`, `time_spent` |
+| 10 | `final_page_texts` 404 | Таблицы не было в миграциях | `015_final_page_texts_and_integrity.sql`; fallback в `FinalPageTextsManager` |
+| 11 | Игра без `game_state` | `createGame` только warn при ошибке insert | fail-fast + rollback `games`; очередь `enqueueCritical` |
+| 12 | GameControls конкурировали с другими запросами | `gameSessionControl` без очереди | `upsertGameStateForGame` через `enqueueCritical` |
+| 13 | Журнал миграций ≠ схема | bootstrap 001–012 без SQL | `npm run db:verify-schema`, точечные `db:migrate:013/014/015` |
+| 14 | Дубликаты ответов / несколько game_state | Нет UNIQUE | `015`: `answers_team_question_unique`, `game_state_game_id_unique` |
+
+### Schema drift (верификация)
+
+```bash
+npm run db:verify-schema
+```
+
+REST-проверки: `answers` (новые колонки), `event_archive`, `final_page_texts`, RPC `submit_auto_answer`.  
+Postgres pooler иногда обрывает длинную сессию (`Connection terminated unexpectedly`) — при зелёных REST-пробах схема считается OK.
+
+После DDL: **Supabase Dashboard → Settings → API → Reload schema**.
+
+## Исправлено в сессии 2026-06-04
 
 | # | Проблема | Причина | Исправление |
 |---|----------|---------|-------------|

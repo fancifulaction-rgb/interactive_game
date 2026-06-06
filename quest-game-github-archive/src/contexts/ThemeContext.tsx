@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { BUILTIN_THEMES } from '../lib/builtinThemes'
+import { enqueueBackground } from '../lib/requestQueue'
 
 interface Theme {
   id: string
@@ -23,10 +24,12 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | null>(null)
 
+/** StrictMode в dev монтирует дважды — один фоновый fetch тем на сессию админки. */
+let adminThemesLoadScheduled = false
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [currentTheme, setCurrentTheme] = useState<Theme | null>(null)
   const [themes, setThemes] = useState<Theme[]>([])
-
   useEffect(() => {
     const applyDefault = (list: Theme[]) => {
       setThemes(list)
@@ -54,12 +57,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       applyDefault(BUILTIN_THEMES as Theme[])
     }
 
+    if (adminThemesLoadScheduled) return
+    adminThemesLoadScheduled = true
+
     const loadThemes = async () => {
       try {
-        const { data, error } = await supabase
-          .from('themes')
-          .select('id,name,display_name,colors,effects')
-          .order('display_name', { ascending: true })
+        const { data, error } = await enqueueBackground(async () =>
+          supabase
+            .from('themes')
+            .select('id,name,display_name,colors,effects')
+            .order('display_name', { ascending: true })
+        )
 
         if (error) throw error
         const list = data?.length ? data : BUILTIN_THEMES
@@ -70,7 +78,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const t = window.setTimeout(loadThemes, 3000)
+    const schedule = () => {
+      void loadThemes()
+    }
+
+    if (typeof requestIdleCallback === 'function') {
+      const id = requestIdleCallback(schedule, { timeout: 8000 })
+      return () => cancelIdleCallback(id)
+    }
+
+    const t = window.setTimeout(schedule, 5000)
     return () => window.clearTimeout(t)
   }, [])
 

@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { generateGameAccessCode } from './gameAccessCode'
+import { enqueueCritical } from './requestQueue'
 
 const DEFAULT_SCORING = {
   p_base: 100,
@@ -43,14 +44,17 @@ export async function createNewGame(title = 'Новая игра'): Promise<Crea
       .maybeSingle()
 
     if (!error && data) {
-      const { error: stateError } = await supabase.from('game_state').insert({
-        game_id: data.id,
-        current_state: 'waiting',
-        is_paused: false,
+      await enqueueCritical(async () => {
+        const { error: stateError } = await supabase.from('game_state').insert({
+          game_id: data.id,
+          current_state: 'waiting',
+          is_paused: false,
+        })
+        if (stateError) {
+          await supabase.from('games').delete().eq('id', data.id)
+          throw new Error(`Не удалось создать состояние игры: ${stateError.message}`)
+        }
       })
-      if (stateError) {
-        console.warn('game_state waiting:', stateError.message)
-      }
       return data as CreatedGameRow
     }
 

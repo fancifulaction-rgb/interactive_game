@@ -6,7 +6,13 @@ import { cloneGame } from '../lib/cloneGame'
 import { createNewGame } from '../lib/createGame'
 import { formatErrorMessage } from '../lib/errorMessage'
 import { debugLog } from '../lib/debugLog'
-import { ADMIN_SESSION_HINT, getAdminDisplayName, hasSupabaseAdminSession } from '../lib/adminAuth'
+import {
+  ADMIN_SESSION_HINT,
+  getAdminDisplayName,
+  hasSupabaseAdminSession,
+  resetAuthSessionCache,
+} from '../lib/adminAuth'
+import { enqueueBackground, enqueueCritical } from '../lib/requestQueue'
 import {
   generateGameAccessCode,
   isValidGameAccessCode,
@@ -61,6 +67,12 @@ interface Settings {
   category: string
 }
 
+/** IMP-TD-001: явные поля вместо select('*') на hot-path админки */
+const GAME_LIST_SELECT =
+  'id, title, code, theme, mask_board, total_time_sec, per_question_time_sec, created_at, scoring'
+const THEME_SELECT = 'id, name, display_name, colors, effects, created_at'
+const SETTINGS_SELECT = 'id, key, value, description, category'
+
 export default function AdminPanel() {
   const navigate = useNavigate()
   const [games, setGames] = useState<Game[]>([])
@@ -88,21 +100,27 @@ export default function AdminPanel() {
     setAdminSessionOk(await hasSupabaseAdminSession())
   }, [])
 
-  const loadGames = useCallback(async () => {
+  const loadGames = useCallback(async (signal?: AbortSignal) => {
     const seq = ++gamesLoadSeq.current
     setGamesLoading(true)
     setGamesError('')
     try {
-      const { data, error } = await supabase
-        .from('games')
-        .select('*')
-        .order('created_at', { ascending: false })
+      const { data, error } = await enqueueCritical(async () => {
+        let query = supabase
+          .from('games')
+          .select(GAME_LIST_SELECT)
+          .order('created_at', { ascending: false })
+        if (signal) query = query.abortSignal(signal)
+        return query
+      })
 
       if (error) throw error
       if (seq !== gamesLoadSeq.current) return
       setGames(data || [])
     } catch (err: unknown) {
       if (seq !== gamesLoadSeq.current) return
+      if (signal?.aborted) return
+      if (err instanceof DOMException && err.name === 'AbortError') return
       const msg = formatErrorMessage(err)
       // #region agent log
       debugLog('AdminPanel.tsx', 'loadGames failed', { msg }, 'H6')
@@ -126,22 +144,34 @@ export default function AdminPanel() {
       navigate('/admin/login')
       return
     }
-    void refreshAdminSession()
-    if (activeTab === 'games') {
-      void loadGames()
-    } else if (activeTab === 'settings') {
-      void loadGames()
-      loadSettings()
-      loadThemes()
+
+    const abort = new AbortController()
+    void (async () => {
+      await refreshAdminSession()
+      if (abort.signal.aborted) return
+      if (activeTab === 'games') {
+        await loadGames(abort.signal)
+        return
+      }
+      if (activeTab === 'settings') {
+        await loadGames(abort.signal)
+        if (abort.signal.aborted) return
+        await loadSettings()
+        if (abort.signal.aborted) return
+        await loadThemes()
+      }
+    })()
+
+    return () => {
+      abort.abort()
     }
   }, [navigate, activeTab, refreshAdminSession, loadGames])
 
   const loadThemes = async () => {
     try {
-      const { data, error } = await supabase
-        .from('themes')
-        .select('*')
-        .order('display_name', { ascending: true })
+      const { data, error } = await enqueueBackground(async () =>
+        supabase.from('themes').select(THEME_SELECT).order('display_name', { ascending: true })
+      )
 
       if (error) throw error
       setThemes(data || [])
@@ -152,10 +182,9 @@ export default function AdminPanel() {
 
   const loadSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from('settings')
-        .select('*')
-        .order('category', { ascending: true })
+      const { data, error } = await enqueueBackground(async () =>
+        supabase.from('settings').select(SETTINGS_SELECT).order('category', { ascending: true })
+      )
 
       if (error) throw error
       setSettings(data || [])
@@ -167,6 +196,9 @@ export default function AdminPanel() {
   const handleLogout = () => {
     localStorage.removeItem('admin_logged_in')
     localStorage.removeItem('admin_username')
+    localStorage.removeItem('admin_email')
+    resetAuthSessionCache()
+    void supabase.auth.signOut()
     navigate('/admin/login')
   }
 
@@ -254,7 +286,7 @@ export default function AdminPanel() {
 
       const { data: fullGame, error } = await supabase
         .from('games')
-        .select('*')
+        .select(GAME_LIST_SELECT)
         .eq('id', newGame.id)
         .maybeSingle()
 
@@ -330,7 +362,7 @@ export default function AdminPanel() {
       const { data, error } = await supabase
         .from('themes')
         .insert(newTheme)
-        .select()
+        .select(THEME_SELECT)
         .maybeSingle()
 
       if (error) throw error
@@ -355,7 +387,7 @@ export default function AdminPanel() {
           effects: themeData.effects
         })
         .eq('id', themeId)
-        .select()
+        .select(THEME_SELECT)
         .maybeSingle()
 
       if (error) throw error

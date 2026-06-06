@@ -74,6 +74,72 @@ export function enqueueCritical<T>(task: Task<T>): Promise<T> {
   })
 }
 
+const MAX_SUPABASE_FETCHES = 2
+let supabaseFetchesRunning = 0
+const supabaseFetchWaiters: Array<() => void> = []
+
+type SupabaseFetchJob<T> = {
+  task: () => Promise<T>
+  priority: number
+  resolve: (v: T) => void
+  reject: (e: unknown) => void
+}
+
+const supabaseFetchQueue: SupabaseFetchJob<unknown>[] = []
+
+function acquireSupabaseFetchSlot(): Promise<void> {
+  if (supabaseFetchesRunning < MAX_SUPABASE_FETCHES) {
+    supabaseFetchesRunning++
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    supabaseFetchWaiters.push(() => {
+      supabaseFetchesRunning++
+      resolve()
+    })
+  })
+}
+
+function releaseSupabaseFetchSlot(): void {
+  supabaseFetchesRunning--
+  const next = supabaseFetchWaiters.shift()
+  if (next) next()
+}
+
+function drainSupabaseFetchQueue(): void {
+  while (supabaseFetchesRunning < MAX_SUPABASE_FETCHES && supabaseFetchQueue.length > 0) {
+    supabaseFetchQueue.sort((a, b) => b.priority - a.priority)
+    const job = supabaseFetchQueue.shift()!
+    void acquireSupabaseFetchSlot()
+      .then(() => job.task())
+      .then(job.resolve)
+      .catch(job.reject)
+      .finally(() => {
+        releaseSupabaseFetchSlot()
+        drainSupabaseFetchQueue()
+      })
+  }
+}
+
+/**
+ * До 2 параллельных запросов к *.supabase.co (баланс: HTTP/2 reset vs мобильная сеть).
+ * priority > 0 — POST/PATCH/DELETE обгоняют фоновые GET (сохранение вопросов на телефоне).
+ */
+export function enqueueSupabaseFetch<T>(
+  task: () => Promise<T>,
+  priority: number = 0
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    supabaseFetchQueue.push({
+      task: task as () => Promise<unknown>,
+      priority,
+      resolve: resolve as (v: unknown) => void,
+      reject,
+    })
+    drainSupabaseFetchQueue()
+  })
+}
+
 /** Фон: аватар, уведомления — после critical. */
 export function enqueueBackground<T>(task: Task<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {

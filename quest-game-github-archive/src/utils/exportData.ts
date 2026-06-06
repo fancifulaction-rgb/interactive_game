@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase'
+import { answerJsonToDisplayText } from '../lib/answerDisplay'
+import { enqueueCritical } from '../lib/requestQueue'
 
 // Динамические импорты для тяжелых библиотек
 let jsPDF: any, XLSX: any, saveAs: any
@@ -19,47 +21,63 @@ async function loadExportLibraries() {
   }
 }
 
+export interface ExportAnswerRow {
+  id: string
+  team_id: string
+  question_number: number
+  answer: unknown
+  time_spent: number | null
+  points_earned: number | null
+  is_correct: boolean | null
+}
+
 export interface ExportData {
   game: any
   teams: any[]
   questions: any[]
-  answers: any[]
+  answers: ExportAnswerRow[]
+}
+
+function questionNumberOf(q: { question_number?: number; order_index?: number }, index: number): number {
+  return q.question_number ?? q.order_index ?? index + 1
 }
 
 export async function loadExportData(gameId: string): Promise<ExportData> {
-  const { data: game } = await supabase
-    .from('games')
-    .select('id, title, description, created_at, code')
-    .eq('id', gameId)
-    .maybeSingle()
+  return enqueueCritical(async () => {
+    const { data: game } = await supabase
+      .from('games')
+      .select('id, title, created_at, code')
+      .eq('id', gameId)
+      .maybeSingle()
 
-  const { data: teams } = await supabase
-    .from('teams')
-    .select('id, team_name, captain_name, total_score, registration_time')
-    .eq('game_id', gameId)
-    .order('total_score', { ascending: false })
+    const { data: teams } = await supabase
+      .from('teams')
+      .select('id, team_name, captain_name, total_score, registration_time')
+      .eq('game_id', gameId)
+      .order('total_score', { ascending: false })
 
-  const { data: questions } = await supabase
-    .from('questions')
-    .select('id, question_text, type, difficulty, points, per_question_time_sec, order_index')
-    .eq('game_id', gameId)
-    .order('order_index', { ascending: true })
+    const { data: questions } = await supabase
+      .from('questions')
+      .select('id, question_text, type, difficulty, points, per_question_time_sec, question_number, order_index')
+      .eq('game_id', gameId)
+      .order('question_number', { ascending: true })
 
-  const teamIds = (teams ?? []).map((t) => t.id)
-  const { data: answers } =
-    teamIds.length > 0
-      ? await supabase
-          .from('answers')
-          .select('id, team_id, question_id, answer_text, time_taken, score, is_correct')
-          .in('team_id', teamIds)
-      : { data: [] as ExportData['answers'] }
+    const teamIds = (teams ?? []).map((t) => t.id)
+    const { data: answers } =
+      teamIds.length > 0
+        ? await supabase
+            .from('answers')
+            .select('id, team_id, question_number, answer, time_spent, points_earned, is_correct')
+            .in('team_id', teamIds)
+        : { data: [] as ExportAnswerRow[] }
 
-  return {
-    game: game || {},
-    teams: teams || [],
-    questions: questions || [],
-    answers: answers || []
-  }
+    return {
+      game: game || {},
+      teams: teams || [],
+      questions: questions || [],
+      answers: (answers || []) as ExportAnswerRow[],
+    }
+  })
 }
 
 export async function exportToExcel(gameId: string, gameName: string) {
@@ -75,7 +93,7 @@ export async function exportToExcel(gameId: string, gameName: string) {
   }))
 
   const questionsData = data.questions.map((q, index) => ({
-    'Номер': index + 1,
+    'Номер': questionNumberOf(q, index),
     'Вопрос': (q as { question_text?: string }).question_text ?? '',
     'Тип': q.type,
     'Сложность': q.difficulty,
@@ -85,15 +103,18 @@ export async function exportToExcel(gameId: string, gameName: string) {
 
   const answersData = data.answers.map(answer => {
     const team = data.teams.find(t => t.id === answer.team_id)
-    const question = data.questions.find(q => q.id === answer.question_id)
+    const question = data.questions.find(
+      (q, idx) => questionNumberOf(q, idx) === answer.question_number
+    )
+    const questionText = (question as { question_text?: string } | undefined)?.question_text ?? ''
     
     return {
       'Команда': team?.team_name || 'Неизвестно',
-      'Вопрос №': question ? (data.questions.findIndex(q => q.id === question.id) + 1) : 'Неизвестно',
-      'Вопрос': question?.prompt?.substring(0, 50) + (question?.prompt?.length > 50 ? '...' : '') || 'Неизвестно',
-      'Ответ': answer.answer_text || '',
-      'Время (сек)': answer.time_taken,
-      'Очки': answer.score,
+      'Вопрос №': answer.question_number,
+      'Вопрос': questionText.length > 50 ? questionText.substring(0, 50) + '...' : questionText || 'Неизвестно',
+      'Ответ': answerJsonToDisplayText(answer.answer),
+      'Время (сек)': answer.time_spent,
+      'Очки': answer.points_earned,
       'Правильно': answer.is_correct ? 'Да' : 'Нет'
     }
   })
@@ -103,7 +124,7 @@ export async function exportToExcel(gameId: string, gameName: string) {
   // Создаем лист с информацией об игре
   const gameInfoData = [
     { 'Параметр': 'Название игры', 'Значение': data.game.title || gameName },
-    { 'Параметр': 'Описание', 'Значение': data.game.description || 'Не указано' },
+    { 'Параметр': 'Код игры', 'Значение': data.game.code || 'Не указан' },
     { 'Параметр': 'Количество команд', 'Значение': data.teams.length },
     { 'Параметр': 'Количество вопросов', 'Значение': data.questions.length },
     { 'Параметр': 'Дата создания', 'Значение': data.game.created_at ? new Date(data.game.created_at).toLocaleString('ru-RU') : 'Неизвестно' }

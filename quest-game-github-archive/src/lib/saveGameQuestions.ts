@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
-import { ensureAuthenticatedSession } from './adminAuth'
+import { ensureAuthenticatedSessionForWrite } from './adminAuth'
 import { debugLog } from './debugLog'
+import { enqueueCritical } from './requestQueue'
 
 export type QuestionSaveInput = {
   id?: string
@@ -17,13 +18,32 @@ export type QuestionSaveInput = {
   per_question_time_sec: number | null
 }
 
+let lastStepAt = 0
+let questionsSaveInFlight = false
+
 function markStep(step: string, t0: number) {
-  const ms = Date.now() - t0
+  const now = Date.now()
+  const totalMs = now - t0
+  const stepMs = lastStepAt ? now - lastStepAt : totalMs
+  lastStepAt = now
   // #region agent log
-  debugLog('saveGameQuestions.ts', step, { ms }, 'H8')
+  debugLog('saveGameQuestions.ts', step, { totalMs, stepMs }, 'H8')
   // #endregion
   if (import.meta.env.DEV) {
-    console.warn(`[quest-game] saveQuestions · ${step}: ${ms}ms`)
+    console.warn(`[quest-game] saveQuestions · ${step}: +${stepMs}ms (всего ${totalMs}ms)`)
+  }
+}
+
+/** Удалить вопросы игры, которых нет в редакторе — без предварительного SELECT. */
+async function deleteOrphanQuestions(gameId: string, keptIds: string[]): Promise<void> {
+  let query = supabase.from('questions').delete().eq('game_id', gameId)
+  if (keptIds.length > 0) {
+    const inList = `(${keptIds.map((id) => `"${id}"`).join(',')})`
+    query = query.not('id', 'in', inList)
+  }
+  const { error } = await query
+  if (error) {
+    throw new Error(`Не удалось удалить лишние вопросы: ${error.message}`)
   }
 }
 
@@ -62,34 +82,33 @@ export async function saveQuestionsForGame(
   gameId: string,
   questions: QuestionSaveInput[]
 ): Promise<QuestionSaveInput[]> {
+  if (questionsSaveInFlight) {
+    throw new Error('Сохранение вопросов уже выполняется — дождитесь завершения')
+  }
+  return enqueueCritical(async () => {
+    questionsSaveInFlight = true
+    lastStepAt = 0
+    try {
+      return await saveQuestionsForGameCore(gameId, questions)
+    } finally {
+      questionsSaveInFlight = false
+    }
+  })
+}
+
+async function saveQuestionsForGameCore(
+  gameId: string,
+  questions: QuestionSaveInput[]
+): Promise<QuestionSaveInput[]> {
   const t0 = Date.now()
 
-  await ensureAuthenticatedSession()
+  await ensureAuthenticatedSessionForWrite()
   markStep('auth session', t0)
 
   const keptIds = questions.map((q) => q.id).filter((id): id is string => !!id)
 
-  const { data: existingRows, error: existingError } = await supabase
-    .from('questions')
-    .select('id')
-    .eq('game_id', gameId)
-
-  if (existingError) {
-    throw new Error(`Не удалось прочитать вопросы: ${existingError.message}`)
-  }
-  markStep('select ids', t0)
-
-  const toDelete = (existingRows ?? [])
-    .map((row) => row.id as string)
-    .filter((id) => !keptIds.includes(id))
-
-  if (toDelete.length) {
-    const { error: deleteError } = await supabase.from('questions').delete().in('id', toDelete)
-    if (deleteError) {
-      throw new Error(`Не удалось удалить лишние вопросы: ${deleteError.message}`)
-    }
-  }
-  markStep('delete orphans', t0)
+  await deleteOrphanQuestions(gameId, keptIds)
+  markStep(`delete orphans (keep ${keptIds.length})`, t0)
 
   const upsertRows = questions
     .map((q, index) => (q.id ? { id: q.id, ...buildRow(gameId, q, index) } : null))

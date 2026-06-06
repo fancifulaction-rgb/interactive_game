@@ -2,11 +2,33 @@ import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Users, Shield, Image as ImageIcon } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { enqueueBackground } from '../lib/requestQueue'
 
 interface QuestSettings {
   quest_title: string
   quest_subtitle: string
   quest_logo_url?: string
+}
+
+/** StrictMode в dev монтирует дважды — один fetch логотипа на вкладку. */
+let questLogoFetch: Promise<string | null> | null = null
+
+async function fetchQuestLogoFromDb(): Promise<string | null> {
+  if (!questLogoFetch) {
+    questLogoFetch = enqueueBackground(async () => {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'quest_logo_url')
+        .maybeSingle()
+      if (error) throw error
+      return data?.value ?? null
+    }).catch((err) => {
+      questLogoFetch = null
+      throw err
+    })
+  }
+  return questLogoFetch
 }
 
 export default function Home() {
@@ -19,18 +41,23 @@ export default function Home() {
   const [logoLoaded, setLogoLoaded] = useState(false)
 
   useEffect(() => {
-    loadQuestSettings()
+    let alive = true
+    void loadQuestSettings(() => alive)
 
-    // Подписываемся на изменения настроек
     const handleStorageChange = () => {
-      loadQuestSettings()
+      questLogoFetch = null
+      sessionStorage.removeItem('quest_logo_url')
+      void loadQuestSettings()
     }
 
     window.addEventListener('storage', handleStorageChange)
-    return () => window.removeEventListener('storage', handleStorageChange)
+    return () => {
+      alive = false
+      window.removeEventListener('storage', handleStorageChange)
+    }
   }, [])
 
-  const loadQuestSettings = async () => {
+  const loadQuestSettings = async (isAlive: () => boolean = () => true) => {
     try {
       // Загружаем настройки из localStorage
       let parsedSettings = {
@@ -56,22 +83,21 @@ export default function Home() {
         return
       }
 
-      const { data: dbSettings, error: dbError } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('key', 'quest_logo_url')
-        .maybeSingle()
+      const logoUrl = await fetchQuestLogoFromDb()
 
-      if (!dbError && dbSettings?.value) {
-        parsedSettings.quest_logo_url = dbSettings.value
-        sessionStorage.setItem('quest_logo_url', dbSettings.value)
+      if (!isAlive()) return
+
+      if (logoUrl) {
+        parsedSettings.quest_logo_url = logoUrl
+        sessionStorage.setItem('quest_logo_url', logoUrl)
       }
 
       setSettings(parsedSettings)
       setLogoLoaded(true)
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
       console.warn('Настройки с сервера недоступны, используем локальные:', error)
-      setLogoLoaded(true)
+      if (isAlive()) setLogoLoaded(true)
     }
   }
 

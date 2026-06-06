@@ -6,15 +6,47 @@ export async function hasSupabaseAdminSession(): Promise<boolean> {
   return !!data.session
 }
 
+let lastAuthCheckAt = 0
+const AUTH_CHECK_CACHE_MS = 60_000
+
+const SESSION_EXPIRED_MSG =
+  'Сессия Supabase истекла. Выйдите из админки и войдите снова через email — иначе сохранение отклоняется.'
+
 /** Перед записью в БД: RLS 011 разрешает UPDATE questions только authenticated. */
 export async function ensureAuthenticatedSession(): Promise<void> {
+  if (Date.now() - lastAuthCheckAt < AUTH_CHECK_CACHE_MS) return
+
   const { data, error } = await supabase.auth.getSession()
   if (error) throw error
   if (!data.session) {
-    throw new Error(
-      'Сессия Supabase истекла. Выйдите из админки и войдите снова через email — иначе сохранение зависает или отклоняется.'
-    )
+    throw new Error(SESSION_EXPIRED_MSG)
   }
+  lastAuthCheckAt = Date.now()
+}
+
+/** Перед INSERT/UPDATE/DELETE: всегда проверить сессию и обновить JWT (важно на iPhone/Safari). */
+export async function ensureAuthenticatedSessionForWrite(): Promise<void> {
+  const { data, error } = await supabase.auth.getSession()
+  if (error) throw error
+  if (!data.session) {
+    throw new Error(SESSION_EXPIRED_MSG)
+  }
+
+  const expiresAt = data.session.expires_at ?? 0
+  const expiresInMs = expiresAt * 1000 - Date.now()
+  if (expiresInMs < 5 * 60_000) {
+    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession()
+    if (refreshError) throw refreshError
+    if (!refreshed.session) {
+      throw new Error(SESSION_EXPIRED_MSG)
+    }
+  }
+
+  lastAuthCheckAt = Date.now()
+}
+
+export function resetAuthSessionCache(): void {
+  lastAuthCheckAt = 0
 }
 
 export const ADMIN_SESSION_HINT =

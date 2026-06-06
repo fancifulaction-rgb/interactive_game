@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { answerJsonToDisplayText } from '../lib/answerDisplay'
 import { subscribeGameRealtime } from '../lib/gameRealtime'
+import { enqueueCritical } from '../lib/requestQueue'
 import { Trophy, Medal, Award, ArrowLeft, Download, FileText, FileSpreadsheet, BarChart3 } from 'lucide-react'
 import { exportToExcel, exportToPDF, exportToCSV, exportAllFormats } from '../utils/exportData'
 
@@ -65,12 +67,11 @@ export default function ScoreboardDetailed() {
     questionsData: any[],
     answersData: Array<{
       team_id: string
-      question_id: string
+      question_number: number
       is_correct: boolean | null
-      score: number | null
-      time_taken: number | null
-      answer_text: string | null
-      hints_used: unknown
+      points_earned: number | null
+      time_spent: number | null
+      answer: unknown
     }>
   ) => {
     const details: { [teamId: string]: TeamDetails } = {}
@@ -83,31 +84,31 @@ export default function ScoreboardDetailed() {
       let hintPenalties = 0
 
       for (const question of questionsData) {
-        const answer = teamAnswers.find((a) => a.question_id === question.id)
+        const qNumber =
+          (question.question_number as number | undefined) ??
+          (question.order_index as number | undefined) ??
+          0
+        const answer = teamAnswers.find((a) => a.question_number === qNumber)
 
         if (answer) {
-          const hintsUsed = Array.isArray(answer.hints_used) ? answer.hints_used.length : 0
-          const hintPenalty = hintsUsed * 10
-
           questionsResults.push({
             question_id: question.id,
             question_text: question.question_text,
-            question_number: question.order_index,
+            question_number: qNumber,
             is_correct: answer.is_correct || false,
-            score: answer.score || 0,
-            time_taken: answer.time_taken || 0,
-            answer_text: answer.answer_text || '',
-            hints_used: hintsUsed,
+            score: answer.points_earned || 0,
+            time_taken: answer.time_spent || 0,
+            answer_text: answerJsonToDisplayText(answer.answer),
+            hints_used: 0,
           })
 
-          totalTime += answer.time_taken || 0
+          totalTime += answer.time_spent || 0
           if (answer.is_correct) correctAnswers++
-          hintPenalties += hintPenalty
         } else {
           questionsResults.push({
             question_id: question.id,
             question_text: question.question_text,
-            question_number: question.order_index,
+            question_number: qNumber,
             is_correct: false,
             score: 0,
             time_taken: 0,
@@ -142,60 +143,62 @@ export default function ScoreboardDetailed() {
       }
 
       try {
-        let gameId = cachedGameIdRef.current
-        let questionsData = cachedQuestionsRef.current
+        await enqueueCritical(async () => {
+          let gameId = cachedGameIdRef.current
+          let questionsData = cachedQuestionsRef.current
 
-        if (!refreshOnly || !gameId) {
-          const { data: gameData, error: gameError } = await supabase
-            .from('games')
-            .select('id, code, title, mask_board')
-            .eq('code', gameCode)
-            .maybeSingle()
+          if (!refreshOnly || !gameId) {
+            const { data: gameData, error: gameError } = await supabase
+              .from('games')
+              .select('id, code, title, mask_board')
+              .eq('code', gameCode)
+              .maybeSingle()
 
-          if (gameError) throw gameError
-          if (!gameData || seq !== loadSeqRef.current) return
+            if (gameError) throw gameError
+            if (!gameData || seq !== loadSeqRef.current) return
 
-          gameId = gameData.id
-          cachedGameIdRef.current = gameId
-          setGame(gameData)
+            gameId = gameData.id
+            cachedGameIdRef.current = gameId
+            setGame(gameData)
 
-          const questionsRes = await supabase
-            .from('questions')
-            .select('id, order_index, question_text')
+            const questionsRes = await supabase
+              .from('questions')
+              .select('id, question_number, order_index, question_text')
+              .eq('game_id', gameId)
+              .order('question_number', { ascending: true })
+
+            if (questionsRes.error) throw questionsRes.error
+            if (seq !== loadSeqRef.current) return
+
+            questionsData = questionsRes.data ?? []
+            cachedQuestionsRef.current = questionsData
+            setQuestions(questionsData)
+          }
+
+          if (!gameId) return
+
+          const teamsRes = await supabase
+            .from('teams')
+            .select('id, team_name, captain_name, avatar_url, total_score, registration_time')
             .eq('game_id', gameId)
-            .order('order_index', { ascending: true })
+            .order('total_score', { ascending: false })
 
-          if (questionsRes.error) throw questionsRes.error
+          if (teamsRes.error) throw teamsRes.error
           if (seq !== loadSeqRef.current) return
 
-          questionsData = questionsRes.data ?? []
-          cachedQuestionsRef.current = questionsData
-          setQuestions(questionsData)
-        }
+          const teamsData = teamsRes.data ?? []
+          setTeams(teamsData)
 
-        if (!gameId) return
+          const answersRes = await supabase
+            .from('answers')
+            .select('team_id, question_number, is_correct, points_earned, time_spent, answer')
+            .eq('game_id', gameId)
 
-        const teamsRes = await supabase
-          .from('teams')
-          .select('id, team_name, captain_name, avatar_url, total_score, registration_time')
-          .eq('game_id', gameId)
-          .order('total_score', { ascending: false })
+          if (answersRes.error) throw answersRes.error
+          if (seq !== loadSeqRef.current) return
 
-        if (teamsRes.error) throw teamsRes.error
-        if (seq !== loadSeqRef.current) return
-
-        const teamsData = teamsRes.data ?? []
-        setTeams(teamsData)
-
-        const answersRes = await supabase
-          .from('answers')
-          .select('team_id, question_id, is_correct, score, time_taken, answer_text, hints_used')
-          .eq('game_id', gameId)
-
-        if (answersRes.error) throw answersRes.error
-        if (seq !== loadSeqRef.current) return
-
-        setTeamDetails(buildTeamDetails(teamsData, questionsData, answersRes.data ?? []))
+          setTeamDetails(buildTeamDetails(teamsData, questionsData, answersRes.data ?? []))
+        })
       } catch (err: unknown) {
         if (seq === loadSeqRef.current) {
           console.error('Ошибка загрузки табло:', err)

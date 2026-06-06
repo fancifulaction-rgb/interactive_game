@@ -6,6 +6,7 @@ import { uploadQuestionMediaQueued } from '../lib/storageUpload'
 import { mergeGameSettings, parseGameSettings } from '../lib/gameSettings'
 import { QUESTION_DB_SELECT } from '../lib/prefetchGameQuestions'
 import { formatErrorMessage } from '../lib/errorMessage'
+import { enqueueCritical } from '../lib/requestQueue'
 import { saveQuestionsForGame } from '../lib/saveGameQuestions'
 import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown } from 'lucide-react'
 import { generateQuestionsWithAi, type AiQuestionProvider } from '../lib/generateQuestions'
@@ -116,45 +117,47 @@ export default function GameEditor() {
     const gen = ++loadGenRef.current
     setLoading(true)
     try {
-      const { data: gameData, error: gameError } = await supabase
-        .from('games')
-        .select(
-          'id, title, code, theme, finish_page_type, mask_board, settings, total_time_sec, per_question_time_sec, scoring'
-        )
-        .eq('id', gameId)
-        .maybeSingle()
+      await enqueueCritical(async () => {
+        const { data: gameData, error: gameError } = await supabase
+          .from('games')
+          .select(
+            'id, title, code, theme, finish_page_type, mask_board, settings, total_time_sec, per_question_time_sec, scoring'
+          )
+          .eq('id', gameId)
+          .maybeSingle()
 
-      if (gameError) throw gameError
-      if (gen !== loadGenRef.current) return
-      if (!gameData) {
-        alert('Игра не найдена')
-        navigate('/admin/panel')
-        return
-      }
+        if (gameError) throw gameError
+        if (gen !== loadGenRef.current) return
+        if (!gameData) {
+          alert('Игра не найдена')
+          navigate('/admin/panel')
+          return
+        }
 
-      const scoring =
-        gameData.scoring && typeof gameData.scoring === 'object'
-          ? gameData.scoring
-          : {
-              p_base: 100,
-              k_diff: 1.0,
-              k_time: 0.5,
-              k_skip: 0.8,
-              k_fast: 1.2,
-              combo_bonus: 10,
-            }
-      if (gen !== loadGenRef.current) return
-      setGame({ ...gameData, scoring })
+        const scoring =
+          gameData.scoring && typeof gameData.scoring === 'object'
+            ? gameData.scoring
+            : {
+                p_base: 100,
+                k_diff: 1.0,
+                k_time: 0.5,
+                k_skip: 0.8,
+                k_fast: 1.2,
+                combo_bonus: 10,
+              }
+        if (gen !== loadGenRef.current) return
+        setGame({ ...gameData, scoring })
 
-      const { data: questionsData, error: questionsError } = await supabase
-        .from('questions')
-        .select(QUESTION_DB_SELECT)
-        .eq('game_id', gameId)
-        .order('question_number', { ascending: true })
+        const { data: questionsData, error: questionsError } = await supabase
+          .from('questions')
+          .select(QUESTION_DB_SELECT)
+          .eq('game_id', gameId)
+          .order('question_number', { ascending: true })
 
-      if (questionsError) throw questionsError
-      if (gen !== loadGenRef.current) return
-      setQuestions((questionsData || []).map((q) => normalizeQuestion(q)))
+        if (questionsError) throw questionsError
+        if (gen !== loadGenRef.current) return
+        setQuestions((questionsData || []).map((q) => normalizeQuestion(q)))
+      })
     } catch (err: unknown) {
       if (gen !== loadGenRef.current) return
       console.error('Ошибка загрузки:', err)
@@ -169,32 +172,34 @@ export default function GameEditor() {
   const handleSaveGame = async () => {
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('games')
-        .update({
-          title: game?.title || '',
-          code: game?.code || '',
-          theme: game?.theme || 'default',
-          finish_page_type: game?.finish_page_type || 'scoreboard',
-          mask_board: game?.mask_board || false,
-          settings: parseGameSettings(game?.settings),
-          total_time_sec: game?.total_time_sec || 1200,
-          per_question_time_sec: game?.per_question_time_sec || 120,
-          scoring: game?.scoring || {
-            p_base: 100,
-            k_diff: 1.0,
-            k_time: 0.5,
-            k_skip: 0.8,
-            k_fast: 1.2,
-            combo_bonus: 10
-          }
-        })
-        .eq('id', gameId)
+      const { error } = await enqueueCritical(async () =>
+        supabase
+          .from('games')
+          .update({
+            title: game?.title || '',
+            code: game?.code || '',
+            theme: game?.theme || 'default',
+            finish_page_type: game?.finish_page_type || 'scoreboard',
+            mask_board: game?.mask_board || false,
+            settings: parseGameSettings(game?.settings),
+            total_time_sec: game?.total_time_sec || 1200,
+            per_question_time_sec: game?.per_question_time_sec || 120,
+            scoring: game?.scoring || {
+              p_base: 100,
+              k_diff: 1.0,
+              k_time: 0.5,
+              k_skip: 0.8,
+              k_fast: 1.2,
+              combo_bonus: 10
+            }
+          })
+          .eq('id', gameId)
+      )
 
       if (error) throw error
       showStatus('Игра сохранена')
-    } catch (err: any) {
-      alert('Ошибка сохранения: ' + err.message)
+    } catch (err: unknown) {
+      alert('Ошибка сохранения: ' + formatErrorMessage(err))
     } finally {
       setSaving(false)
     }

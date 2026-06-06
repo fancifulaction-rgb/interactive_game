@@ -14,6 +14,8 @@ import {
 import { fetchGameStateForGame } from '../lib/fetchGameState'
 import { deleteGameCompletely } from '../lib/deleteGame'
 import { ADMIN_SESSION_HINT, hasSupabaseAdminSession } from '../lib/adminAuth'
+import { formatErrorMessage } from '../lib/errorMessage'
+import { enqueueCritical } from '../lib/requestQueue'
 import {
   finishGameSession,
   pauseGameSession,
@@ -162,12 +164,13 @@ export default function GameControls({
     if (!selectedGameId) return
     setLoading(true)
     try {
-      await action()
-      await loadGameState()
+      await enqueueCritical(async () => {
+        await action()
+        await loadGameState()
+      })
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
       console.error('Ошибка управления игрой:', err)
-      alert('Ошибка: ' + msg)
+      alert('Ошибка: ' + formatErrorMessage(err))
     } finally {
       setLoading(false)
     }

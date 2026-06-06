@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { isValidGameAccessCode, normalizeGameAccessCode } from './gameAccessCode'
+import { QUESTION_DB_SELECT } from './prefetchGameQuestions'
 
 export type CloneGameInput = {
   sourceGameId: string
@@ -120,7 +121,7 @@ export async function cloneGame(input: CloneGameInput): Promise<ClonedGame> {
 
   const { data: questions, error: qErr } = await supabase
     .from('questions')
-    .select('*')
+    .select(QUESTION_DB_SELECT)
     .eq('game_id', input.sourceGameId)
     .order('question_number', { ascending: true })
 

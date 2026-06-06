@@ -11,6 +11,9 @@ interface FinalPageText {
   description: string
 }
 
+const FINAL_PAGE_TEXT_SELECT =
+  'id, page_type, text_key, default_value, current_value, description'
+
 export default function FinalPageTextsManager() {
   const [activeTab, setActiveTab] = useState<'simple' | 'with_stats'>('simple')
   const [texts, setTexts] = useState<FinalPageText[]>([])
@@ -26,11 +29,18 @@ export default function FinalPageTextsManager() {
     try {
       const { data, error } = await supabase
         .from('final_page_texts')
-        .select('*')
+        .select(FINAL_PAGE_TEXT_SELECT)
         .eq('page_type', activeTab)
         .order('text_key', { ascending: true })
 
-      if (error) throw error
+      if (error) {
+        if (error.code === 'PGRST205' || error.code === '42P01') {
+          console.warn('final_page_texts недоступна, используйте npm run db:migrate:015')
+          setTexts([])
+          return
+        }
+        throw error
+      }
       setTexts(data || [])
     } catch (err: any) {
       console.error('Ошибка загрузки текстов:', err)

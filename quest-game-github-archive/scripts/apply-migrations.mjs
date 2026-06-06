@@ -27,6 +27,8 @@ const ALL_FILES = [
   '011_tighten_rls.sql',
   '012_storage_delete_authenticated.sql',
   '013_submit_auto_answer.sql',
+  '014_event_archive.sql',
+  '015_final_page_texts_and_integrity.sql',
 ]
 
 const filterArg = process.argv[2]
