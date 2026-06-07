@@ -6,9 +6,14 @@ project_id = "tvytsnnujaucoluoyvjq"
 [api]
 enabled = true
 
-# verify_jwt — только per-function, не под [functions]
 [functions.player-upload]
 verify_jwt = false
 
 [functions.delete-game]
-verify_jwt = false
+verify_jwt = true
+
+[functions.delete-teams]
+verify_jwt = true
+
+[functions.confirm-admin-email]
+verify_jwt = true
