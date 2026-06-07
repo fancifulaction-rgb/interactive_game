@@ -31,6 +31,7 @@ export const PLAY_MESSAGES = {
   closed: 'Игра пока закрыта. Дождитесь объявления ведущего.',
   invalid_session: 'Сессия команды недействительна. Зарегистрируйтесь для этой игры.',
   late_join: 'Игра уже началась. Вы не успели присоединиться к этой сессии.',
+  access_check_failed: 'Не удалось проверить доступ. Проверьте сеть и повторите попытку.',
 } as const
 
 export function readStoredPlayerSession(gameCode: string): { teamId: string } | null {

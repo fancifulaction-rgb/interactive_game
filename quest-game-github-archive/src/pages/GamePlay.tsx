@@ -85,6 +85,9 @@ export default function GamePlay() {
   const [isFinished, setIsFinished] = useState(false)
   const [isClosed, setIsClosed] = useState(false)
   const [accessDenied, setAccessDenied] = useState<string | null>(null)
+  const [accessDeniedRetryable, setAccessDeniedRetryable] = useState(false)
+  const [playAccessPending, setPlayAccessPending] = useState(false)
+  const [accessCheckNonce, setAccessCheckNonce] = useState(0)
   const [sessionUnknown, setSessionUnknown] = useState(true)
   useEffect(() => {
     startPendingAnswerFlushLoop()
@@ -153,17 +156,27 @@ export default function GamePlay() {
     setLoading(false)
   }
 
+  const retryPlayAccessCheck = useCallback(() => {
+    setAccessDenied(null)
+    setAccessDeniedRetryable(false)
+    playAccessCheckedRef.current = false
+    setAccessCheckNonce((n) => n + 1)
+  }, [])
+
   useEffect(() => {
     setSessionKnown(false)
     setSessionUnknown(true)
     setAccessDenied(null)
+    setAccessDeniedRetryable(false)
+    setPlayAccessPending(false)
     playAccessCheckedRef.current = false
   }, [gameCode])
 
   useEffect(() => {
-    if (!game?.id || !teamId || !gameCode || !sessionKnown || !inLobby) return
+    if (!game?.id || !teamId || !gameCode || sessionUnknown) return
     if (playAccessCheckedRef.current) return
     playAccessCheckedRef.current = true
+    setPlayAccessPending(true)
 
     const code = (gameCode ?? '').trim().toUpperCase()
     const stored = readStoredPlayerSession(code)
@@ -180,26 +193,34 @@ export default function GamePlay() {
         'H8'
       )
       // #endregion
-      setAccessDenied('Сессия команды недействительна. Зарегистрируйтесь для этой игры.')
+      setPlayAccessPending(false)
+      setAccessDenied(PLAY_MESSAGES.invalid_session)
+      setAccessDeniedRetryable(false)
       setLoading(false)
       return
     }
 
     void getPlayAccessDenial(game.id as string, teamId)
       .then((msg) => {
+        setPlayAccessPending(false)
         if (msg) {
           // #region agent log
           agentDebugLog('GamePlay.tsx', 'access denied', { msg, teamId }, 'H8')
           // #endregion
           setAccessDenied(msg)
+          setAccessDeniedRetryable(false)
           setLoading(false)
         }
       })
       .catch((err: unknown) => {
         const errMsg = err instanceof Error ? err.message : String(err)
         agentDebugLog('GamePlay.tsx', 'access check failed', { errMsg, teamId }, 'H8')
+        setPlayAccessPending(false)
+        setAccessDenied(PLAY_MESSAGES.access_check_failed)
+        setAccessDeniedRetryable(true)
+        setLoading(false)
       })
-  }, [game?.id, teamId, gameCode, sessionKnown, inLobby])
+  }, [game?.id, teamId, gameCode, sessionUnknown, accessCheckNonce])
 
   useEffect(() => {
     if (!teamId) {
@@ -719,7 +740,13 @@ export default function GamePlay() {
   )
 
   if (accessDenied) {
-    return playShell(<AccessDeniedScreen message={accessDenied} showRegisterLink />)
+    return playShell(
+      <AccessDeniedScreen
+        message={accessDenied}
+        showRegisterLink={!accessDeniedRetryable}
+        onRetry={accessDeniedRetryable ? retryPlayAccessCheck : undefined}
+      />
+    )
   }
 
   if (isClosed && sessionKnown && game) {
@@ -734,6 +761,19 @@ export default function GamePlay() {
 
   const hasFreshPlayCache = codeForSession.length > 0 && isGamePlayCacheFresh(codeForSession)
   const waitingForSession = !!(game && sessionUnknown && !hasFreshPlayCache)
+
+  if (playAccessPending) {
+    return playShell(
+      <div
+        className="min-h-screen theme-background flex items-center justify-center"
+        style={{
+          background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
+        }}
+      >
+        <div className="text-white text-xl">Проверка доступа...</div>
+      </div>
+    )
+  }
 
   if ((!game && loading) || waitingForSession) {
     return playShell(
