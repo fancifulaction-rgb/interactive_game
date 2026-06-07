@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import {
   applyScoreBroadcastToTeams,
   attachGameRealtime,
+  SCOREBOARD_POLL_FALLBACK_MS,
 } from '../lib/gameRealtime'
 import { getGamePlayCache, updateTeamsSnapshot } from '../lib/gamePlayCache'
 import type { TeamSnapshot } from '../lib/gamePlayCache'
@@ -135,7 +136,13 @@ export default function PlayerScoreboard() {
       onTeamsChanged: reloadTeams,
     })
 
+    const pollTimer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      reloadTeams()
+    }, SCOREBOARD_POLL_FALLBACK_MS)
+
     return () => {
+      window.clearInterval(pollTimer)
       detach()
     }
   }, [game?.id, gameCode])

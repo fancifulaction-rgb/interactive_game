@@ -41,6 +41,7 @@
 | IMP-RT-002 | Убрать poll 5s AdminScoreboard | Снизить REST при проекторе | Внутренний техдолг | 3 | done |
 | IMP-RT-003 | Единый канал на game_id | Один channel/game для state+score | Architecture | 3 | proposed |
 | IMP-RT-004 | Отложенный Realtime 8s → настройка | Флаг в settings игры | PlayerScoreboard | — | proposed |
+| IMP-RT-005 | Poll-fallback табло | 20с REST + postgres UPDATE teams; HostView список команд | BUG_AUDIT_HANDOFF H6 | 1 | done |
 
 ---
 

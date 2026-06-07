@@ -26,6 +26,7 @@
 - IMP-LOG-012 / BUG_AUDIT H4: `channelSendWithTimeout` очищает таймер после успешного broadcast (нет утечки/unhandled rejection)
 - IMP-LOG-013 / BUG_AUDIT M7: таймаут broadcast send 6с на mobile, 1.5с на desktop
 - IMP-LOG-014 / BUG_AUDIT H5: «Завершить игру» на `/host/` — export без deadlock в requestQueue
+- IMP-RT-005 / BUG_AUDIT H6: poll-fallback табло 20с, postgres UPDATE на `teams`, список команд на HostView
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

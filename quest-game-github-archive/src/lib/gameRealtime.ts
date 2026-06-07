@@ -50,6 +50,9 @@ const hubs = new Map<string, GameRealtimeHub>()
 const BROADCAST_SEND_TIMEOUT_DESKTOP_MS = 1500
 const BROADCAST_SEND_TIMEOUT_MOBILE_MS = 6000
 
+/** Poll-fallback для табло, если broadcast/postgres потеряны (BUG_AUDIT H6). */
+export const SCOREBOARD_POLL_FALLBACK_MS = 20_000
+
 function isMobileUa(): boolean {
   if (typeof navigator === 'undefined') return false
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
@@ -140,6 +143,22 @@ function getOrCreateHub(gameId: string): GameRealtimeHub {
         filter: `game_id=eq.${gameId}`,
       },
       () => dispatchTeams(hub)
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'teams',
+        filter: `game_id=eq.${gameId}`,
+      },
+      (payload) => {
+        const row = payload.new as { id?: string; total_score?: number } | null
+        if (row?.id != null && typeof row.total_score === 'number') {
+          dispatchScore(hub, { team_id: row.id, total_score: row.total_score })
+        }
+        dispatchTeams(hub)
+      }
     )
     .on(
       'postgres_changes',

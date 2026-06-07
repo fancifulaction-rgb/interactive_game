@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fetchGameStateForGame } from '../lib/fetchGameState'
-import { attachGameRealtime } from '../lib/gameRealtime'
+import { attachGameRealtime, SCOREBOARD_POLL_FALLBACK_MS } from '../lib/gameRealtime'
 import { hasSupabaseAdminSession } from '../lib/adminAuth'
 import { normalizeGameAccessCode } from '../lib/gameAccessCode'
 import {
@@ -127,9 +127,12 @@ export default function HostView() {
     let rtConnected = true
 
     const poll = window.setInterval(() => {
-      if (rtConnected) return
-      void fetchGameStateForGame(gameId).then(setGameState).catch(() => {})
-    }, 30_000)
+      if (typeof document !== 'undefined' && document.hidden) return
+      void loadTeams(gameId)
+      if (!rtConnected) {
+        void fetchGameStateForGame(gameId).then(setGameState).catch(() => {})
+      }
+    }, SCOREBOARD_POLL_FALLBACK_MS)
 
     const detach = attachGameRealtime(gameId, {
       onSessionChanged: () => {

@@ -71,6 +71,14 @@
 
 Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
 
+## Исправлено 2026-06-07 (BUG_AUDIT H6 — scoreboard poll-fallback)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 44 | Табло/HostView зависели от broadcast; postgres без UPDATE teams | IMP-RT-005: poll 20с на Admin/Player scoreboard + HostView teams; postgres UPDATE `teams` |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
 ## Исправлено 2026-06-07 (admin + iPhone HTTP contention)
 
 | # | Проблема | Исправление |
