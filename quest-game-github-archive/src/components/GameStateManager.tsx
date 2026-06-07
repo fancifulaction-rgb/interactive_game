@@ -66,6 +66,10 @@ const LOBBY_POLL_MS_DESKTOP = 4000
 const LOBBY_POLL_MS_MOBILE = 20000
 const PLAYING_POLL_MS_MOBILE = 45000
 const PLAYING_POLL_MS_DESKTOP = 8000
+// Во время паузы realtime-broadcast часто теряется на мобильных, поэтому опрашиваем
+// состояние чаще — чтобы «продолжить игру» доходил даже при мёртвом WebSocket.
+const PAUSED_POLL_MS_MOBILE = 7000
+const PAUSED_POLL_MS_DESKTOP = 4000
 
 function isMobileClient(): boolean {
   if (typeof window === 'undefined') return false
@@ -74,10 +78,11 @@ function isMobileClient(): boolean {
   return !!(coarse || mobileUa)
 }
 
-function lobbyPollMs(inLobby: boolean): number {
+function pollMs(inLobby: boolean, paused: boolean): number {
   if (typeof window === 'undefined') return LOBBY_POLL_MS_DESKTOP
   const mobile = isMobileClient()
   if (!inLobby) {
+    if (paused) return mobile ? PAUSED_POLL_MS_MOBILE : PAUSED_POLL_MS_DESKTOP
     return mobile ? PLAYING_POLL_MS_MOBILE : PLAYING_POLL_MS_DESKTOP
   }
   return mobile ? LOBBY_POLL_MS_MOBILE : LOBBY_POLL_MS_DESKTOP
@@ -107,6 +112,7 @@ function mergeBroadcastIntoRow(
 export default function GameStateManager({ gameId, onSessionChange }: GameStateManagerProps) {
   const [gameState, setGameState] = useState<GameStateRow | null>(null)
   const inLobbyRef = useRef(true)
+  const pausedRef = useRef(false)
 
   useEffect(() => {
     if (!gameId) return
@@ -121,7 +127,7 @@ export default function GameStateManager({ gameId, onSessionChange }: GameStateM
       if (pollTimer) clearInterval(pollTimer)
       pollTimer = setInterval(() => {
         void loadGameState()
-      }, lobbyPollMs(inLobbyRef.current))
+      }, pollMs(inLobbyRef.current, pausedRef.current))
     }
 
     const emitSession = (snap: GameSessionSnapshot) => {
@@ -136,10 +142,14 @@ export default function GameStateManager({ gameId, onSessionChange }: GameStateM
         return
       }
       const lobbyChanged = inLobbyRef.current !== snap.inLobby
+      const pausedChanged = pausedRef.current !== snap.isPaused
       inLobbyRef.current = snap.inLobby
+      pausedRef.current = snap.isPaused
       rememberSessionSnapshot(gameId, snap)
       onSessionChange(snap)
-      if (lobbyChanged) schedulePoll()
+      // Перепланируем опрос при смене lobby/paused: во время паузы нужен частый poll,
+      // чтобы resume дошёл даже при потерянном realtime-broadcast.
+      if (lobbyChanged || pausedChanged) schedulePoll()
     }
 
     const cached = getCachedSessionSnapshot(gameId)
@@ -240,6 +250,11 @@ export default function GameStateManager({ gameId, onSessionChange }: GameStateM
       detachRt = attachGameRealtime(gameId, {
         onSessionChanged: (payload) => {
           if (!cancelled) applyBroadcast(payload)
+        },
+        // Второй независимый путь: server-push изменения game_state (postgres_changes).
+        // Доходит, даже если broadcast админа потерян — пауза/resume не зависнут.
+        onGameStateChanged: (row) => {
+          if (!cancelled) apply(row)
         },
       })
     }

@@ -4,6 +4,8 @@ import { fetchLobbyTeams } from '../lib/fetchLobbyTeams'
 import { attachGameRealtime, type SessionBroadcastPayload } from '../lib/gameRealtime'
 import type { GameStateRow } from '../lib/gameSessionState'
 
+const ADMIN_LOBBY_POLL_MS = 6000
+
 export type LobbyTeamRow = {
   id: string
   team_name: string | null
@@ -157,8 +159,19 @@ export function useGameSessionAdmin(gameId: string): GameSessionAdminState {
     }
     document.addEventListener('visibilitychange', onVisible)
 
+    // Фолбэк-опрос: realtime-broadcast от мобильных часто теряется (broadcast send timeout),
+    // и команда, зарегистрированная с iPhone, не появляется у админа. Периодический poll
+    // гарантирует сходимость списка команд и состояния игры независимо от здоровья WebSocket.
+    const pollTimer = setInterval(() => {
+      if (adminBusyRef.current) return
+      if (typeof document !== 'undefined' && document.hidden) return
+      void refreshTeams(true)
+      void refreshGameState(true)
+    }, ADMIN_LOBBY_POLL_MS)
+
     return () => {
       if (teamsLoadTimer.current) clearTimeout(teamsLoadTimer.current)
+      clearInterval(pollTimer)
       document.removeEventListener('visibilitychange', onVisible)
       detachRt()
     }

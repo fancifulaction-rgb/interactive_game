@@ -87,7 +87,9 @@ function maxSupabaseFetches(): number {
   if (typeof navigator === 'undefined') return 4
   const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
   if (isAdminRoute()) return mobile ? 6 : 8
-  return mobile ? 6 : 4
+  // Игрок-мобайл: 2. По device-логам параллельные TLS-коннекты к supabase.co дают 10-20с/запрос,
+  // а последовательные по одному keep-alive — ~150мс. Десктоп держит больше — 4.
+  return mobile ? 2 : 4
 }
 let supabaseFetchesRunning = 0
 const supabaseFetchWaiters: Array<() => void> = []
@@ -187,7 +189,7 @@ function drainSupabaseFetchQueue(): void {
 }
 
 /**
- * До 4 (desktop) / 6 (mobile) параллельных запросов к *.supabase.co.
+ * До 4 параллельных запросов к *.supabase.co (8 — desktop-админка, 6 — mobile-админка).
  * priority > 0 — POST/PATCH/DELETE обгоняют фоновые GET; при critical — только priority ≥ 8.
  */
 export function enqueueSupabaseFetch<T>(

@@ -11,8 +11,18 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 /** Потолок на запрос; на мобильной сети 25 с часто не хватает из-за очереди fetch. */
 const FETCH_TIMEOUT_MS = 45_000
+/** Игрок-GET: на мобильной сети холодный запрос может занять 10-20с — потолок 30с, чтобы не убивать его и не плодить ретраи. */
+const PLAYER_GET_TIMEOUT_MS = 30_000
 const FETCH_MAX_ATTEMPTS = 3
 const FETCH_RETRY_BASE_MS = 400
+
+/** Эффективный таймаут: записи (insert/update/rpc) не обрываем рано — идемпотентность не гарантирована. */
+function fetchTimeoutMs(url: string, init?: RequestInit): number {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  if (method !== 'GET' && method !== 'HEAD') return FETCH_TIMEOUT_MS
+  if (isPlayerRoute()) return PLAYER_GET_TIMEOUT_MS
+  return FETCH_TIMEOUT_MS
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -45,7 +55,8 @@ function logFetchFailure(
   url: string,
   init: RequestInit | undefined,
   started: number,
-  err: unknown
+  err: unknown,
+  timeoutMs: number
 ): never {
   const msg = err instanceof Error ? err.message : String(err)
   const name = err instanceof Error ? err.name : 'Error'
@@ -74,7 +85,7 @@ function logFetchFailure(
       msg,
       isAuth: url.includes('/auth/v1/'),
     },
-    ms >= FETCH_TIMEOUT_MS - 500 ? 'H4' : 'H7'
+    ms >= timeoutMs - 500 ? 'H4' : 'H7'
   )
   // #endregion
   // Отмена через abortSignal (StrictMode, уход со страницы) — не ошибка сети.
@@ -94,6 +105,7 @@ function fetchWithTimeoutOnce(input: RequestInfo | URL, init?: RequestInit): Pro
   const started = Date.now()
   const url =
     typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+  const timeoutMs = fetchTimeoutMs(url, init)
 
   const controller = new AbortController()
   const externalSignal = init?.signal
@@ -113,11 +125,11 @@ function fetchWithTimeoutOnce(input: RequestInfo | URL, init?: RequestInit): Pro
       controller.abort()
       reject(
         new DOMException(
-          `Supabase request timed out after ${FETCH_TIMEOUT_MS}ms`,
+          `Supabase request timed out after ${timeoutMs}ms`,
           'TimeoutError'
         )
       )
-    }, FETCH_TIMEOUT_MS)
+    }, timeoutMs)
   })
 
   const method = (init?.method ?? 'GET').toUpperCase()
@@ -157,14 +169,14 @@ function fetchWithTimeoutOnce(input: RequestInfo | URL, init?: RequestInit): Pro
         err.name === 'AbortError'
       ) {
         throw new DOMException(
-          `Supabase request timed out after ${FETCH_TIMEOUT_MS}ms`,
+          `Supabase request timed out after ${timeoutMs}ms`,
           'TimeoutError'
         )
       }
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw err
       }
-      return logFetchFailure(url, init, started, err)
+      return logFetchFailure(url, init, started, err, timeoutMs)
     })
 }
 
@@ -241,9 +253,10 @@ function fetchPriority(url: string, init?: RequestInit): number {
   }
   if (path.includes('/answers')) return 6
   // Админка: teams GET ≥8 — иначе deadlock в enqueueCritical (resetGameProgress/select teams).
+  // Игрок: список команд лобби — 6 (ниже game_state/games/questions, но не голодает в фоне).
   if (path.includes('/teams') && path.includes('game_id=eq')) {
     if (isAdminRoute()) return 8
-    return 1
+    return 6
   }
   if (path.includes('/teams')) {
     if (isAdminRoute()) return 8
@@ -256,29 +269,22 @@ function fetchPriority(url: string, init?: RequestInit): number {
   return 3
 }
 
-function shouldBypassSupabaseFetchQueue(url: string, init?: RequestInit): boolean {
-  if (isAdminFetchBoostActive()) return true
+/** Игрок game_state в boost-режиме — критичный обгон, но в пределах лимита параллельности. */
+function isPlayerCriticalBypass(url: string): boolean {
+  if (!isPlayerRoute()) return false
   const path = url.toLowerCase()
-  if (
-    isPlayerRoute() &&
-    isRegistrationSubmitBoostActive() &&
-    path.includes('game_state')
-  ) {
-    return true
-  }
-  if (isPlayerRoute() && isPlayerFetchBoostActive() && path.includes('game_state')) {
-    return true
-  }
-  return false
+  if (!path.includes('game_state')) return false
+  return isRegistrationSubmitBoostActive() || isPlayerFetchBoostActive()
 }
 
 function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url =
     typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
   const run = () => fetchWithTimeoutCore(input, init)
-  if (shouldBypassSupabaseFetchQueue(url, init)) {
-    return run()
-  }
+  // Админ-boost — без очереди (десктоп, не источник мобильного burst).
+  if (isAdminFetchBoostActive()) return run()
+  // Игрок game_state в boost — первым в очереди (priority 12), но считается в лимите слотов.
+  if (isPlayerCriticalBypass(url)) return enqueueSupabaseFetch(run, 12)
   return enqueueSupabaseFetch(run, fetchPriority(url, init))
 }
 

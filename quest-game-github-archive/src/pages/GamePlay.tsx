@@ -336,9 +336,13 @@ export default function GamePlay() {
         first.per_question_time_sec || (game?.per_question_time_sec as number) || 120
       )
     }
-
-    void syncPlayerTeamScoreFromServer(teamId, gameCode ?? undefined)
   }, [inLobby, teamId, gameCode])
+
+  // Счёт с сервера (после сброса заезда админом) — после idle, чтобы не конкурировать с входом в лобби.
+  useEffect(() => {
+    if (!extrasReady || !inLobby || !teamId) return
+    void syncPlayerTeamScoreFromServer(teamId, gameCode ?? undefined)
+  }, [extrasReady, inLobby, teamId, gameCode])
 
   useEffect(() => {
     // Очистить предыдущий таймер
