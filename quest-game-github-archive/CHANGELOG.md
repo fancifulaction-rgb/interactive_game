@@ -25,6 +25,7 @@
 - IMP-LOG-011 / BUG_AUDIT H7: sync счёта игрока не обнуляет очки других команд в `teamsSnapshot`
 - IMP-LOG-012 / BUG_AUDIT H4: `channelSendWithTimeout` очищает таймер после успешного broadcast (нет утечки/unhandled rejection)
 - IMP-LOG-013 / BUG_AUDIT M7: таймаут broadcast send 6с на mobile, 1.5с на desktop
+- IMP-LOG-014 / BUG_AUDIT H5: «Завершить игру» на `/host/` — export без deadlock в requestQueue
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

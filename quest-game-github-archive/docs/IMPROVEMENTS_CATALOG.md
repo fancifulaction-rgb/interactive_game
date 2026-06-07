@@ -61,6 +61,7 @@
 | IMP-LOG-011 | Счёт чужих команд в кэше игрока | `syncPlayerTeamScoreFromServer` сохраняет `t.total_score` для остальных | BUG_AUDIT_HANDOFF H7 | 1 | done |
 | IMP-LOG-012 | Очистка таймера broadcast send | `clearTimeout` в `finally` у `channelSendWithTimeout` | BUG_AUDIT_HANDOFF H4 | 1 | done |
 | IMP-LOG-013 | Таймаут broadcast на mobile | 6с на mobile UA, 1.5с на desktop | BUG_AUDIT_HANDOFF M7 | 1 | done |
+| IMP-LOG-014 | Завершение игры на /host | `loadExportData` без `enqueueCritical`; boost на host-route | BUG_AUDIT_HANDOFF H5 | 1 | done |
 
 ---
 

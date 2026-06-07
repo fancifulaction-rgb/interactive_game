@@ -4,7 +4,8 @@ const BOOST_MS = 90_000
 /** Приоритет GET в админке — не ждать player/teams poll в общей очереди fetch. */
 export function isAdminRoute(): boolean {
   if (typeof window === 'undefined') return false
-  return window.location.pathname.startsWith('/admin')
+  const path = window.location.pathname
+  return path.startsWith('/admin') || path.startsWith('/host')
 }
 
 /** На время critical-действий админки (scratch, pause, start) — GET priority 9. */

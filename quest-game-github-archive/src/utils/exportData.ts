@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabase'
 import { answerJsonToDisplayText } from '../lib/answerDisplay'
-import { enqueueCritical } from '../lib/requestQueue'
 
 // Динамические импорты для тяжелых библиотек
 let jsPDF: any, XLSX: any, saveAs: any
@@ -48,7 +47,7 @@ export async function loadExportData(gameId: string): Promise<ExportData> {
   const existing = exportDataInflight.get(gameId)
   if (existing) return existing
 
-  const promise = enqueueCritical(async () => {
+  const promise = (async () => {
     const { data: game } = await supabase
       .from('games')
       .select('id, title, created_at, code')
@@ -82,7 +81,7 @@ export async function loadExportData(gameId: string): Promise<ExportData> {
       questions: questions || [],
       answers: (answers || []) as ExportAnswerRow[],
     }
-  })
+  })()
 
   exportDataInflight.set(gameId, promise)
   try {

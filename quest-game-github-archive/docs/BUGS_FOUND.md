@@ -63,6 +63,14 @@
 
 Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
 
+## Исправлено 2026-06-07 (BUG_AUDIT H5 — host finish hang)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 43 | «Завершить игру» на `/host/` зависало: `loadExportData` в `enqueueCritical` + teams/questions prio &lt; 8 | IMP-LOG-014: export без critical; `markAdminFetchBoost` в HostView; `/host` как admin-route для GET |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
 ## Исправлено 2026-06-07 (admin + iPhone HTTP contention)
 
 | # | Проблема | Исправление |

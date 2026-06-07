@@ -34,6 +34,7 @@ import {
   type GameStateRow,
 } from '../lib/gameSessionState'
 import { buildTeamRegistrationUrl } from '../lib/registrationUrl'
+import { clearAdminFetchBoost, markAdminFetchBoost } from '../lib/adminFetchBoost'
 
 type HostTeam = {
   id: string
@@ -155,6 +156,7 @@ export default function HostView() {
   const runAction = async (action: () => Promise<SessionActionResult>) => {
     if (!game?.id || !canControl) return
     setActionLoading(true)
+    markAdminFetchBoost()
     try {
       const result = await action()
       setGameState(result.gameState)
@@ -167,6 +169,7 @@ export default function HostView() {
       const msg = err instanceof Error ? err.message : String(err)
       alert('Ошибка: ' + msg)
     } finally {
+      clearAdminFetchBoost()
       setActionLoading(false)
     }
   }
