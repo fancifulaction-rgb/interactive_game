@@ -254,6 +254,7 @@ export default function TeamRegister() {
       })()
 
       if (outcome.kind === 'not_found') {
+        setErrorDetail('')
         setError(`Игра с кодом «${normalizedCode}» не найдена. Проверьте код в админ-панели.`)
         return
       }
@@ -261,6 +262,7 @@ export default function TeamRegister() {
         // #region agent log
         agentDebugLog('TeamRegister.tsx', 'denied', { message: outcome.message }, 'H2')
         // #endregion
+        setErrorDetail('')
         setError(outcome.message)
         return
       }
@@ -513,64 +515,64 @@ export default function TeamRegister() {
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg space-y-2">
                 <p className="text-sm font-medium">{error}</p>
                 {errorDetail && (
-                  <textarea
-                    readOnly
-                    className="w-full text-xs font-mono text-red-900 bg-red-100/50 border border-red-200 rounded p-2 min-h-[4.5rem] select-all"
-                    value={errorDetail}
-                    onFocus={(e) => e.target.select()}
-                  />
+                  <>
+                    <textarea
+                      readOnly
+                      className="w-full text-xs font-mono text-red-900 bg-red-100/50 border border-red-200 rounded p-2 min-h-[4.5rem] select-all"
+                      value={errorDetail}
+                      onFocus={(e) => e.target.select()}
+                    />
+                    <p className="text-xs text-red-600">
+                      Зажмите поле выше → «Выбрать всё» → «Копировать» (на iPhone без Mac).
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        className="text-xs underline text-red-800"
+                        onClick={async () => {
+                          const text = `${error}\n\nТехнически: ${errorDetail}`
+                          try {
+                            await navigator.clipboard.writeText(text)
+                            setCopyHint('Скопировано — вставьте в чат')
+                          } catch {
+                            setCopyHint('Используйте поле выше: зажмите → Выбрать всё → Копировать')
+                          }
+                        }}
+                      >
+                        Скопировать текст ошибки
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs underline text-red-800"
+                        onClick={async () => {
+                          setReportHint('Отправка…')
+                          const ok = await reportDebugToServer({ phase: 'manual', error, errorDetail })
+                          setReportHint(
+                            ok
+                              ? 'Отчёт отправлен на ПК — можно повторить попытку'
+                              : 'Не удалось отправить. Скопируйте текст из поля выше.'
+                          )
+                        }}
+                      >
+                        Отправить отчёт на ПК
+                      </button>
+                      {import.meta.env.DEV && (
+                        <button
+                          type="button"
+                          className="text-xs underline text-red-800"
+                          onClick={() => {
+                            downloadClientLogsJson()
+                            setReportHint('JSON с логами скачан — передайте файл на ПК')
+                          }}
+                        >
+                          Скачать диагностику
+                        </button>
+                      )}
+                    </div>
+                    {copyHint && <p className="text-xs text-red-600">{copyHint}</p>}
+                    {reportHint && <p className="text-xs text-red-600">{reportHint}</p>}
+                  </>
                 )}
-                <p className="text-xs text-red-600">
-                  Зажмите поле выше → «Выбрать всё» → «Копировать» (на iPhone без Mac).
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  {errorDetail && (
-                    <button
-                      type="button"
-                      className="text-xs underline text-red-800"
-                      onClick={async () => {
-                        const text = `${error}\n\nТехнически: ${errorDetail}`
-                        try {
-                          await navigator.clipboard.writeText(text)
-                          setCopyHint('Скопировано — вставьте в чат')
-                        } catch {
-                          setCopyHint('Используйте поле выше: зажмите → Выбрать всё → Копировать')
-                        }
-                      }}
-                    >
-                      Скопировать текст ошибки
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="text-xs underline text-red-800"
-                    onClick={async () => {
-                      setReportHint('Отправка…')
-                      const ok = await reportDebugToServer({ phase: 'manual', error, errorDetail })
-                      setReportHint(
-                        ok
-                          ? 'Отчёт отправлен на ПК — можно повторить попытку'
-                          : 'Не удалось отправить. Скопируйте текст из поля выше.'
-                      )
-                    }}
-                  >
-                    Отправить отчёт на ПК
-                  </button>
-                  {import.meta.env.DEV && (
-                    <button
-                      type="button"
-                      className="text-xs underline text-red-800"
-                      onClick={() => {
-                        downloadClientLogsJson()
-                        setReportHint('JSON с логами скачан — передайте файл на ПК')
-                      }}
-                    >
-                      Скачать диагностику
-                    </button>
-                  )}
-                </div>
-                {copyHint && <p className="text-xs text-red-600">{copyHint}</p>}
-                {reportHint && <p className="text-xs text-red-600">{reportHint}</p>}
               </div>
             )}
 
