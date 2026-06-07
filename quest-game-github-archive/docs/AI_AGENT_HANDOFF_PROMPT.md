@@ -11,9 +11,11 @@
 ## Якорь владельца (обновляйте вручную)
 
 ```
-Текущий фокус: Спринт 1 — стабильность сети на iPhone; ручной QA по DIAGNOSTICS.md.
-Follow-up: IMP-TD-002 (убрать DEV agentDebugLog после подтверждения QA); IMP-RT-003 (единый Realtime hub — proposed).
-Не начинать: Socket.IO, новый бэкенд, рефактор AdminPanel без IMP-*.
+Текущий фокус: багфиксы по docs/BUG_AUDIT_HANDOFF.md. Порядок: P0-корректность (C1, H2, H3, H7),
+затем H1/H4/H5/H6, затем C2/M6. Один пункт = один IMP = один коммит.
+Security-блок S1–S6 — ТОЛЬКО по согласованию (миграции + Edge + сессия команды).
+Сделано: realtime-fallback (admin poll 6с; player postgres_changes + частый poll на паузе).
+Не начинать: Socket.IO, новый бэкенд, рефактор без IMP-*, RLS/Edge на прод без «да».
 ```
 
 ---
@@ -23,7 +25,7 @@ Follow-up: IMP-TD-002 (убрать DEV agentDebugLog после подтвер�
 ```
 ═══ QUEST GAME — ЗАВЕРШЕНИЕ СЕССИИ / HANDOFF ═══
 
-Ты заканчиваешь работу. Следующий агент начнёт с gstack-context-restore + стартовый промпт (AI_AGENT_PROMPTS_SHORT §1).
+Ты заканчиваешь работу. Следующий агент начнёт с gstack-context-restore + стартовый промпт (AI_AGENT_PROMPTS_SHORT §1, или §1Б для багфиксов).
 С владельцем — русский. cwd: quest-game-github-archive/.
 
 ═══ 1. ПОДЧИСТКА (сделай сам, не оставляй «на потом») ═══
@@ -72,9 +74,9 @@ gstack-review → npm run build → при сети/БД: node scripts/e2e-game-
 **Checkpoint:** путь или «сохранён через gstack-context-save»
 
 ### IMP и прогресс
-- Активные IMP-ID: … (статус в каталоге)
-- Сделано в сессии: …
-- Не доделано / WIP: …
+- Активные IMP-ID / пункты BUG_AUDIT_HANDOFF: … (статус в каталоге)
+- Сделано в сессии (какие пункты закрыты): …
+- Не доделано / WIP / не воспроизвелось: …
 
 ### Файлы и зоны риска
 - Ключевые изменения: …
@@ -108,8 +110,9 @@ gstack-review → npm run build → при сети/БД: node scripts/e2e-game-
 
 ## Связанные документы
 
-- [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md) — все paste-блоки
+- [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md) — все paste-блоки (§1Б — багфиксы)
 - [AI_AGENT_FOCUS_REMINDER.md](AI_AGENT_FOCUS_REMINDER.md) — каждые 1–2 ч
+- [BUG_AUDIT_HANDOFF.md](BUG_AUDIT_HANDOFF.md) — текущий список багов
 - [AGENTS.md](../AGENTS.md) — правила кода
 
-*Версия: 2026-06-07*
+*Версия: 2026-06-07 (фокус: багфиксы по BUG_AUDIT_HANDOFF).*

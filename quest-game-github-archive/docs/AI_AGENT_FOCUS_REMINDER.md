@@ -9,9 +9,11 @@
 ## Якорь владельца (обновляйте вручную)
 
 ```
-Текущий фокус: Спринт 1 — стабильность сети на iPhone; ручной QA по DIAGNOSTICS.md.
-Follow-up: IMP-TD-002 (убрать DEV agentDebugLog после подтверждения QA); IMP-RT-003 (proposed).
-Не начинать: Socket.IO, новый бэкенд, рефактор AdminPanel без IMP-*.
+Текущий фокус: багфиксы по docs/BUG_AUDIT_HANDOFF.md. Порядок: P0-корректность (C1, H2, H3, H7),
+затем H1/H4/H5/H6, затем C2/M6. Один пункт = один IMP = один коммит.
+Security-блок S1–S6 — ТОЛЬКО по согласованию (миграции + Edge + сессия команды), не на прод вслепую.
+Сделано: realtime-fallback (admin poll 6с; player postgres_changes + частый poll на паузе).
+Не начинать: Socket.IO, новый бэкенд, рефактор без IMP-*, RLS/Edge на прод без «да».
 ```
 
 ---
@@ -21,19 +23,19 @@ Follow-up: IMP-TD-002 (убрать DEV agentDebugLog после подтвер�
 ```
 ═══ QUEST GAME — ФОКУС + ПОДЧИСТКА ═══
 
-Проект: командные квесты на мероприятиях, 2–100 команд, Supabase-only, v1.2.13.
+Проект: командные квесты на мероприятиях, 2–100 команд, Supabase-only, v1.2.15.
 Главная ценность — стабильная игра на телефонах при слабом Wi‑Fi. Враг — шторм параллельных запросов к *.supabase.co.
 Решение в коде: requestQueue (critical + fetch), coalesce GET, gameRealtime hub, аватар после игры.
 
 Якорь владельца (если не совпадает с задачей — спроси):
-  Спринт 1 / iPhone QA / IMP-TD-002 / IMP-RT-003 — см. ROADMAP и checkpoint.
+  Багфиксы по docs/BUG_AUDIT_HANDOFF.md (P0-корректность раньше security) — см. ROADMAP и checkpoint.
 
 ═══ A. САМОПРОВЕРКА (ответь кратко) ═══
 
-A1) IMP-ID / пункт ROADMAP этой сессии?
+A1) Пункт BUG_AUDIT_HANDOFF / IMP-ID этой сессии?
 A2) Сделано за последние 1–2 ч (файлы, результат)?
-A3) Отклонения от спринта / каталога без согласования?
-A4) Риски: parallel Supabase, select('*'), service role во фронте, новый канал Realtime без hub?
+A3) Отклонения от аудита / каталога без согласования?
+A4) Риски: parallel Supabase, select('*'), service role во фронте, новый канал Realtime без hub, RLS/Edge на прод без «да»?
 A5) Git: git status -sb — что не закоммичено и зачем?
 
 Если A1 пустой — стоп, согласуй задачу с владельцем, не придумывай фичу.
@@ -90,7 +92,8 @@ PWA/AI/комната ожидания вне задачи владельца.
 
 - [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md)
 - [AI_AGENT_HANDOFF_PROMPT.md](AI_AGENT_HANDOFF_PROMPT.md)
+- [BUG_AUDIT_HANDOFF.md](BUG_AUDIT_HANDOFF.md)
 - [AGENTS.md](../AGENTS.md)
 - [ROADMAP.md](ROADMAP.md)
 
-*Версия: 2026-06-07*
+*Версия: 2026-06-07 (фокус: багфиксы по BUG_AUDIT_HANDOFF).*
