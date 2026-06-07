@@ -67,7 +67,10 @@ export async function syncPlayerTeamScoreFromServer(teamId: string, gameCode?: s
 
   updateTeamsSnapshot(
     code,
-    cached.teamsSnapshot.map((t) => ({ ...t, total_score: t.id === teamId ? score : 0 }))
+    cached.teamsSnapshot.map((t) => ({
+      ...t,
+      total_score: t.id === teamId ? score : t.total_score,
+    }))
   )
 }
 

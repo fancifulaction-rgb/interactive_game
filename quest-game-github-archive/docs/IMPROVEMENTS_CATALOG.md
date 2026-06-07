@@ -58,6 +58,7 @@
 | IMP-LOG-008 | Проверка доступа игрока вне лобби | `getPlayAccessDenial` при `sessionKnown`, fail-closed + retry при сетевой ошибке | BUG_AUDIT_HANDOFF H2/H3 | 1 | done |
 | IMP-LOG-009 | Живая проверка доступа (без кэша) | `force` + invalidate `game_state`; повтор при lobby→playing; честный статус сети в лобби | BUG_AUDIT H3 QA | 1 | done |
 | IMP-LOG-010 | Не скипать первый вопрос при timeLeft=0 | `timerArmedRef` + инициализация таймера при prefetch/входе в игру | BUG_AUDIT_HANDOFF H1 | 1 | done |
+| IMP-LOG-011 | Счёт чужих команд в кэше игрока | `syncPlayerTeamScoreFromServer` сохраняет `t.total_score` для остальных | BUG_AUDIT_HANDOFF H7 | 1 | done |
 
 ---
 
