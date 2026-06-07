@@ -28,6 +28,7 @@
 - IMP-LOG-014 / BUG_AUDIT H5: «Завершить игру» на `/host/` — export без deadlock в requestQueue
 - IMP-RT-005 / BUG_AUDIT H6: poll-fallback табло 20с, postgres UPDATE на `teams`, список команд на HostView
 - IMP-LOG-015 / BUG_AUDIT C2: generation-token в `fetchGameState` — force/invalidate не ломают coalesce
+- IMP-LOG-016 / BUG_AUDIT M6: generation-token в `fetchLobbyTeams`; stale-while-revalidate lookup (60с)
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

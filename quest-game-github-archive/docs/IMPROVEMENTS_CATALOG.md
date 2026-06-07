@@ -64,6 +64,7 @@
 | IMP-LOG-013 | Таймаут broadcast на mobile | 6с на mobile UA, 1.5с на desktop | BUG_AUDIT_HANDOFF M7 | 1 | done |
 | IMP-LOG-014 | Завершение игры на /host | `loadExportData` без `enqueueCritical`; boost на host-route | BUG_AUDIT_HANDOFF H5 | 1 | done |
 | IMP-LOG-015 | Гонка force в fetchGameState | generation-token: inflight/lastOk только для актуального gen | BUG_AUDIT_HANDOFF C2 | 1 | done |
+| IMP-LOG-016 | Гонки lobby teams + lookup cache | generation-token в `fetchLobbyTeams`; SWR в `gameLookupCache` | BUG_AUDIT_HANDOFF M6 | 1 | done |
 
 ---
 

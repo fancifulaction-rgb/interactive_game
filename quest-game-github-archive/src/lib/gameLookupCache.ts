@@ -24,6 +24,8 @@ function debugIngest(location: string, message: string, data: Record<string, unk
 }
 
 const TTL_MS = 15 * 60 * 1000
+/** После этого возраста кэш отдаётся сразу, но в фоне идёт revalidate. */
+const STALE_REVALIDATE_MS = 60 * 1000
 
 export type CachedGameRow = {
   id: string
@@ -41,7 +43,20 @@ export type CachedGameRow = {
 const GAME_SELECT =
   'id, code, title, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec'
 
-const lookupInflight = new Map<string, Promise<CachedGameRow | null>>()
+type InflightEntry = {
+  promise: Promise<CachedGameRow | null>
+  gen: number
+}
+
+const lookupInflight = new Map<string, InflightEntry>()
+const lookupGeneration = new Map<string, number>()
+const revalidateInflight = new Set<string>()
+
+function bumpLookupGeneration(code: string): number {
+  const next = (lookupGeneration.get(code) ?? 0) + 1
+  lookupGeneration.set(code, next)
+  return next
+}
 
 function key(code: string) {
   return `quest_game_lookup_${code.trim().toUpperCase()}`
@@ -67,51 +82,74 @@ export function setCachedGameByCode(code: string, game: Omit<CachedGameRow, 'ts'
   }
 }
 
+async function fetchGameRowFromNetwork(normalized: string): Promise<CachedGameRow | null> {
+  const started = Date.now()
+  debugIngest('gameLookupCache.ts', 'fetch start', { code: normalized }, 'H1')
+  agentDebugLog('gameLookupCache.ts', 'fetch start', { code: normalized }, 'H1')
+
+  const { data, error } = await supabase
+    .from('games')
+    .select(GAME_SELECT)
+    .eq('code', normalized)
+    .maybeSingle()
+
+  const ms = Date.now() - started
+  if (error) {
+    debugIngest('gameLookupCache.ts', 'fetch error', { code: normalized, ms, msg: error.message }, 'H1')
+    agentDebugLog('gameLookupCache.ts', 'fetch error', { code: normalized, ms, msg: error.message }, 'H1')
+    throw error
+  }
+  if (!data) {
+    debugIngest('gameLookupCache.ts', 'fetch miss', { code: normalized, ms }, 'H1')
+    agentDebugLog('gameLookupCache.ts', 'fetch miss', { code: normalized, ms }, 'H1')
+    return null
+  }
+  const row = data as Omit<CachedGameRow, 'ts'>
+  setCachedGameByCode(normalized, row)
+  debugIngest('gameLookupCache.ts', 'fetch ok', { code: normalized, gameId: row.id, ms }, 'H1')
+  agentDebugLog('gameLookupCache.ts', 'fetch ok', { code: normalized, gameId: row.id, ms }, 'H1')
+  return { ...row, ts: Date.now() }
+}
+
+function revalidateGameByCodeInBackground(normalized: string): void {
+  if (revalidateInflight.has(normalized)) return
+  revalidateInflight.add(normalized)
+  void fetchGameRowFromNetwork(normalized)
+    .catch(() => {
+      /* фоновая ошибка не ломает UI */
+    })
+    .finally(() => {
+      revalidateInflight.delete(normalized)
+    })
+}
+
 /** Один in-flight GET games на код — прогрев и submit делят один запрос. */
 export function fetchGameByCode(code: string): Promise<CachedGameRow | null> {
   const normalized = code.trim().toUpperCase()
   const cached = getCachedGameByCode(normalized)
   if (cached) {
-    debugIngest('gameLookupCache.ts', 'cache hit', { code: normalized, gameId: cached.id }, 'H1')
+    const age = Date.now() - cached.ts
+    if (age >= STALE_REVALIDATE_MS) {
+      revalidateGameByCodeInBackground(normalized)
+    }
+    debugIngest('gameLookupCache.ts', 'cache hit', { code: normalized, gameId: cached.id, ageMs: age }, 'H1')
     return Promise.resolve(cached)
   }
 
+  const reqGen = lookupGeneration.get(normalized) ?? 0
   const existing = lookupInflight.get(normalized)
   if (existing) {
     debugIngest('gameLookupCache.ts', 'inflight join', { code: normalized }, 'H1')
-    return existing
+    return existing.promise
   }
 
-  const started = Date.now()
-  debugIngest('gameLookupCache.ts', 'fetch start', { code: normalized }, 'H1')
-  agentDebugLog('gameLookupCache.ts', 'fetch start', { code: normalized }, 'H1')
-
-  const promise = (async (): Promise<CachedGameRow | null> => {
-    const { data, error } = await supabase
-      .from('games')
-      .select(GAME_SELECT)
-      .eq('code', normalized)
-      .maybeSingle()
-    const ms = Date.now() - started
-    if (error) {
-      debugIngest('gameLookupCache.ts', 'fetch error', { code: normalized, ms, msg: error.message }, 'H1')
-      agentDebugLog('gameLookupCache.ts', 'fetch error', { code: normalized, ms, msg: error.message }, 'H1')
-      throw error
+  const promise = fetchGameRowFromNetwork(normalized).finally(() => {
+    const entry = lookupInflight.get(normalized)
+    if (entry?.gen === reqGen) {
+      lookupInflight.delete(normalized)
     }
-    if (!data) {
-      debugIngest('gameLookupCache.ts', 'fetch miss', { code: normalized, ms }, 'H1')
-      agentDebugLog('gameLookupCache.ts', 'fetch miss', { code: normalized, ms }, 'H1')
-      return null
-    }
-    const row = data as Omit<CachedGameRow, 'ts'>
-    setCachedGameByCode(normalized, row)
-    debugIngest('gameLookupCache.ts', 'fetch ok', { code: normalized, gameId: row.id, ms }, 'H1')
-    agentDebugLog('gameLookupCache.ts', 'fetch ok', { code: normalized, gameId: row.id, ms }, 'H1')
-    return { ...row, ts: Date.now() }
-  })().finally(() => {
-    lookupInflight.delete(normalized)
   })
 
-  lookupInflight.set(normalized, promise)
+  lookupInflight.set(normalized, { promise, gen: reqGen })
   return promise
 }

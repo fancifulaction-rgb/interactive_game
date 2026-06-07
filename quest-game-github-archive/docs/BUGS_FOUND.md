@@ -87,6 +87,14 @@
 
 Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
 
+## Исправлено 2026-06-07 (BUG_AUDIT M6 — lobby teams + lookup cache)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 46 | `fetchLobbyTeams({ force })` не обходил in-flight; `gameLookupCache` отдавал 15-мин stale без revalidate | IMP-LOG-016: generation-token в lobby teams; SWR lookup (фоновый refresh после 60с) |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
 ## Исправлено 2026-06-07 (admin + iPhone HTTP contention)
 
 | # | Проблема | Исправление |

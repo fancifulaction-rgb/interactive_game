@@ -10,13 +10,25 @@ export type LobbyTeamRow = {
   avatar_url?: string | null
 }
 
-const inflight = new Map<string, Promise<LobbyTeamRow[]>>()
+type InflightEntry = {
+  promise: Promise<LobbyTeamRow[]>
+  gen: number
+}
+
+const inflight = new Map<string, InflightEntry>()
 const lastOk = new Map<string, { at: number; rows: LobbyTeamRow[] }>()
 const lastErrorAt = new Map<string, number>()
+const generation = new Map<string, number>()
 
 const MIN_INTERVAL_MS = 3000
 const MIN_INTERVAL_MOBILE_MS = 15000
 const ERROR_BACKOFF_MS = 3000
+
+function bumpGeneration(gameId: string): number {
+  const next = (generation.get(gameId) ?? 0) + 1
+  generation.set(gameId, next)
+  return next
+}
 
 function isMobileUa(): boolean {
   if (typeof navigator === 'undefined') return false
@@ -24,6 +36,7 @@ function isMobileUa(): boolean {
 }
 
 export function invalidateLobbyTeamsCache(gameId: string): void {
+  bumpGeneration(gameId)
   lastOk.delete(gameId)
   lastErrorAt.delete(gameId)
 }
@@ -66,8 +79,14 @@ export async function fetchLobbyTeams(
   const force = options?.force ?? false
   const now = Date.now()
 
+  if (force) {
+    bumpGeneration(gameId)
+  }
+
+  const reqGen = generation.get(gameId) ?? 0
+
   const running = inflight.get(gameId)
-  if (running) return running
+  if (running && !force) return running.promise
 
   if (!force) {
     const errAt = lastErrorAt.get(gameId)
@@ -91,8 +110,10 @@ export async function fetchLobbyTeams(
   const promise = (async () => {
     try {
       const rows = await fetchLobbyTeamsOnce(gameId)
-      if (rows.length > 0 || force) {
-        lastOk.set(gameId, { at: Date.now(), rows })
+      if ((generation.get(gameId) ?? 0) === reqGen) {
+        if (rows.length > 0 || force) {
+          lastOk.set(gameId, { at: Date.now(), rows })
+        }
       }
       lastErrorAt.delete(gameId)
       return rows
@@ -104,10 +125,13 @@ export async function fetchLobbyTeams(
       }
       throw err
     } finally {
-      inflight.delete(gameId)
+      const entry = inflight.get(gameId)
+      if (entry?.gen === reqGen) {
+        inflight.delete(gameId)
+      }
     }
   })()
 
-  inflight.set(gameId, promise)
+  inflight.set(gameId, { promise, gen: reqGen })
   return promise
 }
