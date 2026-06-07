@@ -1,5 +1,6 @@
 /** Состояние сессии игры (поле game_state.current_state). */
 
+export const GAME_STATE_CLOSED = 'closed'
 export const GAME_STATE_WAITING = 'waiting'
 export const GAME_STATE_PLAYING = 'playing'
 export const GAME_STATE_FINISHED = 'finished'
@@ -21,10 +22,15 @@ export function getGameStartedAt(state: GameStateRow | null | undefined): string
   return typeof raw === 'string' && raw.length > 0 ? raw : null
 }
 
-export type GameSessionStatus = 'waiting' | 'playing' | 'paused' | 'finished'
+export type GameSessionStatus = 'closed' | 'waiting' | 'playing' | 'paused' | 'finished'
 
 function normalizedState(state: GameStateRow | null | undefined): string {
   return (state?.current_state ?? '').toLowerCase()
+}
+
+export function isGameClosed(state: GameStateRow | null | undefined): boolean {
+  if (!state) return false
+  return normalizedState(state) === GAME_STATE_CLOSED
 }
 
 export function isGameFinished(state: GameStateRow | null | undefined): boolean {
@@ -37,25 +43,30 @@ export function isGameSessionUnknown(state: GameStateRow | null | undefined): bo
   return state == null
 }
 
-/** Игра в комнате ожидания до нажатия «Начать» ведущим. */
+/** Игра в комнате ожидания (лобби открыто админом). */
 export function isGameInLobby(state: GameStateRow | null | undefined): boolean {
   if (!state) return false
-  if (isGameFinished(state)) return false
+  if (isGameFinished(state) || isGameClosed(state)) return false
   const s = normalizedState(state)
-  if (s === GAME_STATE_PLAYING || s === 'active') return false
-  return true
+  return s === GAME_STATE_WAITING
 }
 
 export function isGamePausedDuringPlay(state: GameStateRow | null | undefined): boolean {
-  if (!state || isGameInLobby(state) || isGameFinished(state)) return false
+  if (!state || isGameInLobby(state) || isGameFinished(state) || isGameClosed(state)) return false
   return !!state.is_paused
 }
 
 export function getGameSessionStatus(state: GameStateRow | null | undefined): GameSessionStatus {
+  if (state == null) return 'closed'
+  if (isGameClosed(state)) return 'closed'
   if (isGameFinished(state)) return 'finished'
   if (isGameInLobby(state)) return 'waiting'
-  if (state?.is_paused) return 'paused'
-  return 'playing'
+  const s = normalizedState(state)
+  if (s === GAME_STATE_PLAYING || s === 'active') {
+    return state.is_paused ? 'paused' : 'playing'
+  }
+  // Неизвестное/устаревшее значение current_state — не считать игру идущей.
+  return 'closed'
 }
 
 export function gameStateUpdatedAtMs(state: GameStateRow | null | undefined): number {
@@ -64,12 +75,14 @@ export function gameStateUpdatedAtMs(state: GameStateRow | null | undefined): nu
   return Number.isFinite(t) ? t : 0
 }
 
-/** waiting < playing < finished — не откатывать сессию при гонке poll/broadcast. */
+/** closed < waiting < playing < finished — не откатывать сессию при гонке poll/broadcast. */
 function gameStateProgressRank(state: GameStateRow | null | undefined): number {
   if (!state) return 0
-  if (isGameFinished(state)) return 3
+  if (isGameFinished(state)) return 4
   const s = normalizedState(state)
-  if (s === GAME_STATE_PLAYING || s === 'active') return 2
+  if (s === GAME_STATE_PLAYING || s === 'active') return 3
+  if (s === GAME_STATE_WAITING) return 2
+  if (s === GAME_STATE_CLOSED) return 1
   return 1
 }
 
@@ -88,6 +101,8 @@ export function isGameStateRowNewer(
 
 export function getGameSessionStatusLabel(status: GameSessionStatus): string {
   switch (status) {
+    case 'closed':
+      return 'Закрыта'
     case 'waiting':
       return 'Комната ожидания'
     case 'playing':

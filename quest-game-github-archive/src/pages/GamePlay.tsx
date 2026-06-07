@@ -18,7 +18,8 @@ import {
   navigateToFinish,
 } from '../lib/finishNavigation'
 import { enqueuePendingAnswer, startPendingAnswerFlushLoop } from '../lib/pendingAnswerQueue'
-import { mapQuestionsForPlay, prefetchQuestionsForGame } from '../lib/prefetchGameQuestions'
+import { mapQuestionsForPlay, prefetchQuestionsForGame, fetchQuestionsFullForGame } from '../lib/prefetchGameQuestions'
+import { markPlayerFetchBoost } from '../lib/playerFetchBoost'
 import {
   revalidateGamePlayCritical,
   revalidateQuestionsForGameCritical,
@@ -36,7 +37,11 @@ import NotificationPopup from '../components/NotificationPopup'
 import GameStateManager, { type GameSessionSnapshot } from '../components/GameStateManager'
 import GameLobby from '../components/GameLobby'
 import AccessDeniedScreen from '../components/AccessDeniedScreen'
-import { getPlayAccessDenial, readStoredPlayerSession } from '../lib/participantAccess'
+import {
+  getPlayAccessDenial,
+  PLAY_MESSAGES,
+  readStoredPlayerSession,
+} from '../lib/participantAccess'
 
 interface Question {
   id: string
@@ -54,6 +59,8 @@ interface Question {
   hint_penalties: number[]
   per_question_time_sec: number | null
 }
+
+const loadGameDataInflight = new Map<string, Promise<void>>()
 
 export default function GamePlay() {
   const { gameCode } = useParams()
@@ -76,11 +83,36 @@ export default function GamePlay() {
   const [inLobby, setInLobby] = useState(true)
   const [isPaused, setIsPaused] = useState(false)
   const [isFinished, setIsFinished] = useState(false)
+  const [isClosed, setIsClosed] = useState(false)
   const [accessDenied, setAccessDenied] = useState<string | null>(null)
   const [sessionUnknown, setSessionUnknown] = useState(true)
   useEffect(() => {
     startPendingAnswerFlushLoop()
+    markPlayerFetchBoost()
   }, [])
+
+  useEffect(() => {
+    if (!loading) return
+    const started = Date.now()
+    agentDebugLog('GamePlay.tsx', 'ui.loading start', { gameCode }, 'H10')
+    return () => {
+      agentDebugLog(
+        'GamePlay.tsx',
+        'ui.loading end',
+        { gameCode, durationMs: Date.now() - started },
+        'H10'
+      )
+    }
+  }, [loading, gameCode])
+
+  useEffect(() => {
+    agentDebugLog(
+      'GamePlay.tsx',
+      'waitingForSession',
+      { sessionUnknown, sessionKnown, inLobby },
+      'H7'
+    )
+  }, [sessionUnknown, sessionKnown, inLobby])
 
   const handleSessionChange = useCallback((session: GameSessionSnapshot) => {
     // #region agent log
@@ -91,6 +123,7 @@ export default function GamePlay() {
     setInLobby(session.inLobby)
     setIsPaused(session.isPaused)
     setIsFinished(session.isFinished)
+    setIsClosed(session.isClosed)
   }, [])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const loadGenRef = useRef(0)
@@ -220,11 +253,18 @@ export default function GamePlay() {
         setLoading(false)
         agentDebugLog('GamePlay.tsx', 'lobby prefetch applied', { count: q.length }, 'H14')
       })
-      .catch((err) => console.warn('GamePlay: prefetch questions in lobby failed', err))
+      .catch((err) => {
+        agentDebugLog(
+          'GamePlay.tsx',
+          'lobby prefetch failed',
+          { msg: err instanceof Error ? err.message : String(err) },
+          'H14'
+        )
+      })
   }, [inLobby, game, gameCode, questions.length])
 
   useEffect(() => {
-    if (inLobby || !gameCode || questions.length > 0) return
+    if (inLobby || !gameCode || questions.length > 0 || sessionUnknown) return
     const code = (gameCode ?? '').trim().toUpperCase()
     const cached = getGamePlayCache(code)
     if (cached?.questions?.length) {
@@ -242,7 +282,7 @@ export default function GamePlay() {
     const gameRow = cached?.game ?? game
     if (!gameRow?.id) return
     setLoading(true)
-    void prefetchQuestionsForGame(gameRow.id as string)
+    void fetchQuestionsFullForGame(gameRow.id as string)
       .then((q) => {
         if (gen !== loadGenRef.current || !q.length) return
         const mapped = mapQuestionsForPlay(q) as Question[]
@@ -255,13 +295,18 @@ export default function GamePlay() {
         agentDebugLog('GamePlay.tsx', 'game start questions applied', { count: q.length }, 'H15')
       })
       .catch((err) => {
-        console.warn('GamePlay: load questions on start failed', err)
+        agentDebugLog(
+          'GamePlay.tsx',
+          'game start questions failed',
+          { msg: err instanceof Error ? err.message : String(err) },
+          'H15'
+        )
         if (gen === loadGenRef.current) void loadGameData(gen, true)
       })
       .finally(() => {
         if (gen === loadGenRef.current) setLoading(false)
       })
-  }, [inLobby, gameCode, questions.length, game])
+  }, [inLobby, gameCode, questions.length, game, sessionUnknown])
 
   useEffect(() => {
     if (!isFinished || !game || !gameCode || finishedNavRef.current) return
@@ -331,6 +376,23 @@ export default function GamePlay() {
 
   const loadGameData = async (loadGen: number, staleCache: boolean) => {
     const code = (gameCode ?? '').trim().toUpperCase()
+    const existing = loadGameDataInflight.get(code)
+    if (existing) {
+      agentDebugLog('GamePlay.tsx', 'loadGameData dedupe wait', { code }, 'H15')
+      await existing
+      return
+    }
+
+    const task = loadGameDataInner(loadGen, staleCache, code)
+    loadGameDataInflight.set(code, task)
+    try {
+      await task
+    } finally {
+      loadGameDataInflight.delete(code)
+    }
+  }
+
+  const loadGameDataInner = async (loadGen: number, staleCache: boolean, code: string) => {
     const cachedForLoad = getGamePlayCache(code)
     const gameId = cachedForLoad?.game?.id as string | undefined
     debugLog('GamePlay.tsx:loadGameData', 'start', { gameCode: code, staleCache, gameId }, 'E')
@@ -384,6 +446,12 @@ export default function GamePlay() {
       } catch (err: any) {
         if (loadGen !== loadGenRef.current) return
         debugLog('GamePlay.tsx', 'load error', { msg: err?.message, attempt, staleCache }, 'E')
+        agentDebugLog(
+          'GamePlay.tsx',
+          'loadGameData error',
+          { msg: err?.message, attempt, staleCache },
+          'H15'
+        )
         if (attempt < 2) {
           await new Promise((r) => setTimeout(r, 800 * (attempt + 1)))
           continue
@@ -648,6 +716,16 @@ export default function GamePlay() {
 
   if (accessDenied) {
     return playShell(<AccessDeniedScreen message={accessDenied} showRegisterLink />)
+  }
+
+  if (isClosed && sessionKnown && game) {
+    return playShell(
+      <AccessDeniedScreen
+        title="Игра закрыта"
+        message={PLAY_MESSAGES.closed}
+        showRegisterLink={false}
+      />
+    )
   }
 
   const hasFreshPlayCache = codeForSession.length > 0 && isGamePlayCacheFresh(codeForSession)

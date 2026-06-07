@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { collectClientLog } from './clientLogCollector'
 import { debugLog } from './debugLog'
-import { enqueueSupabaseFetch } from './requestQueue'
+import { isPlayerFetchBoostActive, isPlayerRoute } from './playerFetchBoost'
+import { isAdminFetchBoostActive, isAdminRoute } from './adminFetchBoost'
+import { isRegistrationSubmitBoostActive } from './registrationBoost'
+import { enqueueSupabaseFetch, isCriticalSessionActive } from './requestQueue'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -103,8 +106,10 @@ function fetchWithTimeoutOnce(input: RequestInfo | URL, init?: RequestInit): Pro
   }
 
   let timer: ReturnType<typeof setTimeout> | undefined
+  let timedOut = false
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
+      timedOut = true
       controller.abort()
       reject(
         new DOMException(
@@ -132,8 +137,11 @@ function fetchWithTimeoutOnce(input: RequestInfo | URL, init?: RequestInit): Pro
             url: url.slice(0, 100),
             ms,
             status: res.status,
+            bypassBoost: isAdminFetchBoostActive(),
+            criticalActive: isCriticalSessionActive(),
+            priority: fetchPriority(url, init),
           },
-          { level: ms >= 8000 ? 'warn' : 'info' }
+          { level: res.status >= 400 || ms >= 8000 ? 'warn' : 'info' }
         )
       }
       return res
@@ -143,6 +151,16 @@ function fetchWithTimeoutOnce(input: RequestInfo | URL, init?: RequestInit): Pro
       externalSignal?.removeEventListener('abort', onExternalAbort)
     })
     .catch((err) => {
+      if (
+        timedOut &&
+        err instanceof DOMException &&
+        err.name === 'AbortError'
+      ) {
+        throw new DOMException(
+          `Supabase request timed out after ${FETCH_TIMEOUT_MS}ms`,
+          'TimeoutError'
+        )
+      }
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw err
       }
@@ -179,6 +197,12 @@ async function fetchWithTimeoutCore(
       }
       if (import.meta.env.DEV) {
         console.warn('[quest-game] supabase fetch retry', { attempt: attempt + 1 })
+        collectClientLog(
+          'supabase.ts',
+          'fetch retry',
+          { url: url.slice(0, 100), attempt: attempt + 1, maxAttempts },
+          { level: 'warn', hypothesisId: 'H13' }
+        )
       }
       await sleep(FETCH_RETRY_BASE_MS * (attempt + 1))
     }
@@ -190,25 +214,72 @@ function fetchPriority(url: string, init?: RequestInit): number {
   const method = (init?.method ?? 'GET').toUpperCase()
   if (method !== 'GET' && method !== 'HEAD') return 10
 
+  // Critical admin action (scratch/start): все GET админки обгоняют фоновый poll.
+  if (isAdminRoute() && isAdminFetchBoostActive()) return 9
+
   const path = url.toLowerCase()
   if (path.includes('/rpc/')) return 11
-  if (path.includes('game_state')) return 9
-  if (path.includes('/games')) return 8
-  if (path.includes('/questions')) return 7
+  if (
+    isPlayerRoute() &&
+    isRegistrationSubmitBoostActive() &&
+    (path.includes('/games') || path.includes('game_state'))
+  ) {
+    return 10
+  }
+  if (path.includes('game_state')) {
+    if (isPlayerRoute() && isPlayerFetchBoostActive()) return 9
+    return 9
+  }
+  if (path.includes('/games')) {
+    if (isAdminRoute()) return 9
+    if (isPlayerRoute() && isPlayerFetchBoostActive()) return 9
+    return 8
+  }
+  if (path.includes('/questions')) {
+    if (isPlayerRoute() && isPlayerFetchBoostActive()) return 9
+    return 7
+  }
   if (path.includes('/answers')) return 6
-  // Список команд лобби (фоновый poll) — ниже приоритет, чем сессия/вопросы игрока.
-  if (path.includes('/teams') && path.includes('game_id=eq')) return 1
-  if (path.includes('/teams')) return 5
+  // Админка: teams GET ≥8 — иначе deadlock в enqueueCritical (resetGameProgress/select teams).
+  if (path.includes('/teams') && path.includes('game_id=eq')) {
+    if (isAdminRoute()) return 8
+    return 1
+  }
+  if (path.includes('/teams')) {
+    if (isAdminRoute()) return 8
+    return 5
+  }
+  if (path.includes('/settings') || path.includes('/themes')) {
+    if (isAdminRoute() && isCriticalSessionActive()) return 8
+    return isAdminRoute() ? 5 : 3
+  }
   return 3
+}
+
+function shouldBypassSupabaseFetchQueue(url: string, init?: RequestInit): boolean {
+  if (isAdminFetchBoostActive()) return true
+  const path = url.toLowerCase()
+  if (
+    isPlayerRoute() &&
+    isRegistrationSubmitBoostActive() &&
+    path.includes('game_state')
+  ) {
+    return true
+  }
+  if (isPlayerRoute() && isPlayerFetchBoostActive() && path.includes('game_state')) {
+    return true
+  }
+  return false
 }
 
 function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url =
     typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-  return enqueueSupabaseFetch(
-    () => fetchWithTimeoutCore(input, init),
-    fetchPriority(url, init)
-  )
+  const run = () => fetchWithTimeoutCore(input, init)
+  if (shouldBypassSupabaseFetchQueue(url, init)) {
+    return run()
+  }
+  return enqueueSupabaseFetch(run, fetchPriority(url, init))
 }
 
 export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {

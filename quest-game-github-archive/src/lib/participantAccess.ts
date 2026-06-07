@@ -6,12 +6,15 @@ import { isTransientNetworkError } from './teamRegister'
 import { isScoreboardHiddenUntilFinish } from './gameSettings'
 import {
   getGameStartedAt,
+  isGameClosed,
   isGameFinished,
   isGameInLobby,
   type GameStateRow,
 } from './gameSessionState'
 
 export const REGISTRATION_MESSAGES = {
+  closed: 'Игра пока закрыта. Дождитесь объявления ведущего.',
+  unknown: 'Не удалось проверить состояние игры. Попробуйте позже.',
   finished: 'Эта игра уже завершена. Регистрация новых команд закрыта.',
   started: 'Игра уже началась. Присоединиться к этой сессии больше нельзя.',
 } as const
@@ -25,6 +28,7 @@ export const FINISH_MESSAGES = {
 } as const
 
 export const PLAY_MESSAGES = {
+  closed: 'Игра пока закрыта. Дождитесь объявления ведущего.',
   invalid_session: 'Сессия команды недействительна. Зарегистрируйтесь для этой игры.',
   late_join: 'Игра уже началась. Вы не успели присоединиться к этой сессии.',
 } as const
@@ -39,9 +43,13 @@ export function readStoredPlayerSession(gameCode: string): { teamId: string } | 
 
 /** Можно ли регистрировать новую команду (только комната ожидания). */
 export function getRegistrationDenialFromState(
-  state: GameStateRow | null | undefined
+  state: GameStateRow | null | undefined,
+  options?: { stateFetchFailed?: boolean }
 ): string | null {
-  if (!state) return null
+  if (!state) {
+    return options?.stateFetchFailed ? REGISTRATION_MESSAGES.unknown : REGISTRATION_MESSAGES.closed
+  }
+  if (isGameClosed(state)) return REGISTRATION_MESSAGES.closed
   if (isGameFinished(state)) return REGISTRATION_MESSAGES.finished
   if (!isGameInLobby(state)) return REGISTRATION_MESSAGES.started
   return null
@@ -61,7 +69,9 @@ export async function getPlayAccessDenial(
   teamId: string
 ): Promise<string | null> {
   const state = await fetchGameStateForGame(gameId)
-  if (!state || isGameInLobby(state)) return null
+  if (!state) return PLAY_MESSAGES.invalid_session
+  if (isGameClosed(state)) return PLAY_MESSAGES.closed
+  if (isGameInLobby(state)) return null
 
   const { data: team, error } = await supabase
     .from('teams')

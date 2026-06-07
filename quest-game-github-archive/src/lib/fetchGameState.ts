@@ -4,6 +4,11 @@ import type { GameStateRow } from './gameSessionState'
 const inflight = new Map<string, Promise<GameStateRow | null>>()
 const lastOk = new Map<string, { at: number; row: GameStateRow | null }>()
 
+export function invalidateGameStateCache(gameId: string): void {
+  lastOk.delete(gameId)
+  inflight.delete(gameId)
+}
+
 const MIN_INTERVAL_MS = 800
 const MIN_INTERVAL_MOBILE_MS = 1500
 
@@ -46,7 +51,7 @@ export function fetchGameStateForGame(
   const minGap = isMobileUa() ? MIN_INTERVAL_MOBILE_MS : MIN_INTERVAL_MS
 
   const running = inflight.get(gameId)
-  if (running) return running
+  if (running && !force) return running
 
   if (!force) {
     const cached = lastOk.get(gameId)

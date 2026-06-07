@@ -2,11 +2,12 @@ import type { GameSessionSnapshot } from '../components/GameStateManager'
 
 const cache = new Map<string, GameSessionSnapshot>()
 
-const OPTIMISTIC_LOBBY: GameSessionSnapshot = {
+const OPTIMISTIC_UNKNOWN: GameSessionSnapshot = {
   inLobby: true,
   isPaused: false,
   isFinished: false,
-  sessionUnknown: false,
+  isClosed: false,
+  sessionUnknown: true,
 }
 
 export function rememberSessionSnapshot(gameId: string, snap: GameSessionSnapshot) {
@@ -23,13 +24,14 @@ export function shouldBlockLobbyRegression(
   prev: GameSessionSnapshot | undefined,
   next: GameSessionSnapshot
 ): boolean {
+  if (prev?.sessionUnknown) return false
   return !!(prev && !prev.inLobby && next.inLobby && !next.isFinished)
 }
 
-/** Пока game_state не пришёл — удержать последнее известное состояние или лобби при первом входе. */
+/** Пока game_state не пришёл — удержать последнее известное состояние или «неизвестно». */
 export function resolveSlowFetchFallback(gameId: string): GameSessionSnapshot {
   const prev = cache.get(gameId)
   if (prev && !prev.inLobby) return prev
   if (prev) return prev
-  return OPTIMISTIC_LOBBY
+  return OPTIMISTIC_UNKNOWN
 }

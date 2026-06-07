@@ -123,6 +123,32 @@ function getOrCreateHub(gameId: string): GameRealtimeHub {
       },
       () => dispatchTeams(hub)
     )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'game_state',
+        filter: `game_id=eq.${gameId}`,
+      },
+      (payload) => {
+        const row = payload.new as GameStateRow
+        if (row?.game_id) dispatchGameState(hub, row)
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'game_state',
+        filter: `game_id=eq.${gameId}`,
+      },
+      (payload) => {
+        const row = payload.new as GameStateRow
+        if (row?.game_id) dispatchGameState(hub, row)
+      }
+    )
     .subscribe()
 
   hub.channel = channel

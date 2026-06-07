@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { agentDebugLog } from './debugLog'
-import { mapQuestionsForPlay, prefetchQuestionsForGame } from './prefetchGameQuestions'
+import { mapQuestionsForPlay, fetchQuestionsFullForGame, QUESTION_DB_SELECT } from './prefetchGameQuestions'
 import { getGamePlayCache, setGamePlayCache } from './gamePlayCache'
 let revalidateInFlight: Promise<{ game: Record<string, unknown>; questions: Record<string, unknown>[] } | null> | null =
   null
@@ -37,9 +37,7 @@ async function revalidateGamePlayFromServerInner(gameCode: string) {
 
     const { data: questionsData, error: questionsError } = await supabase
       .from('questions')
-      .select(
-        'id, game_id, question_number, question_text, question_type, type, options, answer, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url'
-      )
+      .select(QUESTION_DB_SELECT)
       .eq('game_id', gameData.id)
       .order('question_number', { ascending: true })
 
@@ -96,7 +94,7 @@ export async function revalidateQuestionsForGameCritical(
     'H15'
   )
 
-  const questions = await prefetchQuestionsForGame(gameId)
+  const questions = await fetchQuestionsFullForGame(gameId)
   setGamePlayCache(code, { game, questions })
   agentDebugLog(
     'revalidateGamePlay.ts',

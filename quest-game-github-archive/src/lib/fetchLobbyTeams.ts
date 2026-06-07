@@ -7,6 +7,7 @@ export type LobbyTeamRow = {
   team_name: string | null
   name: string | null
   captain_name: string | null
+  avatar_url?: string | null
 }
 
 const inflight = new Map<string, Promise<LobbyTeamRow[]>>()
@@ -33,7 +34,7 @@ async function fetchLobbyTeamsOnce(gameId: string): Promise<LobbyTeamRow[]> {
   // #endregion
   const { data, error } = await supabase
     .from('teams')
-    .select('id, team_name, name, captain_name')
+    .select('id, team_name, name, captain_name, avatar_url')
     .eq('game_id', gameId)
     .order('registration_time', { ascending: true })
   if (error) {

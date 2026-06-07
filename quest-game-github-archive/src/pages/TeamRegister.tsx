@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
 import { isTransientNetworkError, registerTeamDirect } from '../lib/teamRegister'
 import type { TeamSnapshot } from '../lib/gamePlayCache'
 import { compressImageForAvatar } from '../lib/compressImage'
@@ -18,8 +17,11 @@ import { fetchGameStateForGame } from '../lib/fetchGameState'
 import { getGamePlayCache, setGamePlayCache } from '../lib/gamePlayCache'
 import { prefetchQuestionsForGame } from '../lib/prefetchGameQuestions'
 import { fetchLobbyTeams } from '../lib/fetchLobbyTeams'
-import { getCachedGameByCode, setCachedGameByCode } from '../lib/gameLookupCache'
+import { fetchGameByCode, getCachedGameByCode } from '../lib/gameLookupCache'
+import { markPlayerFetchBoost } from '../lib/playerFetchBoost'
+import { markRegistrationSubmitBoost } from '../lib/registrationBoost'
 import { saveTeamSession } from '../lib/playerSession'
+import { rememberSessionSnapshot } from '../lib/gameSessionSnapshotCache'
 import { getRegistrationDenialFromState } from '../lib/participantAccess'
 import { downloadClientLogsJson } from '../lib/clientLogCollector'
 import { readRegistrationCodeFromSearch } from '../lib/registrationUrl'
@@ -51,8 +53,10 @@ export default function TeamRegister() {
   const [reportHint, setReportHint] = useState('')
   const [loading, setLoading] = useState(false)
   const submittingRef = useRef(false)
+  const submitSpinnerStartedRef = useRef(0)
 
   useEffect(() => {
+    markPlayerFetchBoost()
     agentDebugLog(
       'TeamRegister.tsx',
       'page load',
@@ -71,21 +75,29 @@ export default function TeamRegister() {
     }
   }, [searchParams])
 
-  // Прогрев lookup игры до submit — на iPhone games ждали в очереди 11–14с.
+  // Прогрев lookup игры и game_state до submit — debounce, иначе каждый символ = GET в очередь.
   useEffect(() => {
     const normalizedCode = gameCode.trim().toUpperCase()
     if (normalizedCode.length < 4) return
-    if (getCachedGameByCode(normalizedCode)) return
-    void supabase
-      .from('games')
-      .select(
-        'id, code, title, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec'
-      )
-      .eq('code', normalizedCode)
-      .maybeSingle()
-      .then((res) => {
-        if (res.data) setCachedGameByCode(normalizedCode, res.data as GameRow)
-      })
+
+    const warmState = (gameId: string) => {
+      void fetchGameStateForGame(gameId).catch(() => {})
+    }
+
+    const cached = getCachedGameByCode(normalizedCode)
+    if (cached) {
+      warmState(cached.id)
+      return
+    }
+
+    const timer = setTimeout(() => {
+      void fetchGameByCode(normalizedCode)
+        .then((game) => {
+          if (game) warmState(game.id)
+        })
+        .catch(() => {})
+    }, 400)
+    return () => clearTimeout(timer)
   }, [gameCode])
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,6 +126,9 @@ export default function TeamRegister() {
     setErrorDetail('')
     setCopyHint('')
     setLoading(true)
+    submitSpinnerStartedRef.current = Date.now()
+    markPlayerFetchBoost()
+    markRegistrationSubmitBoost()
     const normalizedCode = gameCode.trim().toUpperCase()
     debugLog('TeamRegister.tsx:submit', 'start', { normalizedCode, hasAvatar: !!avatarFile }, 'D')
     // #region agent log
@@ -141,44 +156,25 @@ export default function TeamRegister() {
 
       // Регистрация без enqueueCritical — HTTP уже в очереди supabase; иначе iPhone ждёт prefetch/ответы других вкладок.
       const regStarted = Date.now()
-      const STATE_CHECK_TIMEOUT_MS = 2500
       const outcome = await (async (): Promise<RegOutcome> => {
         const cachedGame = getCachedGameByCode(normalizedCode)
-        const gamesFetch = supabase
-          .from('games')
-          .select(
-            'id, code, title, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec'
-          )
-          .eq('code', normalizedCode)
-          .maybeSingle()
-
         let gameData: GameRow | null = cachedGame as GameRow | null
 
-        if (cachedGame) {
+        if (!cachedGame) {
+          const fetched = await fetchGameByCode(normalizedCode)
+          if (!fetched) {
+            debugLog('TeamRegister.tsx', 'game not found', { normalizedCode }, 'D')
+            return { kind: 'not_found' }
+          }
+          gameData = fetched as GameRow
+        } else {
           agentDebugLog(
             'TeamRegister.tsx',
             'games cache hit',
             { gameId: cachedGame.id, ms: Date.now() - regStarted },
             'H12'
           )
-          void gamesFetch.then((res) => {
-            if (res.data) setCachedGameByCode(normalizedCode, res.data as GameRow)
-          })
-        } else {
-          const res = await gamesFetch
-          if (res.error) {
-            throw new Error(
-              res.error.message?.includes('fetch') || res.error.message?.includes('Failed')
-                ? 'Нет связи с сервером. Проверьте интернет/VPN и попробуйте снова.'
-                : res.error.message
-            )
-          }
-          if (!res.data) {
-            debugLog('TeamRegister.tsx', 'game not found', { normalizedCode }, 'D')
-            return { kind: 'not_found' }
-          }
-          gameData = res.data as GameRow
-          setCachedGameByCode(normalizedCode, gameData)
+          void fetchGameByCode(normalizedCode).catch(() => {})
         }
 
         agentDebugLog(
@@ -190,20 +186,22 @@ export default function TeamRegister() {
 
         let stateRow = null
         try {
-          stateRow = await Promise.race([
-            fetchGameStateForGame(gameData!.id, { force: true }),
-            new Promise<null>((resolve) =>
-              setTimeout(() => resolve(null), STATE_CHECK_TIMEOUT_MS)
-            ),
-          ])
+          stateRow = await fetchGameStateForGame(gameData!.id, { force: true })
         } catch (stateErr: unknown) {
           const stateMsg = stateErr instanceof Error ? stateErr.message : String(stateErr)
           agentDebugLog(
             'TeamRegister.tsx',
-            'state fetch failed, continue',
+            'state fetch failed',
             { gameId: gameData!.id, stateMsg },
             'H9'
           )
+          if (isTransientNetworkError(stateErr)) {
+            return {
+              kind: 'denied',
+              message:
+                'Не удалось связаться с сервером. Проверьте Wi‑Fi и попробуйте снова.',
+            }
+          }
         }
         const registrationDenial = getRegistrationDenialFromState(stateRow)
         agentDebugLog(
@@ -220,6 +218,14 @@ export default function TeamRegister() {
         if (registrationDenial) {
           return { kind: 'denied', message: registrationDenial }
         }
+
+        rememberSessionSnapshot(gameData!.id, {
+          inLobby: true,
+          isPaused: false,
+          isFinished: false,
+          isClosed: false,
+          sessionUnknown: false,
+        })
 
         agentDebugLog(
           'TeamRegister.tsx',
@@ -281,15 +287,24 @@ export default function TeamRegister() {
         teamsSnapshot,
       })
 
-      void prefetchQuestionsForGame(game.id).then((questions) => {
-        if (!questions.length) return
-        const cached = getGamePlayCache(normalizedCode)
-        setGamePlayCache(normalizedCode, {
-          game,
-          questions,
-          teamsSnapshot: cached?.teamsSnapshot ?? teamsSnapshot,
+      void prefetchQuestionsForGame(game.id)
+        .then((questions) => {
+          if (!questions.length) return
+          const cached = getGamePlayCache(normalizedCode)
+          setGamePlayCache(normalizedCode, {
+            game,
+            questions,
+            teamsSnapshot: cached?.teamsSnapshot ?? teamsSnapshot,
+          })
         })
-      })
+        .catch((err) => {
+          agentDebugLog(
+            'TeamRegister.tsx',
+            'prefetch failed',
+            { msg: err instanceof Error ? err.message : String(err) },
+            'H14'
+          )
+        })
 
       try {
         saveTeamSession(team)
@@ -372,6 +387,15 @@ export default function TeamRegister() {
     } finally {
       submittingRef.current = false
       setLoading(false)
+      if (submitSpinnerStartedRef.current > 0) {
+        agentDebugLog(
+          'TeamRegister.tsx',
+          'register spinner end',
+          { totalMs: Date.now() - submitSpinnerStartedRef.current },
+          'H10'
+        )
+        submitSpinnerStartedRef.current = 0
+      }
       debugLog('TeamRegister.tsx', 'finally loading=false', {}, 'E')
     }
     // navigate path returns early above

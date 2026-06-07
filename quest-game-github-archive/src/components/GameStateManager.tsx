@@ -14,6 +14,7 @@ import {
 } from '../lib/gameSessionSnapshotCache'
 import {
   type GameStateRow,
+  isGameClosed,
   isGameFinished,
   isGameInLobby,
   isGamePausedDuringPlay,
@@ -24,6 +25,7 @@ export type GameSessionSnapshot = {
   inLobby: boolean
   isPaused: boolean
   isFinished: boolean
+  isClosed: boolean
   sessionUnknown: boolean
 }
 
@@ -34,16 +36,32 @@ interface GameStateManagerProps {
 
 function snapshotFromRow(row: GameStateRow | null): GameSessionSnapshot {
   if (!row) {
-    return { inLobby: false, isPaused: false, isFinished: false, sessionUnknown: true }
+    return {
+      inLobby: false,
+      isPaused: false,
+      isFinished: false,
+      isClosed: false,
+      sessionUnknown: true,
+    }
   }
   return {
     inLobby: isGameInLobby(row),
     isPaused: isGamePausedDuringPlay(row),
     isFinished: isGameFinished(row),
+    isClosed: isGameClosed(row),
     sessionUnknown: false,
   }
 }
 
+const SETUP_TIMEOUT_MS_DESKTOP = 1200
+const SETUP_TIMEOUT_MS_MOBILE = 8000
+
+function setupTimeoutMs(): number {
+  if (typeof navigator === 'undefined') return SETUP_TIMEOUT_MS_DESKTOP
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+    ? SETUP_TIMEOUT_MS_MOBILE
+    : SETUP_TIMEOUT_MS_DESKTOP
+}
 const LOBBY_POLL_MS_DESKTOP = 4000
 const LOBBY_POLL_MS_MOBILE = 20000
 const PLAYING_POLL_MS_MOBILE = 45000
@@ -207,14 +225,13 @@ export default function GameStateManager({ gameId, onSessionChange }: GameStateM
           agentDebugLog(
             'GameStateManager.tsx',
             'timeout slow-fetch fallback',
-            { gameId, inLobby: fallback.inLobby },
+            { gameId, inLobby: fallback.inLobby, sessionUnknown: fallback.sessionUnknown },
             'H7'
           )
           // #endregion
-          hasSuccessfulApply = true
           emitSession(fallback)
         }
-      }, 1200)
+      }, setupTimeoutMs())
 
       await loadGameState()
       if (setupTimeoutId) window.clearTimeout(setupTimeoutId)

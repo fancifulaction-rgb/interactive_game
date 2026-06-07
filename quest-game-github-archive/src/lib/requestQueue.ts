@@ -1,4 +1,6 @@
+import { collectClientLog } from './clientLogCollector'
 import { agentDebugLog, debugLog } from './debugLog'
+import { isAdminRoute } from './adminFetchBoost'
 
 type Task<T> = () => Promise<T>
 
@@ -84,7 +86,7 @@ export function enqueueCritical<T>(task: Task<T>): Promise<T> {
 function maxSupabaseFetches(): number {
   if (typeof navigator === 'undefined') return 4
   const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-  // Safari/iOS: до 6 соединений на хост; узкая очередь давала ~10с на каждый запрос.
+  if (isAdminRoute()) return mobile ? 6 : 8
   return mobile ? 6 : 4
 }
 let supabaseFetchesRunning = 0
@@ -119,7 +121,8 @@ function releaseSupabaseFetchSlot(): void {
   if (next) next()
 }
 
-function isCriticalSessionActive(): boolean {
+/** Активна admin/player critical-сессия — в fetch-очереди только priority ≥ 8. */
+export function isCriticalSessionActive(): boolean {
   return criticalDepth > 0 || criticalRunning > 0
 }
 
@@ -128,7 +131,19 @@ function pickNextSupabaseFetchJob(): SupabaseFetchJob<unknown> | undefined {
   supabaseFetchQueue.sort((a, b) => b.priority - a.priority || a.enqueuedAt - b.enqueuedAt)
   if (isCriticalSessionActive()) {
     const idx = supabaseFetchQueue.findIndex((j) => j.priority >= 8)
-    if (idx === -1) return undefined
+    if (idx === -1) {
+      collectClientLog(
+        'requestQueue.ts',
+        'critical stall: no priority>=8 job',
+        {
+          qlen: supabaseFetchQueue.length,
+          topPriority: supabaseFetchQueue[0]?.priority,
+          running: supabaseFetchesRunning,
+        },
+        { level: 'warn', hypothesisId: 'H4' }
+      )
+      return undefined
+    }
     return supabaseFetchQueue.splice(idx, 1)[0]
   }
   return supabaseFetchQueue.shift()
@@ -139,15 +154,26 @@ function drainSupabaseFetchQueue(): void {
     const job = pickNextSupabaseFetchJob()
     if (!job) break
     const waitedMs = Date.now() - job.enqueuedAt
-    if (waitedMs >= 2000) {
-      // #region agent log
-      agentDebugLog(
-        'requestQueue.ts',
-        'supabase queue wait',
-        { waitedMs, priority: job.priority, running: supabaseFetchesRunning, qlen: supabaseFetchQueue.length },
-        'H13'
-      )
-      // #endregion
+    if (waitedMs >= 3000) {
+      const priorityCounts: Record<string, number> = {}
+      for (const q of supabaseFetchQueue) {
+        const bucket = String(q.priority)
+        priorityCounts[bucket] = (priorityCounts[bucket] ?? 0) + 1
+      }
+      const payload = {
+        waitedMs,
+        priority: job.priority,
+        running: supabaseFetchesRunning,
+        maxSlots: maxSupabaseFetches(),
+        qlen: supabaseFetchQueue.length,
+        queueByPriority: priorityCounts,
+        criticalActive: isCriticalSessionActive(),
+      }
+      collectClientLog('requestQueue.ts', 'supabase queue wait', payload, {
+        level: 'warn',
+        hypothesisId: 'H13',
+      })
+      agentDebugLog('requestQueue.ts', 'supabase queue wait', payload, 'H13')
     }
     void acquireSupabaseFetchSlot()
       .then(() => job.task())
