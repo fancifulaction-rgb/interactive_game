@@ -14,6 +14,8 @@ import {
 } from '../lib/gameSessionSnapshotCache'
 import {
   type GameStateRow,
+  gameStateUpdatedAtMs,
+  getLobbyEpoch,
   isGameClosed,
   isGameFinished,
   isGameInLobby,
@@ -27,6 +29,10 @@ export type GameSessionSnapshot = {
   isFinished: boolean
   isClosed: boolean
   sessionUnknown: boolean
+  /** updated_at с сервера — отличить админский restart от устаревшего poll. */
+  updatedAtMs?: number
+  /** player_data.lobbyEpoch — монотонный сигнал «начать заново». */
+  lobbyEpoch?: number
 }
 
 interface GameStateManagerProps {
@@ -50,6 +56,8 @@ function snapshotFromRow(row: GameStateRow | null): GameSessionSnapshot {
     isFinished: isGameFinished(row),
     isClosed: isGameClosed(row),
     sessionUnknown: false,
+    updatedAtMs: gameStateUpdatedAtMs(row),
+    lobbyEpoch: getLobbyEpoch(row),
   }
 }
 

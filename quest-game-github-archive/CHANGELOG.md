@@ -17,6 +17,9 @@
 
 ## [Unreleased] — Спринт 1 (стабильность сети)
 
+### Исправлено
+- IMP-LOG-007 / BUG_AUDIT C1: игрок возвращается в лобби после админского «Начать заново» (`restart_to_lobby`) — `updated_at` и `lobbyEpoch` в snapshot cache
+
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`
 - `fetchLobbyTeams`, `gameRealtime` hub, `pendingAnswerQueue`, coalesce `fetchGameState` / `prefetchGameQuestions`

@@ -19,13 +19,23 @@ export function getCachedSessionSnapshot(gameId: string): GameSessionSnapshot | 
   return cache.get(gameId)
 }
 
-/** Не откатывать игрока в лобби из-за медленного poll после старта игры. */
+/** Не откатывать игрока в лобби из-за устаревшего poll после старта игры. */
 export function shouldBlockLobbyRegression(
   prev: GameSessionSnapshot | undefined,
   next: GameSessionSnapshot
 ): boolean {
   if (prev?.sessionUnknown) return false
-  return !!(prev && !prev.inLobby && next.inLobby && !next.isFinished)
+  if (!prev || prev.inLobby || !next.inLobby || next.isFinished) return false
+
+  const prevEpoch = prev.lobbyEpoch ?? 0
+  const nextEpoch = next.lobbyEpoch ?? 0
+  if (nextEpoch > prevEpoch) return false
+
+  const prevAt = prev.updatedAtMs ?? 0
+  const nextAt = next.updatedAtMs ?? 0
+  if (nextAt > prevAt) return false
+
+  return true
 }
 
 /** Пока game_state не пришёл — удержать последнее известное состояние или «неизвестно». */
