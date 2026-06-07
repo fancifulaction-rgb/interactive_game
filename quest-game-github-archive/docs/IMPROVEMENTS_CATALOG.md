@@ -120,6 +120,12 @@
 | IMP-SEC-004 | Смена пароля админа без plaintext | AdminPanel | BACKLOG | proposed | proposed |
 | IMP-SEC-005 | Регистрация админа по email | Self-service | BACKLOG | proposed | proposed |
 | IMP-SEC-006 | Документ PRIVACY_GDPR | EU корпоративы | Optional doc | proposed | proposed |
+| IMP-SEC-007 | Team session token | `register_team` выдаёт токен; `submit_auto_answer` проверяет | BUG_AUDIT S5 | 1 | done |
+| IMP-SEC-008 | Закрыть `increment_team_score` для anon | Только через `submit_auto_answer` / service_role | BUG_AUDIT S4 | 1 | done |
+| IMP-SEC-009 | View `questions_player` | Эталон `answer` не на клиенте игрока | BUG_AUDIT S5 | 1 | done |
+| IMP-SEC-010 | Убрать anon UPDATE/INSERT на teams/answers/scores | Миграция 018 | BUG_AUDIT S3 | 1 | done |
+| IMP-SEC-011 | Защита `player-upload` + `confirm-admin-email` | Team session + bucket whitelist; setup secret | BUG_AUDIT S2 | 1 | done |
+| IMP-SEC-012 | JWT на delete Edge | `verify_jwt` + `requireAuthenticatedUser` | BUG_AUDIT S1 | 1 | done |
 
 ---
 
