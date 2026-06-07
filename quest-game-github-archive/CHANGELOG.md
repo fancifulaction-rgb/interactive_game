@@ -28,6 +28,7 @@
 - Админ «Начать с нуля»: `deleteTeamsAfterProgressReset`, `withTransientRetry`, `adminBusyRef`
 - `GamePlay` / `TeamRegister` / `GameLobby` / `GameStateManager` — меньше блокировок и дублирующих GET
 - Документация: AGENTS, REALTIME_AND_NETWORKING, FRONTEND, API_AND_FLOWS, BUGS_FOUND
+- Промпты агентов v3: AI_AGENT_FOCUS_REMINDER (подчистка), AI_AGENT_HANDOFF_PROMPT, PROMPTS_SHORT §1–§3
 
 ## [Unreleased] — Спринт 3
 

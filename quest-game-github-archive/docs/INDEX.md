@@ -24,9 +24,10 @@
 |---|----------|--------|------------|
 | 1 | [README.md](../README.md) | ✅ | Обзор, быстрый старт |
 | 2 | [AGENTS.md](../AGENTS.md) | ✅ | Онбординг AI-агента за 5 минут |
-| 2a | [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md) | ✅ | **Короткие промпты** для чата (старт, handoff, фокус) |
+| 2a | [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md) | ✅ | **Короткие промпты** — старт §1, фокус §2, handoff §3 |
 | 2b | [AI_AGENT_ONBOARDING_PROMPT.md](AI_AGENT_ONBOARDING_PROMPT.md) | ✅ | Полный промпт (архив) |
-| 2c | [AI_AGENT_FOCUS_REMINDER.md](AI_AGENT_FOCUS_REMINDER.md) | ✅ | **Периодический промпт** — фокус, самопроверка, «память» сессии |
+| 2c | [AI_AGENT_FOCUS_REMINDER.md](AI_AGENT_FOCUS_REMINDER.md) | ✅ | **Периодический** — фокус, подчистка, память сессии |
+| 2f | [AI_AGENT_HANDOFF_PROMPT.md](AI_AGENT_HANDOFF_PROMPT.md) | ✅ | **Финальный handoff** — конец сессии, checkpoint, отчёт |
 | 2d | [CURSOR_SETUP_GUIDE.md](CURSOR_SETUP_GUIDE.md) | ✅ | User Rules, Project Rules, settings, MCP |
 | 2e | [DIAGNOSTICS.md](DIAGNOSTICS.md) | ✅ | DEV-only логи (clientLogCollector, jsonl на диск) |
 | 3 | [INDEX.md](INDEX.md) | ✅ | Этот каталог |
@@ -90,7 +91,9 @@
 
 | Задача | Читать в порядке |
 |--------|------------------|
-| Первый вход в проект | AGENTS.md → PRODUCT → ARCHITECTURE |
+| Первый вход в проект | AI_AGENT_PROMPTS_SHORT §1 → AGENTS.md → PRODUCT |
+| Смена агента / конец дня | AI_AGENT_HANDOFF_PROMPT → context-save |
+| Агент «уплыл» | AI_AGENT_FOCUS_REMINDER |
 | Баг при ответе / регистрации / iPhone | DIAGNOSTICS → REALTIME_AND_NETWORKING → BUGS_FOUND |
 | Сброс игры / админ GameControls | API_AND_FLOWS → gameSessionControl / adminTeams |
 | Новая таблица / SQL | DATABASE → sql-migrations → DATA_LIFECYCLE |

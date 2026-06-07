@@ -188,11 +188,11 @@ powershell -ExecutionPolicy Bypass -File quest-game-github-archive/scripts/insta
 
 ## 6. Продуктивный «вайбкодинг» — workflow
 
-1. **Новый чат** → вставить блок из `AI_AGENT_ONBOARDING_PROMPT.md` + задача с **IMP-ID**.
-2. **Каждые 1–2 ч** → `AI_AGENT_FOCUS_REMINDER.md`.
-3. **Задача агенту:** «Сделай только IMP-INF-001, без других файлов».
-4. **Конец блока:** «commit + push» + `npm run build`.
-5. **Конец дня:** сохранить «выжимку памяти» из ответа агента в issue/заметку.
+1. **Новый чат** → `AI_AGENT_PROMPTS_SHORT.md` §1 + задача с **IMP-ID**.
+2. **Каждые 1–2 ч** → `AI_AGENT_FOCUS_REMINDER.md` (фокус + подчистка).
+3. **Задача агенту:** «Сделай только IMP-___ , без других файлов».
+4. **Конец блока:** §5 перед push + `npm run build`.
+5. **Конец сессии / смена агента** → `AI_AGENT_HANDOFF_PROMPT.md` + `gstack-context-save`; скопировать блок Handoff в новый чат.
 
 ### Чего избегать (мировой опыт)
 
@@ -283,8 +283,10 @@ Quest Game — React + Vite. Локально игра **не открывает
 
 ## Связанные файлы
 
-- [AI_AGENT_ONBOARDING_PROMPT.md](AI_AGENT_ONBOARDING_PROMPT.md)
+- [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md)
 - [AI_AGENT_FOCUS_REMINDER.md](AI_AGENT_FOCUS_REMINDER.md)
+- [AI_AGENT_HANDOFF_PROMPT.md](AI_AGENT_HANDOFF_PROMPT.md)
+- [AI_AGENT_ONBOARDING_PROMPT.md](AI_AGENT_ONBOARDING_PROMPT.md)
 - [INDEX.md](INDEX.md)
 
 *После настройки закоммитьте `.cursor/rules/`, `.cursorignore`, `docs/CURSOR_SETUP_GUIDE.md`.*

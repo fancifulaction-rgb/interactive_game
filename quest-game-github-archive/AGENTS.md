@@ -14,10 +14,11 @@
 
 | Когда | Документ |
 |-------|----------|
-| Первый вход / новый агент | **[docs/AI_AGENT_PROMPTS_SHORT.md](docs/AI_AGENT_PROMPTS_SHORT.md)** — короткий paste |
+| Первый вход / новый агент | **[docs/AI_AGENT_PROMPTS_SHORT.md](docs/AI_AGENT_PROMPTS_SHORT.md)** §1 |
 | Полный онбординг (опционально) | **[docs/AI_AGENT_ONBOARDING_PROMPT.md](docs/AI_AGENT_ONBOARDING_PROMPT.md)** |
-| Смена агента в том же чате | paste «Handoff» из PROMPTS_SHORT + **`gstack-context-restore`** |
-| Каждые 1–2 ч / агент «уплыл» | **[docs/AI_AGENT_FOCUS_REMINDER.md](docs/AI_AGENT_FOCUS_REMINDER.md)** |
+| Каждые 1–2 ч / фокус + подчистка | **[docs/AI_AGENT_FOCUS_REMINDER.md](docs/AI_AGENT_FOCUS_REMINDER.md)** (PROMPTS_SHORT §2) |
+| Конец сессии → новый агент | **[docs/AI_AGENT_HANDOFF_PROMPT.md](docs/AI_AGENT_HANDOFF_PROMPT.md)** (PROMPTS_SHORT §3) |
+| Продолжение в том же чате | PROMPTS_SHORT §4 + **`gstack-context-restore`** |
 | gstack (review, QA, handoff) | Project Rule `.cursor/rules/quest-game-gstack.mdc` + skills `~/.cursor/skills/gstack-*` |
 | Установка gstack (Windows) | `scripts/install-gstack-cursor.ps1` + [CURSOR_SETUP_GUIDE.md](docs/CURSOR_SETUP_GUIDE.md) §7 |
 
