@@ -1,4 +1,18 @@
-# Баги и статус (2026-06-06)
+# Баги и статус (2026-06-07)
+
+## Исправлено 2026-06-07 (стабильность сети, очередь, документация)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 26 | iPhone: 5+ параллельных GET `questions` после старта | `prefetchGameQuestions` in-flight dedupe; GamePlay не дублирует `loadGameData` |
+| 27 | «Начать с нуля» → ERR_CONNECTION_RESET | Меньше DELETE (`deleteTeamsAfterProgressReset`), fetch priority ≥8 при critical, `withTransientRetry` |
+| 28 | Шторм GET `game_state` на poll | `fetchGameStateForGame` coalesce + throttle |
+| 29 | Realtime: дубли каналов | Hub `gameRealtime.ts` + `attachGameRealtime` |
+| 30 | Отладка iPhone без DevTools | DEV: `clientLogCollector`, `DiagnosticLogsPanel`, `diagnostic/client-logs.jsonl` |
+
+Коммит: `b67a523` — `fix(stability): mobile fetch queue, admin scratch reset, and session coalescing`.
+
+Проверка: `npm run build`, `node scripts/e2e-game-flow.mjs`, ручной чеклист iPhone в [DIAGNOSTICS.md](DIAGNOSTICS.md).
 
 ## Исправлено 2026-06-06 (скорость iOS + «Начать с нуля»)
 

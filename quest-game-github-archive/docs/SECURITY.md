@@ -50,6 +50,16 @@ git diff | findstr SERVICE_ROLE
 
 Service role живёт только на сервере Deno. Функции должны валидировать вход (размер base64, allowed buckets).
 
+## Удаление команд с клиента (IMP-SEC-001)
+
+Админ с Supabase Auth (email) удаляет команды **прямым DELETE** через PostgREST (`adminTeams.ts`). Edge `delete-teams` — только fallback. Требует RLS: authenticated admin на `teams`, `players`, `answers`.
+
+## Финиш-страница при сбое сети
+
+`participantAccess.verifyFinishPageAccess`: если есть `hasFinishNavigation` (sessionStorage / `finishNavigation`) и ошибка transient (`failed to fetch`, timeout), доступ **разрешается** без повторной проверки `game_state`.
+
+**Trade-off:** UX на iPhone vs строгая проверка «игра завершена». Не даёт доступ без предшествующего финиш-navigation state. Документировать при ужесточении IMP-SEC.
+
 ## Клиентский счёт и ответы
 
 Сейчас `is_correct` и `points_earned` вычисляются на клиенте и отправляются в `answers`.

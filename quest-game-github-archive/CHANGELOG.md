@@ -15,6 +15,20 @@
 ### Добавлено
 - IMP-DATA-001: архив заездов — таблица `event_archive`, автосохранение при «Завершить игру», история и CSV в AdminPanel
 
+## [Unreleased] — Спринт 1 (стабильность сети)
+
+### Добавлено
+- DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`
+- `fetchLobbyTeams`, `gameRealtime` hub, `pendingAnswerQueue`, coalesce `fetchGameState` / `prefetchGameQuestions`
+- `scripts/test-game-session-state.mjs`, `scripts/qa-browser-inject.mjs`
+
+### Изменено
+- `requestQueue`: `enqueueSupabaseFetch` 4/6 слотов, приоритеты URL, блок GET &lt;8 при critical
+- `supabase.ts`: таймаут 45s, retry; Edge Functions — 1 попытка
+- Админ «Начать с нуля»: `deleteTeamsAfterProgressReset`, `withTransientRetry`, `adminBusyRef`
+- `GamePlay` / `TeamRegister` / `GameLobby` / `GameStateManager` — меньше блокировок и дублирующих GET
+- Документация: AGENTS, REALTIME_AND_NETWORKING, FRONTEND, API_AND_FLOWS, BUGS_FOUND
+
 ## [Unreleased] — Спринт 3
 
 ### Добавлено

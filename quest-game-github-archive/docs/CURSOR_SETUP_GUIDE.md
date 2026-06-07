@@ -159,10 +159,18 @@ powershell -ExecutionPolicy Bypass -File quest-game-github-archive/scripts/insta
 
 ### Применено в репозитории
 
-- `G:\Code\quest-game\.cursor\mcp.json` — пустой `mcpServers` (без лишних серверов из конфига).
-- Инструкция UI: [`.cursor/MCP_QUEST_GAME.md`](../.cursor/MCP_QUEST_GAME.md).
+- `G:\Code\quest-game\.cursor\mcp.json` — **Supabase MCP** (project `tvytsnnujaucoluoyvjq`, полный доступ: database, Edge, storage, logs).
+- Инструкция: [`.cursor/MCP_QUEST_GAME.md`](../.cursor/MCP_QUEST_GAME.md) — OAuth один раз, проверочный промпт.
+- DEV-логи приложения: [DIAGNOSTICS.md](DIAGNOSTICS.md) (не путать с MCP).
 
-### Один раз вручную (обязательно)
+### Один раз: Supabase MCP
+
+1. Открыть workspace `G:\Code\quest-game` (чтобы подхватился `.cursor/mcp.json`).
+2. `Ctrl+Shift+J` → **Tools & MCP** → сервер **supabase** → войти через браузер при первом tool call.
+3. **Developer: Reload Window**.
+4. В Agent-чате — промпт проверки из `MCP_QUEST_GAME.md`.
+
+### Один раз вручную (лишние плагины)
 
 Плагины Notion / Figma / Datadog **отключаются только в UI**:
 

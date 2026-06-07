@@ -60,6 +60,25 @@ export const supabase = createClient(
 | Edge `delete-game` | Storage cleanup + DELETE rows |
 | `deleteGame.ts` fallback | DELETE `games` (CASCADE) |
 
+### Админ: «Начать с нуля» (удалить все команды)
+
+| Шаг | Операция | Модуль |
+|-----|----------|--------|
+| 1 | `resetGameProgress` — DELETE answers, reset scores | `resetGameProgress.ts` |
+| 2 | `deleteTeamsAfterProgressReset` — DELETE players, teams | `adminTeams.ts` |
+| 3 | `upsertGameStateForGame` → `waiting`, `{}` player_data | `gameSessionControl.ts` |
+| 4 | `broadcastTeamsChanged` | `gameRealtime.ts` |
+
+Всё в `enqueueCritical` + `withTransientRetry` (до 3×). UI: `GameControls.runAction`, `adminBusyRef` блокирует poll/reload.
+
+### Админ: «Запустить заново» (команды остаются)
+
+`restartGameSessionToLobby` — только `resetGameProgress` + `lobbyEpoch++`, без удаления команд.
+
+## HTTP-очередь (все запросы)
+
+Любой вызов `supabase.from(...)` проходит через `enqueueSupabaseFetch` (см. [REALTIME_AND_NETWORKING.md](REALTIME_AND_NETWORKING.md)). В таблицах выше «critical» = логическая очередь приложения; фактический HTTP ещё упорядочен по priority.
+
 ## Детальный поток: ответ с медиа
 
 ```

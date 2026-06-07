@@ -49,11 +49,12 @@ Cursor Rule **`quest-game-gstack.mdc`** задаёт, когда вызыват�
 | Правило | Почему |
 |---------|--------|
 | Не добавлять параллельные Supabase-запросы на hot-path игрока | Один HTTP/2 к `*.supabase.co` → `ERR_CONNECTION_RESET`, зависания |
-| Использовать `enqueueCritical` / `enqueueBackground` из `src/lib/requestQueue.ts` | Уже внедрённая очередь 1+1 на вкладку |
+| **Два уровня очереди** в `requestQueue.ts`: `enqueueCritical` (логика 1+1) + `enqueueSupabaseFetch` (все HTTP через `supabase.ts`) | Critical не блокирует вложенные вызовы (`criticalDepth`); fetch — 4 desktop / 6 mobile слотов с приоритетами |
+| При `criticalDepth > 0` — в fetch-очереди только priority ≥ 8 | Админ «Начать с нуля» не конкурирует с poll `teams` (priority 1) |
+| Дедуп in-flight: `prefetchGameQuestions`, `fetchGameStateForGame`, `fetchLobbyTeams` | StrictMode / несколько экранов не шлют 5+ одинаковых GET |
 | Аватар команды — **после игры** (`avatarAfterGame`, `pendingAvatar`), не в `saveAnswer` | Storage не конкурирует с `answers.insert` |
-| `debugLog` только при `DEV && VITE_DEBUG_LOG=1` | Иначе лишний трафик |
-| Не использовать `fetchWithRetry` на Supabase (удалён) | Зомби-запросы |
-| Edge Functions `player-upload`, `delete-game` — **желательно задеплоить** | Сейчас часто 404, клиент fallback на прямой Storage |
+| DEV-логи: `collectClientLog` / `agentDebugLog` — только `import.meta.env.DEV` | См. [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md); `debugLog` ещё требует `VITE_DEBUG_LOG=1` |
+| Edge `delete-teams` — fallback; админка сначала **прямой DELETE** (RLS + Auth) | Edge 1 retry, таймаут 12s; см. `adminTeams.ts` |
 | `npm run build` после существенных изменений | Проверка TypeScript |
 
 ### Git (по указанию владельца)
@@ -64,12 +65,30 @@ Cursor Rule **`quest-game-gstack.mdc`** задаёт, когда вызыват�
 
 ```
 src/pages/          — маршруты (GamePlay, TeamRegister, AdminPanel, …)
-src/lib/            — бизнес-логика (saveAnswer, gamePlayCache, teamScore, …)
-src/components/     — UI (GameStateManager, NotificationPopup, …)
-docs/sql-migrations/ — SQL 001–009
+src/lib/            — бизнес-логика (см. FRONTEND.md § src/lib)
+src/components/     — UI (GameStateManager, GameControls, DiagnosticLogsPanel DEV)
+docs/sql-migrations/ — SQL 001–015+
 supabase/functions/ — Edge Functions (Deno)
-scripts/            — e2e, migrate, measure-latency
+scripts/            — e2e, migrate, measure-latency, test-game-session-state.mjs
+diagnostic/         — client-logs.jsonl (DEV, gitignore), .gitkeep
+vite-client-logs-plugin.ts — запись логов с браузера на диск в dev
 ```
+
+### Модули стабильности (2026-06, Спринт 1)
+
+| Модуль | Зачем |
+|--------|--------|
+| `requestQueue.ts` | `enqueueCritical`, `enqueueBackground`, `enqueueSupabaseFetch` |
+| `supabase.ts` | Обёртка fetch: таймаут 45s, retry, приоритеты URL |
+| `gameRealtime.ts` | Единый hub Realtime + broadcast `teams_changed` / `session_changed` |
+| `fetchGameState.ts` | Coalesce + throttle GET `game_state` |
+| `fetchLobbyTeams.ts` | Очередь + кэш списка команд лобби |
+| `prefetchGameQuestions.ts` | In-flight dedupe одного GET `questions` на gameId |
+| `gameSessionControl.ts` | Старт/пауза/финиш/«с нуля»; `restartGameSessionFromScratch` + retry |
+| `adminTeams.ts` | Удаление команд (direct → edge fallback) |
+| `participantAccess.ts` | Допуск регистрации/игры/финиша; grace late-join 2s |
+| `pendingAnswerQueue.ts` | Очередь ответов при offline/сбое |
+| `clientLogCollector.ts` | Ring buffer → `POST /__client_logs` (DEV) |
 
 ## Маршруты (игрок / админ)
 
@@ -96,7 +115,9 @@ node scripts/measure-latency.mjs <GAME_CODE>
 
 - Масштаб 2–100 игроков: см. [docs/SCALING.md](docs/SCALING.md).
 - Открытые баги/история: [docs/BUGS_FOUND.md](docs/BUGS_FOUND.md).
-- RLS сейчас permissive (`USING (true)`) — см. [docs/SECURITY.md](docs/SECURITY.md).
+- RLS: IMP-SEC-001 применён для админа; anon — игровой поток. Детали: [docs/SECURITY.md](docs/SECURITY.md).
+- **IMP-RT-003** (proposed): полностью единый канал Realtime на `game_id` — hub частично в `gameRealtime.ts`.
+- Ручная проверка iPhone после изменений сети/очереди — обязательна (см. DIAGNOSTICS.md).
 
 ## Язык и стиль
 

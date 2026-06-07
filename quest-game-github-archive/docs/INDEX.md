@@ -27,7 +27,8 @@
 | 2a | [AI_AGENT_PROMPTS_SHORT.md](AI_AGENT_PROMPTS_SHORT.md) | ✅ | **Короткие промпты** для чата (старт, handoff, фокус) |
 | 2b | [AI_AGENT_ONBOARDING_PROMPT.md](AI_AGENT_ONBOARDING_PROMPT.md) | ✅ | Полный промпт (архив) |
 | 2c | [AI_AGENT_FOCUS_REMINDER.md](AI_AGENT_FOCUS_REMINDER.md) | ✅ | **Периодический промпт** — фокус, самопроверка, «память» сессии |
-| 2d | [CURSOR_SETUP_GUIDE.md](CURSOR_SETUP_GUIDE.md) | ✅ | User Rules, Project Rules, settings, расширения |
+| 2d | [CURSOR_SETUP_GUIDE.md](CURSOR_SETUP_GUIDE.md) | ✅ | User Rules, Project Rules, settings, MCP |
+| 2e | [DIAGNOSTICS.md](DIAGNOSTICS.md) | ✅ | DEV-only логи (clientLogCollector, jsonl на диск) |
 | 3 | [INDEX.md](INDEX.md) | ✅ | Этот каталог |
 | 4 | [PRODUCT.md](PRODUCT.md) | ✅ | Продукт, роли, сценарии |
 | 5 | [ARCHITECTURE.md](ARCHITECTURE.md) | ✅ | Архитектура системы |
@@ -90,7 +91,8 @@
 | Задача | Читать в порядке |
 |--------|------------------|
 | Первый вход в проект | AGENTS.md → PRODUCT → ARCHITECTURE |
-| Баг при ответе / регистрации | API_AND_FLOWS → REALTIME_AND_NETWORKING → BUGS_FOUND |
+| Баг при ответе / регистрации / iPhone | DIAGNOSTICS → REALTIME_AND_NETWORKING → BUGS_FOUND |
+| Сброс игры / админ GameControls | API_AND_FLOWS → gameSessionControl / adminTeams |
 | Новая таблица / SQL | DATABASE → sql-migrations → DATA_LIFECYCLE |
 | Загрузка файлов | STORAGE → EDGE_FUNCTIONS |
 | Деплой на мероприятие | OPERATIONS → DEPLOYMENT → SUPABASE_SETUP |
@@ -110,16 +112,18 @@ quest-game-github-archive/
 ├── .env.example
 ├── package.json
 ├── src/
-│   ├── App.tsx               # маршруты
-│   ├── pages/                # экраны
-│   ├── components/           # UI + GameStateManager
-│   ├── contexts/             # ThemeContext
-│   └── lib/                  # бизнес-логика Supabase
-├── docs/                     # документация (этот каталог)
-│   ├── sql-migrations/       # 001–009
+│   ├── App.tsx
+│   ├── pages/
+│   ├── components/           # GameStateManager, GameControls, DiagnosticLogsPanel (DEV)
+│   ├── contexts/
+│   └── lib/                  # requestQueue, gameRealtime, fetchLobbyTeams, …
+├── diagnostic/               # client-logs.jsonl (gitignore), .gitkeep
+├── docs/
+│   ├── sql-migrations/       # 001–015+
 │   └── guides/
-├── supabase/functions/       # Edge Functions (Deno)
-└── scripts/                  # migrate, e2e, latency
+├── supabase/functions/
+├── scripts/                  # e2e, migrate, test-game-session-state.mjs
+└── vite-client-logs-plugin.ts
 ```
 
 ---

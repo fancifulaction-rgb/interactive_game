@@ -46,11 +46,17 @@ src/
 
 ### `GamePlay`
 
-- Гидратация из `gamePlayCache` / Supabase.
-- `GameStateManager` — пауза через Realtime.
-- Ответ: optimistic → `handleNextQuestion` → `saveAnswerToServer` + `uploadAnswerMediaQueued`.
+- Гидратация из `gamePlayCache` / Supabase; при кэше без вопросов — ждёт `prefetchQuestionsForGame` (dedupe), не полный `loadGameData`.
+- Один `GameStateManager` на экран; лобби (`GameLobby`) без блокировки на `sessionKnown`.
+- Ответ: optimistic → `handleNextQuestion` → `saveAnswerToServer` / `submitAutoAnswer` + `pendingAnswerQueue` при сбое.
 - Финиш: `buildFinishNavigateState` → congratulation / scoreboard.
-- `NotificationPopup` для сообщений админа.
+- `attachGameRealtime` из `gameRealtime.ts`.
+
+### `GameControls` (в AdminPanel)
+
+- Старт / пауза / финиш / «Запустить заново» / **«Начать с нуля»** через `runAction` + `enqueueCritical`.
+- Poll команд 30 s; пауза при `adminBusyRef`; `fetchLobbyTeams` с `acceptEmpty` после сброса.
+- Realtime через `attachGameRealtime` (не отдельный канал).
 
 ### `PlayerScoreboard`
 
@@ -71,25 +77,38 @@ src/
 
 | Файл | Назначение |
 |------|------------|
-| `supabase.ts` | Singleton клиент |
-| `requestQueue.ts` | `enqueueCritical`, `enqueueBackground` |
-| `gamePlayCache.ts` | sessionStorage кэш игры/вопросов/teams |
-| `saveAnswer.ts` | Insert ответа, retry ×3, critical queue |
-| `storageUpload.ts` | Upload аватаров/медиа, очереди, retry |
+| `supabase.ts` | Клиент + fetch queue, таймаут, retry, приоритеты URL |
+| `requestQueue.ts` | `enqueueCritical`, `enqueueBackground`, `enqueueSupabaseFetch` |
+| `gameRealtime.ts` | Hub Realtime + broadcast session/teams/score |
+| `fetchGameState.ts` | GET `game_state` с coalesce/throttle |
+| `fetchLobbyTeams.ts` | Список команд лобби (кэш, очередь) |
+| `gameSessionControl.ts` | Старт/пауза/финиш/сброс; `restartGameSessionFromScratch` |
+| `gameSessionState.ts` | Константы состояний, `lobbyEpoch`, `getGameStartedAt` |
+| `adminTeams.ts` | Удаление команд (direct DELETE → edge fallback) |
+| `resetGameProgress.ts` | Сброс ответов/очков без удаления команд |
+| `participantAccess.ts` | Допуск регистрации, late-join, финиш-страница |
+| `gamePlayCache.ts` | sessionStorage кэш игры/вопросов/teams (+ in-memory fallback) |
+| `gameLookupCache.ts` | Кэш игры по коду |
+| `gameSessionSnapshotCache.ts` | Last-known-good сессии |
+| `saveAnswer.ts` | Insert ответа, retry, critical queue |
+| `submitAutoAnswer.ts` | RPC `submit_auto_answer` |
+| `pendingAnswerQueue.ts` | Очередь ответов при offline |
+| `storageUpload.ts` | Upload аватаров/медиа |
 | `teamScore.ts` | Оптимистичный счёт + фоновый UPDATE |
-| `pendingAvatar.ts` | Буфер файла аватара до конца игры |
+| `pendingAvatar.ts` | Буфер аватара до конца игры |
 | `avatarAfterGame.ts` | Jitter + background upload |
-| `teamRegister.ts` | Хелперы регистрации |
-| `prefetchGameQuestions.ts` | Предзагрузка вопросов |
-| `playerSession.ts` | `team_registration_time` и сессия |
-| `finishNavigation.ts` | State для страниц финиша |
-| `loadScoreboardTeams.ts` | Загрузка команд для табло |
+| `teamRegister.ts` | Регистрация + `withTransientRetry` |
+| `prefetchGameQuestions.ts` | Prefetch вопросов (in-flight dedupe) |
+| `playerSession.ts` | Сессия игрока в storage |
+| `finishNavigation.ts` | State финиш-страниц (sessionStorage) |
+| `loadScoreboardTeams.ts` | Команды для табло |
 | `revalidateGamePlay.ts` | Фоновое обновление кэша |
 | `networkMutex.ts` | `isAnswerSaveInFlight` |
 | `scoring.ts` | `calculateQuestionScore` |
-| `compressImage.ts` | Сжатие аватара на клиенте |
-| `builtinThemes.ts` | Встроенные темы на player routes |
-| `debugLog.ts` | Только DEV + `VITE_DEBUG_LOG=1` |
+| `compressImage.ts` | Сжатие аватара (HEIC fallback) |
+| `builtinThemes.ts` | Встроенные темы |
+| `clientLogCollector.ts` | DEV ring buffer → `/__client_logs` |
+| `debugLog.ts` | DEV логи + `agentDebugLog` (сессия отладки) |
 | `deleteGame.ts` | Удаление игры |
 
 ## Контексты

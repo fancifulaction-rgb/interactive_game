@@ -11,3 +11,4 @@ alwaysApply: false
 - Игрок: Storage/REST через `requestQueue` и `storageUpload.ts` / `saveAnswer.ts`.
 - Edge: приоритет deploy `player-upload`, `delete-game` (Спринт 1).
 - После DDL: напомнить Reload schema в Supabase Dashboard.
+- **Cursor MCP:** `.cursor/mcp.json` → Supabase project `tvytsnnujaucoluoyvjq`. При багах БД/Edge — `list_tables`, `get_logs`, `list_edge_functions`; сверка с `docs/DATA_LIFECYCLE.md`. Браузерные баги — `docs/DIAGNOSTICS.md` + `diagnostic/client-logs.jsonl`.

@@ -1,29 +1,73 @@
 # MCP для workspace Quest Game
 
-## Что сделано автоматически
+## Supabase MCP (основной)
 
-- Создан `.cursor/mcp.json` с пустым `mcpServers: {}` — в проекте **нет** дополнительных MCP из конфига.
+Подключён в `.cursor/mcp.json` к проекту **`tvytsnnujaucoluoyvjq`** (тот же ref, что в `.env.example`).
 
-## Что нужно один раз в UI (плагины Cursor)
+| Параметр | Значение |
+|----------|----------|
+| `project_ref` | `tvytsnnujaucoluoyvjq` — только этот проект |
+| `read_only` | **не задан** — полный доступ: SQL, миграции, Edge deploy, логи |
+| `features` | database, debugging, development, edge_functions, docs, storage |
 
-Плагины **Notion**, **Figma**, **Datadog**, **Framelink** подключаются через Cursor Marketplace и **не** отключаются через пустой `mcp.json`.
+### Один раз: авторизация в Cursor
 
-Для продуктивной работы над Quest Game:
+1. `Ctrl+Shift+J` → **Tools & MCP** — сервер **supabase** должен быть в списке.
+2. При первом использовании откроется браузер → войти в Supabase → выбрать org с проектом `tvytsnnujaucoluoyvjq` → разрешить доступ.
+3. `Ctrl+Shift+P` → **Developer: Reload Window**.
+4. В Agent-чате включите подтверждение tool calls (не auto-run без review) — см. [Security](https://supabase.com/docs/guides/ai-tools/mcp#security-risks).
 
-1. `Ctrl+Shift+J` → **Tools & MCP** (или Settings → MCP).
-2. **Выключить** (toggle off) для этого workspace:
-   - `plugin-notion-workspace-notion`
-   - `plugin-figma-figma`
-   - `plugin-datadog-datadog`
-   - `Framelink MCP for Figma` (если виден; глобально из `~/.cursor/mcp.json`)
-3. Оставить включёнными только то, что реально нужно для квеста (обычно **ничего**).
+### Проверка (скопировать в новый Agent-чат)
 
-4. **Developer: Reload Window** (`Ctrl+Shift+P`).
+```
+Подключись к Supabase через MCP (project tvytsnnujaucoluoyvjq):
+1. list_tables — перечисли public-таблицы.
+2. Сверь с docs/DATA_LIFECYCLE.md: games, questions, teams, answers, game_state, team_scores, messages.
+3. list_edge_functions — есть ли delete-game и player-upload?
+4. Кратко: что не совпадает с документацией?
+```
 
-## Глобальный `~/.cursor/mcp.json`
+### Опционально: Agent Skills Supabase
 
-Там может быть Framelink Figma — он действует во **всех** проектах. Для Quest Game достаточно toggle off в MCP Settings; удалять из global — только если не нужен в других репозиториях.
+```bash
+npx skills add supabase/agent-skills
+```
 
-## Проверка
+Готовые инструкции для миграций, RLS, Edge Functions — дополнение к MCP, не замена.
 
-В новом Agent-чате список tools не должен содержать notion/figma/datadog. Если есть — повторите toggle и Reload Window.
+### Если project_ref другой
+
+Если в `.env` другой URL (не `tvytsnnujaucoluoyvjq`), обновите query в `.cursor/mcp.json` под ваш Dashboard → Connect → MCP.
+
+---
+
+## Лишние MCP (отключить в UI)
+
+Плагины **Notion**, **Figma**, **Datadog**, **Framelink** не отключаются пустым конфигом — только toggle:
+
+1. `Ctrl+Shift+J` → **Tools & MCP**
+2. Выключить: `plugin-notion-workspace-notion`, `plugin-figma-figma`, `plugin-datadog-datadog`, Framelink (если есть)
+3. **Developer: Reload Window**
+
+Глобальный `~/.cursor/mcp.json` может добавлять серверы во все проекты — для Quest Game достаточно workspace `.cursor/mcp.json` + toggle off лишнего.
+
+---
+
+## Безопасность
+
+- MCP работает под **вашим** аккаунтом Supabase (не anon key приложения).
+- Не вставлять service role / PAT в чат и в git.
+- Перед деструктивными tool calls (DELETE, `apply_migration`, deploy) — смотреть preview в Cursor.
+- Прод с реальными игроками: предпочитать dev/staging проект; для prod — осознанно.
+
+---
+
+## Связь с DEV-диагностикой
+
+| Канал | Когда |
+|-------|--------|
+| **clientLogCollector + DiagnosticLogsPanel** | Баг в браузере/телефоне: очередь fetch, регистрация, GamePlay |
+| **Supabase MCP `get_logs`** | Ошибки API, Postgres, Edge, Auth на стороне Supabase |
+| **Код + docs** | Логика приложения, IMP-*, ROADMAP |
+
+См. `quest-game-github-archive/docs/DIAGNOSTICS.md`.

@@ -96,4 +96,17 @@ gstack-context-save. Краткий отчёт: IMP-ID, ветка, послед
 
 ---
 
-*Версия: 2026-06-05. gstack + Project Rules + gstack-qa/dev-server.*
+## 7. Supabase MCP + DEV-логи (отладка)
+
+```
+Баг с БД / RLS / Edge / Storage:
+- Supabase MCP: list_tables, get_logs, list_edge_functions, get_advisors.
+- Сверь с @docs/DATA_LIFECYCLE.md и @docs/DATABASE.md.
+
+Баг в браузере / iPhone / очередь fetch:
+- @docs/DIAGNOSTICS.md, diagnostic/client-logs.jsonl, DiagnosticLogsPanel в админке (DEV).
+```
+
+---
+
+*Версия: 2026-06-07. gstack + Project Rules + Supabase MCP + DEV diagnostics.*
