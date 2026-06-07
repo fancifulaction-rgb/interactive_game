@@ -11,15 +11,23 @@ import { gradeUserAnswer, normalizeUserAnswers } from '../lib/answerGrading'
 import { enqueueSubmitAutoAnswer } from '../lib/submitAutoAnswer'
 import { postponeAvatarUntilAfterAnswer } from '../lib/pendingAvatar'
 import { calculateQuestionScore } from '../lib/scoring'
-import { debugLog } from '../lib/debugLog'
-import { getGamePlayCache, isGamePlayCacheFresh } from '../lib/gamePlayCache'
-import { buildFinishNavigateState, getFinishPagePath } from '../lib/finishNavigation'
-import { mapQuestionsForPlay } from '../lib/prefetchGameQuestions'
+import { agentDebugLog, debugLog } from '../lib/debugLog'
+import { getGamePlayCache, isGamePlayCacheFresh, setGamePlayCache } from '../lib/gamePlayCache'
 import {
-  revalidateGamePlayFromServer,
+  buildFinishNavigateState,
+  navigateToFinish,
+} from '../lib/finishNavigation'
+import { enqueuePendingAnswer, startPendingAnswerFlushLoop } from '../lib/pendingAnswerQueue'
+import { mapQuestionsForPlay, prefetchQuestionsForGame } from '../lib/prefetchGameQuestions'
+import {
+  revalidateGamePlayCritical,
+  revalidateQuestionsForGameCritical,
   mapRevalidatedQuestions,
   pauseBackgroundRevalidate,
+  resumeBackgroundRevalidate,
+  isBackgroundRevalidatePaused,
 } from '../lib/revalidateGamePlay'
+import { enqueueCritical } from '../lib/requestQueue'
 import type { AnswerInsertPayload } from '../lib/saveAnswer'
 import { usePlayerExtrasReady } from '../lib/usePlayerExtrasReady'
 import { useTheme } from '../contexts/ThemeContext'
@@ -69,8 +77,17 @@ export default function GamePlay() {
   const [isPaused, setIsPaused] = useState(false)
   const [isFinished, setIsFinished] = useState(false)
   const [accessDenied, setAccessDenied] = useState<string | null>(null)
+  const [sessionUnknown, setSessionUnknown] = useState(true)
+  useEffect(() => {
+    startPendingAnswerFlushLoop()
+  }, [])
+
   const handleSessionChange = useCallback((session: GameSessionSnapshot) => {
-    setSessionKnown(true)
+    // #region agent log
+    agentDebugLog('GamePlay.tsx', 'session change', { ...session }, 'H7')
+    // #endregion
+    setSessionUnknown(session.sessionUnknown)
+    setSessionKnown(!session.sessionUnknown)
     setInLobby(session.inLobby)
     setIsPaused(session.isPaused)
     setIsFinished(session.isFinished)
@@ -78,7 +95,14 @@ export default function GamePlay() {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const loadGenRef = useRef(0)
   const finishedNavRef = useRef(false)
-  const teamId = localStorage.getItem('team_id')
+  const playAccessCheckedRef = useRef(false)
+  const [teamId, setTeamId] = useState<string | null>(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('team_id') : null
+  )
+
+  useEffect(() => {
+    setTeamId(localStorage.getItem('team_id'))
+  }, [gameCode])
   const extrasReady = usePlayerExtrasReady(game?.id, loading)
 
   const applyPlayData = (gameData: Record<string, unknown>, mappedQuestions: Question[]) => {
@@ -98,25 +122,50 @@ export default function GamePlay() {
 
   useEffect(() => {
     setSessionKnown(false)
+    setSessionUnknown(true)
     setAccessDenied(null)
+    playAccessCheckedRef.current = false
   }, [gameCode])
 
   useEffect(() => {
-    if (!game?.id || !teamId || !gameCode || !sessionKnown) return
+    if (!game?.id || !teamId || !gameCode || !sessionKnown || !inLobby) return
+    if (playAccessCheckedRef.current) return
+    playAccessCheckedRef.current = true
 
     const code = (gameCode ?? '').trim().toUpperCase()
-    if (!readStoredPlayerSession(code)) {
+    const stored = readStoredPlayerSession(code)
+    if (!stored) {
+      // #region agent log
+      agentDebugLog(
+        'GamePlay.tsx',
+        'access invalid session',
+        {
+          code,
+          teamId,
+          storedGameCode: localStorage.getItem('game_code'),
+        },
+        'H8'
+      )
+      // #endregion
       setAccessDenied('Сессия команды недействительна. Зарегистрируйтесь для этой игры.')
       setLoading(false)
       return
     }
 
-    void getPlayAccessDenial(game.id as string, teamId).then((msg) => {
-      if (msg) {
-        setAccessDenied(msg)
-        setLoading(false)
-      }
-    })
+    void getPlayAccessDenial(game.id as string, teamId)
+      .then((msg) => {
+        if (msg) {
+          // #region agent log
+          agentDebugLog('GamePlay.tsx', 'access denied', { msg, teamId }, 'H8')
+          // #endregion
+          setAccessDenied(msg)
+          setLoading(false)
+        }
+      })
+      .catch((err: unknown) => {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        agentDebugLog('GamePlay.tsx', 'access check failed', { errMsg, teamId }, 'H8')
+      })
   }, [game?.id, teamId, gameCode, sessionKnown, inLobby])
 
   useEffect(() => {
@@ -129,26 +178,90 @@ export default function GamePlay() {
     const cached = getGamePlayCache(code)
     const gen = ++loadGenRef.current
 
-    if (cached && isGamePlayCacheFresh(code)) {
+    if (cached && isGamePlayCacheFresh(code) && cached.questions.length > 0) {
       const mapped = mapQuestionsForPlay(cached.questions) as Question[]
       applyPlayData(cached.game, mapped)
       debugLog('GamePlay.tsx', 'hydrate from cache', { questions: mapped.length }, 'F')
       postponeAvatarUntilAfterAnswer()
-      if (mapped.length > 0) {
-        void loadGameData(gen, true)
-        return
-      }
+      return
     }
 
-    void loadGameData(gen, !!cached)
+    if (cached?.game && isGamePlayCacheFresh(code)) {
+      applyPlayData(cached.game, [])
+      debugLog('GamePlay.tsx', 'hydrate game only, questions pending', {}, 'H16')
+      postponeAvatarUntilAfterAnswer()
+      return
+    }
+
+    void loadGameData(gen, false)
   }, [gameCode, teamId, navigate])
 
   useEffect(() => {
+    if (!inLobby || !game?.id || questions.length > 0) return
+    const code = (gameCode ?? '').trim().toUpperCase()
+    const cached = getGamePlayCache(code)
+    if (cached?.questions?.length) {
+      const mapped = mapQuestionsForPlay(cached.questions) as Question[]
+      setQuestions(mapped)
+      setLoading(false)
+      return
+    }
+    agentDebugLog('GamePlay.tsx', 'lobby prefetch start', { gameId: game.id }, 'H14')
+    void prefetchQuestionsForGame(game.id as string)
+      .then((q) => {
+        if (!q.length) return
+        const mapped = mapQuestionsForPlay(q) as Question[]
+        setQuestions(mapped)
+        setGamePlayCache(code, {
+          game,
+          questions: q,
+          teamsSnapshot: cached?.teamsSnapshot,
+        })
+        setLoading(false)
+        agentDebugLog('GamePlay.tsx', 'lobby prefetch applied', { count: q.length }, 'H14')
+      })
+      .catch((err) => console.warn('GamePlay: prefetch questions in lobby failed', err))
+  }, [inLobby, game, gameCode, questions.length])
+
+  useEffect(() => {
     if (inLobby || !gameCode || questions.length > 0) return
+    const code = (gameCode ?? '').trim().toUpperCase()
+    const cached = getGamePlayCache(code)
+    if (cached?.questions?.length) {
+      applyPlayData(cached.game, mapQuestionsForPlay(cached.questions) as Question[])
+      return
+    }
+    agentDebugLog(
+      'GamePlay.tsx',
+      'game start load questions',
+      { code, hasCachedGame: !!cached?.game?.id, cachedQ: cached?.questions?.length ?? 0 },
+      'H15'
+    )
+    resumeBackgroundRevalidate()
     const gen = ++loadGenRef.current
+    const gameRow = cached?.game ?? game
+    if (!gameRow?.id) return
     setLoading(true)
-    void loadGameData(gen, false)
-  }, [inLobby, gameCode, questions.length])
+    void prefetchQuestionsForGame(gameRow.id as string)
+      .then((q) => {
+        if (gen !== loadGenRef.current || !q.length) return
+        const mapped = mapQuestionsForPlay(q) as Question[]
+        applyPlayData(gameRow, mapped)
+        setGamePlayCache(code, {
+          game: gameRow,
+          questions: q,
+          teamsSnapshot: cached?.teamsSnapshot,
+        })
+        agentDebugLog('GamePlay.tsx', 'game start questions applied', { count: q.length }, 'H15')
+      })
+      .catch((err) => {
+        console.warn('GamePlay: load questions on start failed', err)
+        if (gen === loadGenRef.current) void loadGameData(gen, true)
+      })
+      .finally(() => {
+        if (gen === loadGenRef.current) setLoading(false)
+      })
+  }, [inLobby, gameCode, questions.length, game])
 
   useEffect(() => {
     if (!isFinished || !game || !gameCode || finishedNavRef.current) return
@@ -156,9 +269,7 @@ export default function GamePlay() {
     const code = (gameCode ?? '').trim().toUpperCase()
     const cached = getGamePlayCache(code)
     const finishState = buildFinishNavigateState(game, cached?.teamsSnapshot)
-    navigate(getFinishPagePath(code, game.finish_page_type as string | undefined), {
-      state: finishState,
-    })
+    navigateToFinish(navigate, code, game.finish_page_type as string | undefined, finishState)
   }, [isFinished, game, gameCode, navigate])
 
   useEffect(() => {
@@ -220,7 +331,15 @@ export default function GamePlay() {
 
   const loadGameData = async (loadGen: number, staleCache: boolean) => {
     const code = (gameCode ?? '').trim().toUpperCase()
-    debugLog('GamePlay.tsx:loadGameData', 'start', { gameCode: code, staleCache }, 'E')
+    const cachedForLoad = getGamePlayCache(code)
+    const gameId = cachedForLoad?.game?.id as string | undefined
+    debugLog('GamePlay.tsx:loadGameData', 'start', { gameCode: code, staleCache, gameId }, 'E')
+    agentDebugLog(
+      'GamePlay.tsx',
+      'loadGameData start',
+      { code, staleCache, gameId: gameId ?? null },
+      'H15'
+    )
 
     if (staleCache) {
       const cached = getGamePlayCache(code)
@@ -234,9 +353,25 @@ export default function GamePlay() {
     for (let attempt = 0; attempt < 3; attempt++) {
       if (loadGen !== loadGenRef.current) return
       try {
-        const result = await revalidateGamePlayFromServer(code)
+        const loadStarted = Date.now()
+        const result =
+          gameId && cachedForLoad?.game
+            ? await revalidateQuestionsForGameCritical(gameId, code, cachedForLoad.game)
+            : await revalidateGamePlayCritical(code)
+        agentDebugLog(
+          'GamePlay.tsx',
+          'loadGameData fetch done',
+          {
+            attempt,
+            questionsOnly: !!(gameId && cachedForLoad?.game),
+            ms: Date.now() - loadStarted,
+            count: result?.questions?.length ?? 0,
+          },
+          'H15'
+        )
         if (loadGen !== loadGenRef.current) return
         if (!result) {
+          if (isBackgroundRevalidatePaused() || staleCache || game) return
           alert('Игра не найдена')
           navigate('/')
           return
@@ -403,14 +538,22 @@ export default function GamePlay() {
         })
         .catch((saveErr: unknown) => {
           const msg = saveErr instanceof Error ? saveErr.message : String(saveErr)
-          debugLog('GamePlay.tsx:submit', 'save failed', {
+          debugLog('GamePlay.tsx:submit', 'save failed, queue', {
             totalMs: Date.now() - submitStarted,
             msg,
-          }, 'H')
-          alert(
-            'Ответ принят в игре, но не сохранился на сервере: ' +
-              msg +
-              '\n\nПроверьте интернет. Администратор увидит табло с задержкой.'
+          }, 'H7')
+          enqueuePendingAnswer(
+            {
+              game_id: game.id,
+              team_id: teamId,
+              question_number: questionNumber,
+              answer: answerPayload,
+              media_urls: mediaUrl ? [mediaUrl] : [],
+              time_spent: timeTaken,
+              hints_used: hintLevel,
+            },
+            fallbackPayload,
+            gameCode ?? ''
           )
         })
     } catch (err: any) {
@@ -448,9 +591,7 @@ export default function GamePlay() {
       const code = (gameCode ?? '').trim().toUpperCase()
       const cached = getGamePlayCache(code)
       const finishState = buildFinishNavigateState(game, cached?.teamsSnapshot)
-      navigate(getFinishPagePath(code, game?.finish_page_type as string | undefined), {
-        state: finishState,
-      })
+      navigateToFinish(navigate, code, game?.finish_page_type as string | undefined, finishState)
     }
   }
 
@@ -485,22 +626,43 @@ export default function GamePlay() {
     setAnswerFilePreview(null)
   }
 
+  const codeForSession = (gameCode ?? '').trim().toUpperCase()
+  const cachedForSession = codeForSession ? getGamePlayCache(codeForSession) : null
+  const sessionGameId =
+    (game?.id as string | undefined) ?? (cachedForSession?.game?.id as string | undefined)
+
+  const sessionManager = sessionGameId ? (
+    <GameStateManager gameId={String(sessionGameId)} onSessionChange={handleSessionChange} />
+  ) : null
+
+  const notificationOverlay =
+    extrasReady && game?.id ? <NotificationPopup gameId={game.id} /> : null
+
+  const playShell = (body: React.ReactNode, notifications: React.ReactNode = null) => (
+    <>
+      {sessionManager}
+      {body}
+      {notifications}
+    </>
+  )
+
   if (accessDenied) {
-    return <AccessDeniedScreen message={accessDenied} showRegisterLink />
+    return playShell(<AccessDeniedScreen message={accessDenied} showRegisterLink />)
   }
 
-  if (loading || (game && !sessionKnown) || isFinished) {
-    return (
-      <>
-        <div className="min-h-screen theme-background flex items-center justify-center" style={{
-          background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)'
-        }}>
-          <div className="text-white text-xl">Загрузка...</div>
-        </div>
-        {game?.id && (
-          <GameStateManager gameId={game.id as string} onSessionChange={handleSessionChange} />
-        )}
-      </>
+  const hasFreshPlayCache = codeForSession.length > 0 && isGamePlayCacheFresh(codeForSession)
+  const waitingForSession = !!(game && sessionUnknown && !hasFreshPlayCache)
+
+  if ((!game && loading) || waitingForSession) {
+    return playShell(
+      <div
+        className="min-h-screen theme-background flex items-center justify-center"
+        style={{
+          background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
+        }}
+      >
+        <div className="text-white text-xl">Загрузка...</div>
+      </div>
     )
   }
 
@@ -517,15 +679,14 @@ export default function GamePlay() {
     })()
 
   if (inLobby && game) {
-    return (
-      <>
-        <GameLobby
-          gameId={game.id as string}
-          gameTitle={(game.title as string) || 'Квест'}
-          myTeamName={myTeamName}
-        />
-        <GameStateManager gameId={game.id as string} onSessionChange={handleSessionChange} />
-      </>
+    return playShell(
+      <GameLobby
+        gameId={game.id as string}
+        gameCode={gameCode}
+        gameTitle={(game.title as string) || 'Квест'}
+        myTeamName={myTeamName}
+      />,
+      notificationOverlay
     )
   }
 
@@ -536,49 +697,47 @@ export default function GamePlay() {
       void loadGameData(gen, false)
     }
 
-    return (
-      <>
-        <div className="min-h-screen theme-background flex items-center justify-center p-4" style={{
+    return playShell(
+      <div
+        className="min-h-screen theme-background flex items-center justify-center p-4"
+        style={{
           background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
-        }}>
-          <div className="bg-white rounded-2xl p-8 max-w-md text-center">
-            {loading ? (
-              <>
-                <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mb-4" />
-                <h2 className="text-xl font-bold text-gray-800 mb-2">Загрузка вопросов…</h2>
-                <p className="text-gray-600 text-sm">Подождите, обновляем данные с сервера</p>
-              </>
-            ) : (
-              <>
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">Вопросов пока нет</h2>
-                <p className="text-gray-600 mb-6">
-                  Вопросы не найдены. Если администратор только что их добавил, нажмите «Обновить».
-                  Иначе попросите ведущего сохранить вопросы в редакторе игры.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <button
-                    type="button"
-                    onClick={reloadQuestions}
-                    className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-                  >
-                    Обновить
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/team/register')}
-                    className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    К регистрации
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+        }}
+      >
+        <div className="bg-white rounded-2xl p-8 max-w-md text-center">
+          {loading ? (
+            <>
+              <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mb-4" />
+              <h2 className="text-xl font-bold text-gray-800 mb-2">Загрузка вопросов…</h2>
+              <p className="text-gray-600 text-sm">Подождите, обновляем данные с сервера</p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">Вопросов пока нет</h2>
+              <p className="text-gray-600 mb-6">
+                Вопросы не найдены. Если администратор только что их добавил, нажмите «Обновить».
+                Иначе попросите ведущего сохранить вопросы в редакторе игры.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={reloadQuestions}
+                  className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                >
+                  Обновить
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/team/register')}
+                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  К регистрации
+                </button>
+              </div>
+            </>
+          )}
         </div>
-        {game?.id && (
-          <GameStateManager gameId={game.id as string} onSessionChange={handleSessionChange} />
-        )}
-      </>
+      </div>
     )
   }
 
@@ -601,10 +760,13 @@ export default function GamePlay() {
   
   const availableOptions = extractOptions(currentQuestion?.options)
 
-  return (
-    <div className="min-h-screen theme-background p-4" style={{
-      background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)'
-    }}>
+  return playShell(
+    <div
+      className="min-h-screen theme-background p-4"
+      style={{
+        background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
+      }}
+    >
       <div className="max-w-4xl mx-auto">
 
 
@@ -886,14 +1048,7 @@ export default function GamePlay() {
           </div>
         </div>
       </div>
-
-      {/* Компонент управления состоянием игры (пауза) */}
-      {extrasReady && game && (
-        <GameStateManager gameId={game.id} onSessionChange={handleSessionChange} />
-      )}
-
-      {/* Компонент уведомлений от админа */}
-      {extrasReady && game && <NotificationPopup gameId={game.id} />}
-    </div>
+    </div>,
+    notificationOverlay
   )
 }

@@ -1,11 +1,14 @@
 import { supabase } from './supabase'
 import { debugLog } from './debugLog'
+import { readFinishNavigateState } from './finishNavigation'
 import { fetchGameStateForGame } from './fetchGameState'
+import { isTransientNetworkError } from './teamRegister'
 import { isScoreboardHiddenUntilFinish } from './gameSettings'
 import {
   getGameStartedAt,
   isGameFinished,
   isGameInLobby,
+  type GameStateRow,
 } from './gameSessionState'
 
 export const REGISTRATION_MESSAGES = {
@@ -35,20 +38,30 @@ export function readStoredPlayerSession(gameCode: string): { teamId: string } | 
 }
 
 /** Можно ли регистрировать новую команду (только комната ожидания). */
-export async function getRegistrationDenial(gameId: string): Promise<string | null> {
-  const state = await fetchGameStateForGame(gameId)
+export function getRegistrationDenialFromState(
+  state: GameStateRow | null | undefined
+): string | null {
+  if (!state) return null
   if (isGameFinished(state)) return REGISTRATION_MESSAGES.finished
   if (!isGameInLobby(state)) return REGISTRATION_MESSAGES.started
   return null
 }
 
+export async function getRegistrationDenial(gameId: string): Promise<string | null> {
+  const state = await fetchGameStateForGame(gameId)
+  return getRegistrationDenialFromState(state)
+}
+
 /** Игрок опоздал: игра уже идёт, а команда зарегистрирована после старта. */
+/** Допуск на гонку «старт» vs «insert» на медленной сети (мс). */
+const LATE_JOIN_GRACE_MS = 2000
+
 export async function getPlayAccessDenial(
   gameId: string,
   teamId: string
 ): Promise<string | null> {
   const state = await fetchGameStateForGame(gameId)
-  if (isGameInLobby(state)) return null
+  if (!state || isGameInLobby(state)) return null
 
   const { data: team, error } = await supabase
     .from('teams')
@@ -62,7 +75,9 @@ export async function getPlayAccessDenial(
 
   const startedAt = getGameStartedAt(state)
   if (startedAt && team.registration_time) {
-    if (new Date(team.registration_time) >= new Date(startedAt)) {
+    const regMs = new Date(team.registration_time).getTime()
+    const startMs = new Date(startedAt).getTime()
+    if (Number.isFinite(regMs) && Number.isFinite(startMs) && regMs > startMs + LATE_JOIN_GRACE_MS) {
       return PLAY_MESSAGES.late_join
     }
   }
@@ -85,6 +100,10 @@ export async function verifyFinishPageAccess(
   }
 
   const code = gameCode.trim().toUpperCase()
+  const persistedFinish = readFinishNavigateState(code)
+  const hasFinishNavigation =
+    !!options?.hasFinishNavigation || !!persistedFinish?.game
+
   const { data: game, error: gameError } = await supabase
     .from('games')
     .select('id, settings')
@@ -92,6 +111,9 @@ export async function verifyFinishPageAccess(
     .maybeSingle()
 
   if (gameError || !game) {
+    if (hasFinishNavigation && (gameError ? isTransientNetworkError(gameError) : persistedFinish)) {
+      return { allowed: true }
+    }
     return { allowed: false, message: 'Игра не найдена.' }
   }
 
@@ -102,14 +124,25 @@ export async function verifyFinishPageAccess(
     .maybeSingle()
 
   if (teamError || !team || team.game_id !== game.id) {
+    if (hasFinishNavigation && teamError && isTransientNetworkError(teamError)) {
+      return { allowed: true }
+    }
     return { allowed: false, message: FINISH_MESSAGES.wrong_team }
   }
 
-  const state = await fetchGameStateForGame(game.id)
+  let state: GameStateRow | null = null
+  try {
+    state = await fetchGameStateForGame(game.id)
+  } catch (err) {
+    if (hasFinishNavigation && isTransientNetworkError(err)) {
+      return { allowed: true }
+    }
+    return { allowed: false, message: 'Не удалось проверить состояние игры.' }
+  }
 
   const hideUntilFinish = isScoreboardHiddenUntilFinish(game.settings)
 
-  if (options?.hasFinishNavigation && !hideUntilFinish) {
+  if (hasFinishNavigation && !hideUntilFinish) {
     // #region agent log
     debugLog(
       'participantAccess.ts',

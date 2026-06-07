@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '../lib/supabase'
 import {
   Pause,
   Play,
@@ -10,15 +9,20 @@ import {
   RotateCcw,
   Trash2,
   Presentation,
+  Eraser,
 } from 'lucide-react'
 import { fetchGameStateForGame } from '../lib/fetchGameState'
 import { deleteGameCompletely } from '../lib/deleteGame'
 import { ADMIN_SESSION_HINT, hasSupabaseAdminSession } from '../lib/adminAuth'
 import { formatErrorMessage } from '../lib/errorMessage'
 import { enqueueCritical } from '../lib/requestQueue'
+import { attachGameRealtime } from '../lib/gameRealtime'
+import { fetchLobbyTeams, invalidateLobbyTeamsCache } from '../lib/fetchLobbyTeams'
+import { agentDebugLog } from '../lib/debugLog'
 import {
   finishGameSession,
   pauseGameSession,
+  restartGameSessionFromScratch,
   restartGameSessionToLobby,
   resumeGameSession,
   startGameSession,
@@ -65,6 +69,7 @@ export default function GameControls({
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const teamsLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const adminBusyRef = useRef(false)
 
   useEffect(() => {
     setSelectedGameId((current) => {
@@ -78,14 +83,12 @@ export default function GameControls({
     if (!selectedGameId) return
 
     void loadGameState()
-    void loadTeams()
-    const unsubState = subscribeToGameState()
-    const unsubTeams = subscribeToTeams()
+    void loadTeams(true)
+    const unsubRt = subscribeToRealtime()
 
     return () => {
       if (teamsLoadTimer.current) clearTimeout(teamsLoadTimer.current)
-      unsubState?.()
-      unsubTeams?.()
+      unsubRt()
     }
   }, [selectedGameId])
 
@@ -97,16 +100,41 @@ export default function GameControls({
     }
   }
 
-  const loadTeams = async () => {
+  const loadTeams = async (force = false, acceptEmpty = false) => {
     try {
-      const { data, error } = await supabase
-        .from('teams')
-        .select('id, team_name, name, captain_name')
-        .eq('game_id', selectedGameId)
-        .order('registration_time', { ascending: true })
-
-      if (error) throw error
-      setTeams(data ?? [])
+      const data = await fetchLobbyTeams(selectedGameId, { force })
+      setTeams((prev) => {
+        const next = acceptEmpty
+          ? data
+          : data.length > 0
+            ? data
+            : prev.length > 0
+              ? prev
+              : data
+        // #region agent log
+        agentDebugLog(
+          'GameControls.tsx',
+          'teams updated',
+          {
+            gameId: selectedGameId,
+            serverCount: data.length,
+            prevCount: prev.length,
+            force,
+            acceptEmpty,
+          },
+          'H6'
+        )
+        if (!acceptEmpty && data.length === 0 && prev.length > 0) {
+          agentDebugLog(
+            'GameControls.tsx',
+            'empty teams fetch kept prev',
+            { gameId: selectedGameId, prevCount: prev.length },
+            'H6'
+          )
+        }
+        // #endregion
+        return next
+      })
     } catch (err: unknown) {
       console.error('Ошибка загрузки команд:', err)
     }
@@ -114,70 +142,66 @@ export default function GameControls({
 
   const teamDisplayName = (t: LobbyTeam) => (t.team_name || t.name || 'Команда').trim()
 
-  const subscribeToGameState = () => {
-    const channel = supabase
-      .channel(`admin-game-state-${selectedGameId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'game_state',
-          filter: `game_id=eq.${selectedGameId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            setGameState(payload.new as GameStateRow)
-          } else if (payload.eventType === 'DELETE') {
-            setGameState(null)
-          }
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+  const scheduleTeamsReload = () => {
+    if (adminBusyRef.current) return
+    if (teamsLoadTimer.current) clearTimeout(teamsLoadTimer.current)
+    teamsLoadTimer.current = setTimeout(() => {
+      teamsLoadTimer.current = null
+      if (adminBusyRef.current) return
+      void loadTeams(true)
+    }, 300)
   }
 
-  const subscribeToTeams = () => {
-    const channel = supabase
-      .channel(`admin-teams-${selectedGameId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'teams',
-          filter: `game_id=eq.${selectedGameId}`,
-        },
-        () => {
-          if (teamsLoadTimer.current) clearTimeout(teamsLoadTimer.current)
-          teamsLoadTimer.current = setTimeout(() => {
-            teamsLoadTimer.current = null
-            void loadTeams()
-          }, 400)
-        }
-      )
-      .subscribe()
+  const subscribeToRealtime = () => {
+    const detachRt = attachGameRealtime(selectedGameId, {
+      onSessionChanged: () => {
+        void loadGameState()
+      },
+      onTeamsChanged: scheduleTeamsReload,
+    })
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !adminBusyRef.current) {
+        void loadGameState()
+        void loadTeams(true)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    const pollTimer = setInterval(() => {
+      if (document.hidden || adminBusyRef.current) return
+      void loadGameState()
+      void loadTeams(false)
+    }, 30000)
 
     return () => {
-      supabase.removeChannel(channel)
+      clearInterval(pollTimer)
+      document.removeEventListener('visibilitychange', onVisible)
+      detachRt()
     }
   }
 
   const runAction = async (action: () => Promise<void>) => {
     if (!selectedGameId) return
+    adminBusyRef.current = true
     setLoading(true)
     try {
       await enqueueCritical(async () => {
         await action()
         await loadGameState()
+        await loadTeams(true, true)
       })
     } catch (err: unknown) {
       console.error('Ошибка управления игрой:', err)
+      agentDebugLog(
+        'GameControls.tsx',
+        'runAction error',
+        { msg: formatErrorMessage(err).slice(0, 120) },
+        'H21'
+      )
       alert('Ошибка: ' + formatErrorMessage(err))
     } finally {
+      adminBusyRef.current = false
       setLoading(false)
     }
   }
@@ -209,7 +233,26 @@ export default function GameControls({
     }
     void runAction(async () => {
       await restartGameSessionToLobby(selectedGameId)
-      await loadTeams()
+      await loadTeams(true)
+    })
+  }
+
+  const restartFromScratch = async () => {
+    if (!(await hasSupabaseAdminSession())) {
+      alert(ADMIN_SESSION_HINT)
+      return
+    }
+    if (
+      !confirm(
+        'Начать с нуля?\n\nБудут удалены ВСЕ зарегистрированные команды, ответы и очки. Игра вернётся в пустую комнату ожидания — участникам нужно зарегистрироваться заново.\n\nЭто действие нельзя отменить.'
+      )
+    ) {
+      return
+    }
+    void runAction(async () => {
+      invalidateLobbyTeamsCache(selectedGameId)
+      await restartGameSessionFromScratch(selectedGameId)
+      setTeams([])
     })
   }
 
@@ -232,6 +275,7 @@ export default function GameControls({
       return
     }
 
+    adminBusyRef.current = true
     setDeleting(true)
     try {
       const result = await enqueueCritical(() => deleteGameCompletely(selectedGameId))
@@ -247,6 +291,7 @@ export default function GameControls({
       console.error('Ошибка удаления игры:', err)
       alert('Ошибка удаления игры: ' + msg)
     } finally {
+      adminBusyRef.current = false
       setDeleting(false)
     }
   }
@@ -445,6 +490,16 @@ export default function GameControls({
                   Запустить заново (сброс очков и ответов)
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => void restartFromScratch()}
+                disabled={loading || deleting}
+                className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Eraser className="w-4 h-4" />
+                Начать с нуля (удалить все команды)
+              </button>
 
               <button
                 type="button"

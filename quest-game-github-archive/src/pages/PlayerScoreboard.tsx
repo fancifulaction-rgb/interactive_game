@@ -3,11 +3,11 @@ import { useParams, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
   applyScoreBroadcastToTeams,
-  subscribeGameRealtime,
+  attachGameRealtime,
 } from '../lib/gameRealtime'
 import { getGamePlayCache, updateTeamsSnapshot } from '../lib/gamePlayCache'
 import type { TeamSnapshot } from '../lib/gamePlayCache'
-import type { FinishNavigateState } from '../lib/finishNavigation'
+import { readFinishNavigateState, type FinishNavigateState } from '../lib/finishNavigation'
 import { fetchTeamsForScoreboard } from '../lib/loadScoreboardTeams'
 import { tryUploadAvatarAfterGame } from '../lib/avatarAfterGame'
 import { Trophy, Medal, Award } from 'lucide-react'
@@ -19,7 +19,10 @@ const GAME_SELECT = 'id, code, title, mask_board'
 export default function PlayerScoreboard() {
   const { gameCode } = useParams()
   const location = useLocation()
-  const finishState = location.state as FinishNavigateState | null
+  const codeFromParams = (gameCode ?? '').trim().toUpperCase()
+  const finishState =
+    (location.state as FinishNavigateState | null) ??
+    (codeFromParams ? readFinishNavigateState(codeFromParams) : null)
 
   const [teams, setTeams] = useState<TeamSnapshot[]>([])
   const [game, setGame] = useState<{
@@ -30,7 +33,6 @@ export default function PlayerScoreboard() {
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [accessDenied, setAccessDenied] = useState<string | null>(null)
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
   useEffect(() => {
     const code = (gameCode ?? '').trim().toUpperCase()
@@ -108,10 +110,6 @@ export default function PlayerScoreboard() {
 
     return () => {
       cancelled = true
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current)
-        channelRef.current = null
-      }
     }
   }, [gameCode, finishState])
 
@@ -126,7 +124,7 @@ export default function PlayerScoreboard() {
       })
     }
 
-    const channel = subscribeGameRealtime(game.id, {
+    const detach = attachGameRealtime(game.id, {
       onScoreUpdate: (payload) => {
         setTeams((prev) => {
           const next = applyScoreBroadcastToTeams(prev, payload)
@@ -137,13 +135,8 @@ export default function PlayerScoreboard() {
       onTeamsChanged: reloadTeams,
     })
 
-    channelRef.current = channel
-
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current)
-        channelRef.current = null
-      }
+      detach()
     }
   }, [game?.id, gameCode])
 

@@ -20,6 +20,8 @@ function cacheKey(code: string) {
   return `quest_play_${code.trim().toUpperCase()}`
 }
 
+const memoryFallback = new Map<string, GamePlayCache>()
+
 export function setGamePlayCache(
   code: string,
   payload: Omit<GamePlayCache, 'ts'> & { teamsSnapshot?: TeamSnapshot[] }
@@ -31,7 +33,13 @@ export function setGamePlayCache(
     teamsSnapshot: payload.teamsSnapshot ?? existing?.teamsSnapshot,
     ts: Date.now(),
   }
-  sessionStorage.setItem(cacheKey(code), JSON.stringify(entry))
+  const key = cacheKey(code)
+  memoryFallback.set(key, entry)
+  try {
+    sessionStorage.setItem(key, JSON.stringify(entry))
+  } catch {
+    // iOS Private Browsing / quota — in-memory fallback в рамках сессии вкладки
+  }
 }
 
 export function updateTeamsSnapshot(code: string, teams: TeamSnapshot[]) {
@@ -60,14 +68,20 @@ export function isGamePlayCacheFresh(code: string, maxAgeMs = 5 * 60 * 1000): bo
 }
 
 export function getGamePlayCache(code: string): GamePlayCache | null {
+  const key = cacheKey(code)
   try {
-    const raw = sessionStorage.getItem(cacheKey(code))
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as GamePlayCache
-    if (!parsed?.game || !Array.isArray(parsed.questions)) return null
-    if (Date.now() - (parsed.ts ?? 0) > CACHE_TTL_MS) return null
-    return parsed
+    const raw = sessionStorage.getItem(key)
+    if (raw) {
+      const parsed = JSON.parse(raw) as GamePlayCache
+      if (!parsed?.game || !Array.isArray(parsed.questions)) return null
+      if (Date.now() - (parsed.ts ?? 0) > CACHE_TTL_MS) return null
+      return parsed
+    }
   } catch {
-    return null
+    // ignore
   }
+  const mem = memoryFallback.get(key)
+  if (!mem) return null
+  if (Date.now() - (mem.ts ?? 0) > CACHE_TTL_MS) return null
+  return mem
 }

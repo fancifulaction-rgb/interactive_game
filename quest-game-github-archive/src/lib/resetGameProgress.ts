@@ -1,9 +1,11 @@
+import { agentDebugLog } from './debugLog'
 import { supabase } from './supabase'
 import { broadcastTeamsChanged } from './gameRealtime'
 
 export type ResetGameProgressResult = {
   success: boolean
   teamsReset: number
+  teamIds: string[]
   answersDeleted: number
   error?: string
 }
@@ -12,7 +14,8 @@ export type ResetGameProgressResult = {
  * Сброс прогресса заезда: команды остаются, ответы и очки обнуляются.
  */
 export async function resetGameProgress(gameId: string): Promise<ResetGameProgressResult> {
-  const empty = { success: false, teamsReset: 0, answersDeleted: 0 }
+  const empty = { success: false, teamsReset: 0, teamIds: [] as string[], answersDeleted: 0 }
+  const t0 = Date.now()
 
   const { data: teams, error: teamsError } = await supabase
     .from('teams')
@@ -64,9 +67,17 @@ export async function resetGameProgress(gameId: string): Promise<ResetGameProgre
 
   void broadcastTeamsChanged(gameId)
 
+  agentDebugLog(
+    'resetGameProgress.ts',
+    'reset ok',
+    { gameId, teamCount: teamIds.length, answersDeleted, ms: Date.now() - t0 },
+    'H18'
+  )
+
   return {
     success: true,
     teamsReset: teamIds.length,
+    teamIds,
     answersDeleted,
   }
 }

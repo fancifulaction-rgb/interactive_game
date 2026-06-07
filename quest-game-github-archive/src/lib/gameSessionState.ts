@@ -32,9 +32,14 @@ export function isGameFinished(state: GameStateRow | null | undefined): boolean 
   return s === GAME_STATE_FINISHED || s === 'ended' || s === 'completed'
 }
 
+/** Состояние сессии ещё не загружено (не трактовать как лобби). */
+export function isGameSessionUnknown(state: GameStateRow | null | undefined): boolean {
+  return state == null
+}
+
 /** Игра в комнате ожидания до нажатия «Начать» ведущим. */
 export function isGameInLobby(state: GameStateRow | null | undefined): boolean {
-  if (!state) return true
+  if (!state) return false
   if (isGameFinished(state)) return false
   const s = normalizedState(state)
   if (s === GAME_STATE_PLAYING || s === 'active') return false
@@ -51,6 +56,34 @@ export function getGameSessionStatus(state: GameStateRow | null | undefined): Ga
   if (isGameInLobby(state)) return 'waiting'
   if (state?.is_paused) return 'paused'
   return 'playing'
+}
+
+export function gameStateUpdatedAtMs(state: GameStateRow | null | undefined): number {
+  if (!state?.updated_at) return 0
+  const t = new Date(state.updated_at).getTime()
+  return Number.isFinite(t) ? t : 0
+}
+
+/** waiting < playing < finished — не откатывать сессию при гонке poll/broadcast. */
+function gameStateProgressRank(state: GameStateRow | null | undefined): number {
+  if (!state) return 0
+  if (isGameFinished(state)) return 3
+  const s = normalizedState(state)
+  if (s === GAME_STATE_PLAYING || s === 'active') return 2
+  return 1
+}
+
+/** Не применять устаревший poll/broadcast поверх более свежего состояния (гонка на iOS). */
+export function isGameStateRowNewer(
+  incoming: GameStateRow | null | undefined,
+  current: GameStateRow | null | undefined
+): boolean {
+  if (!incoming) return false
+  if (!current) return true
+  const inc = gameStateUpdatedAtMs(incoming)
+  const cur = gameStateUpdatedAtMs(current)
+  if (inc !== cur) return inc > cur
+  return gameStateProgressRank(incoming) >= gameStateProgressRank(current)
 }
 
 export function getGameSessionStatusLabel(status: GameSessionStatus): string {

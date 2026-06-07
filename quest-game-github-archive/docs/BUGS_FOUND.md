@@ -1,5 +1,27 @@
 # Баги и статус (2026-06-06)
 
+## Исправлено 2026-06-06 (скорость iOS + «Начать с нуля»)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 24 | iPhone: долгий вход в лобби | Регистрация: `games` + `game_state` одним запросом; `setLoading(false)` до navigate; GamePlay — фоновый revalidate при кэше |
+| 25 | «Мёртвые» команды после тестов | Кнопка **«Начать с нуля»** → `restartGameSessionFromScratch` (сброс прогресса + удаление всех команд) |
+
+## Исправлено 2026-06-06 (iOS лобби и счётчик команд)
+
+| # | Проблема | Причина | Исправление |
+|---|----------|---------|-------------|
+| 20 | iPhone: регистрация «зависает», лобби не открывается | `GamePlay` ждал `sessionKnown`; при ошибке/таймауте `game_state` `GameStateManager` не вызывал `onSessionChange` | Лобби без ожидания session; fallback `apply(null)` + таймаут 6 с в `GameStateManager` |
+| 21 | Разное число команд в админке и у игроков | `GameLobby` молча оставлял `[]` при ошибке fetch; не слушал broadcast `teams_changed` | Retry загрузки, seed из `gamePlayCache`, `subscribeGameRealtime`; админ — тот же broadcast |
+| 22 | iOS HEIC-аватар | `createImageBitmap` не декодирует HEIC | Fallback через `<img>` + canvas в `compressImage.ts` |
+| 23 | sessionStorage на iOS Private Browsing | `setItem` бросает исключение | In-memory fallback в `gamePlayCache.ts` |
+
+## Исправлено 2026-06-06 (регистрация команды)
+
+| # | Проблема | Причина | Исправление |
+|---|----------|---------|-------------|
+| 19 | Регистрация команды «зависает» на «Регистрация...» | Регрессия: `await prefetchQuestionsForGame` **до** `navigate`; три отдельных `enqueueCritical` (lookup → denial → insert) | Один `enqueueCritical` на весь flow; navigate сразу после insert; prefetch через `enqueueBackground` |
+
 ## Исправлено 2026-06-06 (пауза игры и управление сессией)
 
 | # | Проблема | Причина | Исправление |

@@ -1,17 +1,41 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { registerTeam } from '../lib/teamRegister'
-import { enqueueCritical } from '../lib/requestQueue'
+import { isTransientNetworkError, registerTeamDirect } from '../lib/teamRegister'
 import type { TeamSnapshot } from '../lib/gamePlayCache'
 import { compressImageForAvatar } from '../lib/compressImage'
-import { debugLog } from '../lib/debugLog'
-import { setGamePlayCache } from '../lib/gamePlayCache'
+import {
+  agentDebugLog,
+  debugLog,
+  reportDebugToServer,
+  saveRegistrationError,
+} from '../lib/debugLog'
+
+const DEV_BUILD_MARKER = import.meta.env.DEV
+  ? new Date().toISOString().slice(0, 19).replace('T', ' ')
+  : ''
+import { fetchGameStateForGame } from '../lib/fetchGameState'
+import { getGamePlayCache, setGamePlayCache } from '../lib/gamePlayCache'
 import { prefetchQuestionsForGame } from '../lib/prefetchGameQuestions'
+import { fetchLobbyTeams } from '../lib/fetchLobbyTeams'
+import { getCachedGameByCode, setCachedGameByCode } from '../lib/gameLookupCache'
 import { saveTeamSession } from '../lib/playerSession'
-import { getRegistrationDenial } from '../lib/participantAccess'
+import { getRegistrationDenialFromState } from '../lib/participantAccess'
+import { downloadClientLogsJson } from '../lib/clientLogCollector'
 import { readRegistrationCodeFromSearch } from '../lib/registrationUrl'
 import { ArrowLeft, Users, User, Upload, Hash } from 'lucide-react'
+
+type GameRow = {
+  id: string
+  code: string
+  title: string
+  theme: string | null
+  per_question_time_sec: number | null
+  finish_page_type: string | null
+  scoring: unknown
+  mask_board: boolean | null
+  total_time_sec: number | null
+}
 
 export default function TeamRegister() {
   const navigate = useNavigate()
@@ -22,8 +46,23 @@ export default function TeamRegister() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [errorDetail, setErrorDetail] = useState('')
+  const [copyHint, setCopyHint] = useState('')
+  const [reportHint, setReportHint] = useState('')
   const [loading, setLoading] = useState(false)
   const submittingRef = useRef(false)
+
+  useEffect(() => {
+    agentDebugLog(
+      'TeamRegister.tsx',
+      'page load',
+      {
+        ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 120) : '',
+        host: typeof window !== 'undefined' ? window.location.host : '',
+      },
+      'H10'
+    )
+  }, [])
 
   useEffect(() => {
     const fromUrl = readRegistrationCodeFromSearch(searchParams.toString())
@@ -31,6 +70,23 @@ export default function TeamRegister() {
       setGameCode(fromUrl)
     }
   }, [searchParams])
+
+  // Прогрев lookup игры до submit — на iPhone games ждали в очереди 11–14с.
+  useEffect(() => {
+    const normalizedCode = gameCode.trim().toUpperCase()
+    if (normalizedCode.length < 4) return
+    if (getCachedGameByCode(normalizedCode)) return
+    void supabase
+      .from('games')
+      .select(
+        'id, code, title, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec'
+      )
+      .eq('code', normalizedCode)
+      .maybeSingle()
+      .then((res) => {
+        if (res.data) setCachedGameByCode(normalizedCode, res.data as GameRow)
+      })
+  }, [gameCode])
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -55,54 +111,158 @@ export default function TeamRegister() {
     if (submittingRef.current) return
     submittingRef.current = true
     setError('')
+    setErrorDetail('')
+    setCopyHint('')
     setLoading(true)
     const normalizedCode = gameCode.trim().toUpperCase()
     debugLog('TeamRegister.tsx:submit', 'start', { normalizedCode, hasAvatar: !!avatarFile }, 'D')
+    // #region agent log
+    agentDebugLog(
+      'TeamRegister.tsx',
+      'submit start',
+      {
+        normalizedCode,
+        hasAvatar: !!avatarFile,
+        ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 80) : '',
+      },
+      'H1'
+    )
+    // #endregion
 
     try {
-      let game = null
-      let gameError = null
+      type RegOutcome =
+        | { kind: 'not_found' }
+        | { kind: 'denied'; message: string }
+        | {
+            kind: 'ok'
+            game: GameRow
+            team: Awaited<ReturnType<typeof registerTeamDirect>>['team']
+          }
 
-      debugLog('TeamRegister.tsx', 'game lookup start', { normalizedCode }, 'D')
-      const res = await enqueueCritical(async () =>
-        supabase
+      // Регистрация без enqueueCritical — HTTP уже в очереди supabase; иначе iPhone ждёт prefetch/ответы других вкладок.
+      const regStarted = Date.now()
+      const STATE_CHECK_TIMEOUT_MS = 2500
+      const outcome = await (async (): Promise<RegOutcome> => {
+        const cachedGame = getCachedGameByCode(normalizedCode)
+        const gamesFetch = supabase
           .from('games')
-          .select('id, code, title, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec')
+          .select(
+            'id, code, title, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec'
+          )
           .eq('code', normalizedCode)
           .maybeSingle()
-      )
-      game = res.data
-      gameError = res.error
 
-      if (gameError) {
-        throw new Error(
-          gameError.message?.includes('fetch') || gameError.message?.includes('Failed')
-            ? 'Нет связи с сервером. Проверьте интернет/VPN и попробуйте снова.'
-            : gameError.message
+        let gameData: GameRow | null = cachedGame as GameRow | null
+
+        if (cachedGame) {
+          agentDebugLog(
+            'TeamRegister.tsx',
+            'games cache hit',
+            { gameId: cachedGame.id, ms: Date.now() - regStarted },
+            'H12'
+          )
+          void gamesFetch.then((res) => {
+            if (res.data) setCachedGameByCode(normalizedCode, res.data as GameRow)
+          })
+        } else {
+          const res = await gamesFetch
+          if (res.error) {
+            throw new Error(
+              res.error.message?.includes('fetch') || res.error.message?.includes('Failed')
+                ? 'Нет связи с сервером. Проверьте интернет/VPN и попробуйте снова.'
+                : res.error.message
+            )
+          }
+          if (!res.data) {
+            debugLog('TeamRegister.tsx', 'game not found', { normalizedCode }, 'D')
+            return { kind: 'not_found' }
+          }
+          gameData = res.data as GameRow
+          setCachedGameByCode(normalizedCode, gameData)
+        }
+
+        agentDebugLog(
+          'TeamRegister.tsx',
+          'games loaded',
+          { ms: Date.now() - regStarted, fromCache: !!cachedGame },
+          'H12'
         )
-      }
-      if (!game) {
-        debugLog('TeamRegister.tsx', 'game not found', { normalizedCode }, 'D')
+
+        let stateRow = null
+        try {
+          stateRow = await Promise.race([
+            fetchGameStateForGame(gameData!.id, { force: true }),
+            new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), STATE_CHECK_TIMEOUT_MS)
+            ),
+          ])
+        } catch (stateErr: unknown) {
+          const stateMsg = stateErr instanceof Error ? stateErr.message : String(stateErr)
+          agentDebugLog(
+            'TeamRegister.tsx',
+            'state fetch failed, continue',
+            { gameId: gameData!.id, stateMsg },
+            'H9'
+          )
+        }
+        const registrationDenial = getRegistrationDenialFromState(stateRow)
+        agentDebugLog(
+          'TeamRegister.tsx',
+          'state check',
+          {
+            gameId: gameData!.id,
+            current_state: stateRow?.current_state ?? null,
+            denial: registrationDenial,
+            stateSkipped: stateRow === null,
+          },
+          'H2'
+        )
+        if (registrationDenial) {
+          return { kind: 'denied', message: registrationDenial }
+        }
+
+        agentDebugLog(
+          'TeamRegister.tsx',
+          'before insert',
+          { ms: Date.now() - regStarted },
+          'H12'
+        )
+
+        const regInsertDone = Date.now()
+        const { team } = await registerTeamDirect({
+          gameId: gameData!.id,
+          gameCode: normalizedCode,
+          teamName,
+          captainName,
+          avatarFile,
+        })
+        agentDebugLog(
+          'TeamRegister.tsx',
+          'register direct done',
+          { ms: Date.now() - regStarted, insertMs: Date.now() - regInsertDone },
+          'H12'
+        )
+
+        debugLog('TeamRegister.tsx', 'game found', { gameId: gameData!.id }, 'D')
+        return { kind: 'ok', game: gameData as GameRow, team }
+      })()
+
+      if (outcome.kind === 'not_found') {
         setError(`Игра с кодом «${normalizedCode}» не найдена. Проверьте код в админ-панели.`)
-        setLoading(false)
         return
       }
-      debugLog('TeamRegister.tsx', 'game found', { gameId: game.id }, 'D')
-
-      const registrationDenial = await enqueueCritical(() => getRegistrationDenial(game.id))
-      if (registrationDenial) {
-        setError(registrationDenial)
-        setLoading(false)
+      if (outcome.kind === 'denied') {
+        // #region agent log
+        agentDebugLog('TeamRegister.tsx', 'denied', { message: outcome.message }, 'H2')
+        // #endregion
+        setError(outcome.message)
         return
       }
 
-      const { team } = await registerTeam({
-        gameId: game.id,
-        gameCode: normalizedCode,
-        teamName,
-        captainName,
-        avatarFile,
-      })
+      const { game, team } = outcome
+      // #region agent log
+      agentDebugLog('TeamRegister.tsx', 'register ok', { gameId: game.id, teamId: team.id }, 'H1')
+      // #endregion
 
       const teamSnapshot: TeamSnapshot = {
         id: team.id,
@@ -113,48 +273,100 @@ export default function TeamRegister() {
         registration_time: (team.registration_time || team.created_at) as string,
       }
 
-      let questions: Awaited<ReturnType<typeof prefetchQuestionsForGame>> = []
-      try {
-        questions = await prefetchQuestionsForGame(game.id)
-        debugLog('TeamRegister.tsx', 'questions prefetched', { count: questions.length }, 'F')
-      } catch (cacheErr) {
-        debugLog('TeamRegister.tsx', 'questions prefetch failed', {
-          msg: cacheErr instanceof Error ? cacheErr.message : String(cacheErr),
-        }, 'F')
-      }
+      const teamsSnapshot: TeamSnapshot[] = [teamSnapshot]
 
       setGamePlayCache(normalizedCode, {
         game,
-        questions,
-        teamsSnapshot: [teamSnapshot],
+        questions: [],
+        teamsSnapshot,
       })
 
-      saveTeamSession(team)
-      localStorage.setItem('game_code', normalizedCode)
-      localStorage.setItem(
-        'current_team',
-        JSON.stringify({
-          id: team.id,
-          name: team.team_name || team.name,
-          captain_name: team.captain_name,
-          players: [team.captain_name || captainName],
-          avatar_url: team.avatar_url || team.avatar,
-          total_score: 0,
+      void prefetchQuestionsForGame(game.id).then((questions) => {
+        if (!questions.length) return
+        const cached = getGamePlayCache(normalizedCode)
+        setGamePlayCache(normalizedCode, {
+          game,
+          questions,
+          teamsSnapshot: cached?.teamsSnapshot ?? teamsSnapshot,
         })
-      )
+      })
+
+      try {
+        saveTeamSession(team)
+        localStorage.setItem('game_code', normalizedCode)
+        localStorage.setItem(
+          'current_team',
+          JSON.stringify({
+            id: team.id,
+            name: team.team_name || team.name,
+            captain_name: team.captain_name,
+            players: [team.captain_name || captainName],
+            avatar_url: team.avatar_url || team.avatar,
+            total_score: 0,
+          })
+        )
+      } catch (storageErr: unknown) {
+        const storageMsg =
+          storageErr instanceof Error ? storageErr.message : String(storageErr)
+        agentDebugLog('TeamRegister.tsx', 'storage failed', { storageMsg }, 'H8')
+        throw new Error(
+          'Не удалось сохранить сессию в браузере. Отключите режим инкогнито/Private и повторите.'
+        )
+      }
 
       debugLog('TeamRegister.tsx', 'navigate', { path: `/game/${normalizedCode}` }, 'E')
+      // #region agent log
+      agentDebugLog('TeamRegister.tsx', 'navigate', { gameId: game.id, teamId: team.id }, 'H8')
+      // #endregion
       setLoading(false)
       navigate(`/game/${normalizedCode}`)
+
+      void fetchLobbyTeams(game.id, { force: true })
+        .then((lobbyRows) => {
+          if (lobbyRows.length === 0) return
+          const fullSnapshot = lobbyRows.map((row) => ({
+            id: row.id,
+            team_name: (row.team_name || row.name || 'Команда').trim(),
+            captain_name: row.captain_name ?? '',
+            avatar_url: null,
+            total_score: 0,
+            registration_time: undefined,
+          }))
+          const cached = getGamePlayCache(normalizedCode)
+          setGamePlayCache(normalizedCode, {
+            game,
+            questions: cached?.questions ?? [],
+            teamsSnapshot: fullSnapshot,
+          })
+          agentDebugLog(
+            'TeamRegister.tsx',
+            'teams snapshot bg',
+            { gameId: game.id, count: fullSnapshot.length },
+            'H6'
+          )
+        })
+        .catch(() => {})
+
       return
     } catch (err: any) {
       const msg = err?.message || String(err)
       debugLog('TeamRegister.tsx', 'error', { msg }, 'A')
+      const errMeta = {
+        ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 120) : '',
+        host: typeof window !== 'undefined' ? window.location.host : '',
+      }
+      saveRegistrationError(msg, errMeta)
+      void reportDebugToServer({ phase: 'registration-catch', msg })
+      setErrorDetail(msg)
       setError(
         msg.includes('listener indicated an asynchronous response')
           ? 'Сбой расширения браузера. Отключите блокировщики на этом сайте или попробуйте в режиме инкогнито.'
-          : msg.includes('Failed to fetch') || msg.includes('aborted') || msg.includes('timeout')
-            ? 'Нет связи с Supabase. Закройте лишние вкладки с игрой, подождите 10 с и повторите. На телефоне открывайте http://192.168.3.65:5173 (не localhost).'
+          : isTransientNetworkError(err) ||
+              msg.includes('Failed to fetch') ||
+              msg.includes('Load failed') ||
+              msg.includes('aborted') ||
+              msg.includes('timeout')
+            ? `Сбой сети при сохранении. Если команда уже есть в лобби — обновите страницу или откройте игру по коду. Используйте http://${typeof window !== 'undefined' ? window.location.host : '192.168.x.x:5174'} (не localhost).`
             : 'Ошибка регистрации: ' + msg
       )
     } finally {
@@ -274,8 +486,67 @@ export default function TeamRegister() {
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">
-                {error}
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg space-y-2">
+                <p className="text-sm font-medium">{error}</p>
+                {errorDetail && (
+                  <textarea
+                    readOnly
+                    className="w-full text-xs font-mono text-red-900 bg-red-100/50 border border-red-200 rounded p-2 min-h-[4.5rem] select-all"
+                    value={errorDetail}
+                    onFocus={(e) => e.target.select()}
+                  />
+                )}
+                <p className="text-xs text-red-600">
+                  Зажмите поле выше → «Выбрать всё» → «Копировать» (на iPhone без Mac).
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  {errorDetail && (
+                    <button
+                      type="button"
+                      className="text-xs underline text-red-800"
+                      onClick={async () => {
+                        const text = `${error}\n\nТехнически: ${errorDetail}`
+                        try {
+                          await navigator.clipboard.writeText(text)
+                          setCopyHint('Скопировано — вставьте в чат')
+                        } catch {
+                          setCopyHint('Используйте поле выше: зажмите → Выбрать всё → Копировать')
+                        }
+                      }}
+                    >
+                      Скопировать текст ошибки
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="text-xs underline text-red-800"
+                    onClick={async () => {
+                      setReportHint('Отправка…')
+                      const ok = await reportDebugToServer({ phase: 'manual', error, errorDetail })
+                      setReportHint(
+                        ok
+                          ? 'Отчёт отправлен на ПК — можно повторить попытку'
+                          : 'Не удалось отправить. Скопируйте текст из поля выше.'
+                      )
+                    }}
+                  >
+                    Отправить отчёт на ПК
+                  </button>
+                  {import.meta.env.DEV && (
+                    <button
+                      type="button"
+                      className="text-xs underline text-red-800"
+                      onClick={() => {
+                        downloadClientLogsJson()
+                        setReportHint('JSON с логами скачан — передайте файл на ПК')
+                      }}
+                    >
+                      Скачать диагностику
+                    </button>
+                  )}
+                </div>
+                {copyHint && <p className="text-xs text-red-600">{copyHint}</p>}
+                {reportHint && <p className="text-xs text-red-600">{reportHint}</p>}
               </div>
             )}
 
@@ -287,6 +558,11 @@ export default function TeamRegister() {
               {loading ? 'Регистрация...' : 'Зарегистрироваться'}
             </button>
           </form>
+          {import.meta.env.DEV && DEV_BUILD_MARKER && (
+            <p className="text-center text-[10px] text-gray-400 mt-4 select-all">
+              dev {DEV_BUILD_MARKER}
+            </p>
+          )}
         </div>
       </div>
     </div>

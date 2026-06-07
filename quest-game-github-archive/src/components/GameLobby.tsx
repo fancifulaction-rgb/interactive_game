@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Users, Hourglass } from 'lucide-react'
+import { getGamePlayCache, updateTeamsSnapshot } from '../lib/gamePlayCache'
+import { attachGameRealtime } from '../lib/gameRealtime'
+import { agentDebugLog } from '../lib/debugLog'
+import { fetchLobbyTeams } from '../lib/fetchLobbyTeams'
 
 type LobbyTeam = {
   id: string
@@ -11,49 +14,144 @@ type LobbyTeam = {
 
 interface GameLobbyProps {
   gameId: string
+  gameCode?: string
   gameTitle: string
   myTeamName?: string | null
 }
 
-export default function GameLobby({ gameId, gameTitle, myTeamName }: GameLobbyProps) {
-  const [teams, setTeams] = useState<LobbyTeam[]>([])
+function lobbyTeamsPollMs(): number {
+  if (typeof navigator === 'undefined') return 12000
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 20000 : 12000
+}
 
-  const loadTeams = async () => {
-    const { data, error } = await supabase
-      .from('teams')
-      .select('id, team_name, name, captain_name')
-      .eq('game_id', gameId)
-      .order('registration_time', { ascending: true })
+const LOBBY_RETRY_DELAYS_MS = [600, 1500]
 
-    if (!error && data) setTeams(data)
-  }
+function displayName(t: LobbyTeam) {
+  return (t.team_name || t.name || 'Команда').trim()
+}
+
+function snapshotToLobbyTeams(
+  snapshot: { id: string; team_name: string; captain_name: string }[]
+): LobbyTeam[] {
+  return snapshot.map((t) => ({
+    id: t.id,
+    team_name: t.team_name,
+    name: t.team_name,
+    captain_name: t.captain_name,
+  }))
+}
+
+function mergeTeamsById(server: LobbyTeam[], seed: LobbyTeam[]): LobbyTeam[] {
+  const map = new Map<string, LobbyTeam>()
+  for (const t of seed) map.set(t.id, t)
+  for (const t of server) map.set(t.id, t)
+  return [...map.values()].sort((a, b) =>
+    displayName(a).localeCompare(displayName(b), 'ru')
+  )
+}
+
+export default function GameLobby({ gameId, gameCode, gameTitle, myTeamName }: GameLobbyProps) {
+  const loadInFlightRef = useRef(false)
+  const [teams, setTeams] = useState<LobbyTeam[]>(() => {
+    const code = (gameCode ?? '').trim().toUpperCase()
+    if (!code) return []
+    const cached = getGamePlayCache(code)
+    return cached?.teamsSnapshot?.length
+      ? snapshotToLobbyTeams(cached.teamsSnapshot)
+      : []
+  })
+
+  const loadTeams = useCallback(async () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+    if (loadInFlightRef.current) return
+    loadInFlightRef.current = true
+
+    const code = (gameCode ?? '').trim().toUpperCase()
+    const cachedSeed =
+      code && getGamePlayCache(code)?.teamsSnapshot?.length
+        ? snapshotToLobbyTeams(getGamePlayCache(code)!.teamsSnapshot!)
+        : []
+
+    try {
+    for (let attempt = 0; attempt < LOBBY_RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        const data = await fetchLobbyTeams(gameId)
+        setTeams((prev) => {
+          const mergeBase = prev.length > 0 ? prev : cachedSeed
+          const merged =
+            data.length > 0
+              ? mergeTeamsById(data, mergeBase)
+              : prev.length > 0
+                ? prev
+                : cachedSeed.length > 0
+                  ? cachedSeed
+                  : prev
+          // #region agent log
+          agentDebugLog(
+            'GameLobby.tsx',
+            'loadTeams merged',
+            {
+              gameId,
+              serverCount: data.length,
+              prevCount: prev.length,
+              cachedSeedCount: cachedSeed.length,
+              mergedCount: merged.length,
+            },
+            'H6'
+          )
+          // #endregion
+          if (code && merged.length > 0) {
+            updateTeamsSnapshot(
+              code,
+              merged.map((t) => ({
+                id: t.id,
+                team_name: displayName(t),
+                captain_name: t.captain_name ?? '',
+                avatar_url: null,
+                total_score: 0,
+              }))
+            )
+          }
+          return merged
+        })
+        return
+      } catch (error) {
+        if (attempt < LOBBY_RETRY_DELAYS_MS.length - 1) {
+          await new Promise((r) => setTimeout(r, LOBBY_RETRY_DELAYS_MS[attempt]))
+        } else {
+          console.error('GameLobby: не удалось загрузить команды', error)
+        }
+      }
+    }
+    } finally {
+      loadInFlightRef.current = false
+    }
+  }, [gameId, gameCode])
 
   useEffect(() => {
     void loadTeams()
 
-    const channel = supabase
-      .channel(`lobby-teams-${gameId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'teams',
-          filter: `game_id=eq.${gameId}`,
-        },
-        () => {
-          void loadTeams()
-        }
-      )
-      .subscribe()
+    const detachRt = attachGameRealtime(gameId, {
+      onTeamsChanged: () => {
+        void loadTeams()
+      },
+    })
+
+    const pollTimer = setInterval(() => {
+      void loadTeams()
+    }, lobbyTeamsPollMs())
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadTeams()
+    }
+    document.addEventListener('visibilitychange', onVisible)
 
     return () => {
-      supabase.removeChannel(channel)
+      detachRt()
+      clearInterval(pollTimer)
+      document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [gameId])
-
-  const displayName = (t: LobbyTeam) =>
-    (t.team_name || t.name || 'Команда').trim()
+  }, [gameId, loadTeams])
 
   return (
     <div className="min-h-screen theme-background flex items-center justify-center p-4" style={{
@@ -88,7 +186,7 @@ export default function GameLobby({ gameId, gameTitle, myTeamName }: GameLobbyPr
             Команды ({teams.length})
           </h2>
           {teams.length === 0 ? (
-            <p className="text-gray-500 text-sm text-center py-4">Пока только вы</p>
+            <p className="text-gray-500 text-sm text-center py-4">Загрузка списка команд…</p>
           ) : (
             <ul className="space-y-2 max-h-48 overflow-y-auto">
               {teams.map((t) => (

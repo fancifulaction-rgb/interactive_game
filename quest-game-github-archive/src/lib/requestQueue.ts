@@ -1,4 +1,4 @@
-import { debugLog } from './debugLog'
+import { agentDebugLog, debugLog } from './debugLog'
 
 type Task<T> = () => Promise<T>
 
@@ -81,13 +81,19 @@ export function enqueueCritical<T>(task: Task<T>): Promise<T> {
   })
 }
 
-const MAX_SUPABASE_FETCHES = 2
+function maxSupabaseFetches(): number {
+  if (typeof navigator === 'undefined') return 4
+  const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  // Safari/iOS: до 6 соединений на хост; узкая очередь давала ~10с на каждый запрос.
+  return mobile ? 6 : 4
+}
 let supabaseFetchesRunning = 0
 const supabaseFetchWaiters: Array<() => void> = []
 
 type SupabaseFetchJob<T> = {
   task: () => Promise<T>
   priority: number
+  enqueuedAt: number
   resolve: (v: T) => void
   reject: (e: unknown) => void
 }
@@ -95,7 +101,7 @@ type SupabaseFetchJob<T> = {
 const supabaseFetchQueue: SupabaseFetchJob<unknown>[] = []
 
 function acquireSupabaseFetchSlot(): Promise<void> {
-  if (supabaseFetchesRunning < MAX_SUPABASE_FETCHES) {
+  if (supabaseFetchesRunning < maxSupabaseFetches()) {
     supabaseFetchesRunning++
     return Promise.resolve()
   }
@@ -113,10 +119,36 @@ function releaseSupabaseFetchSlot(): void {
   if (next) next()
 }
 
+function isCriticalSessionActive(): boolean {
+  return criticalDepth > 0 || criticalRunning > 0
+}
+
+function pickNextSupabaseFetchJob(): SupabaseFetchJob<unknown> | undefined {
+  if (supabaseFetchQueue.length === 0) return undefined
+  supabaseFetchQueue.sort((a, b) => b.priority - a.priority || a.enqueuedAt - b.enqueuedAt)
+  if (isCriticalSessionActive()) {
+    const idx = supabaseFetchQueue.findIndex((j) => j.priority >= 8)
+    if (idx === -1) return undefined
+    return supabaseFetchQueue.splice(idx, 1)[0]
+  }
+  return supabaseFetchQueue.shift()
+}
+
 function drainSupabaseFetchQueue(): void {
-  while (supabaseFetchesRunning < MAX_SUPABASE_FETCHES && supabaseFetchQueue.length > 0) {
-    supabaseFetchQueue.sort((a, b) => b.priority - a.priority)
-    const job = supabaseFetchQueue.shift()!
+  while (supabaseFetchesRunning < maxSupabaseFetches()) {
+    const job = pickNextSupabaseFetchJob()
+    if (!job) break
+    const waitedMs = Date.now() - job.enqueuedAt
+    if (waitedMs >= 2000) {
+      // #region agent log
+      agentDebugLog(
+        'requestQueue.ts',
+        'supabase queue wait',
+        { waitedMs, priority: job.priority, running: supabaseFetchesRunning, qlen: supabaseFetchQueue.length },
+        'H13'
+      )
+      // #endregion
+    }
     void acquireSupabaseFetchSlot()
       .then(() => job.task())
       .then(job.resolve)
@@ -129,20 +161,26 @@ function drainSupabaseFetchQueue(): void {
 }
 
 /**
- * До 2 параллельных запросов к *.supabase.co (баланс: HTTP/2 reset vs мобильная сеть).
- * priority > 0 — POST/PATCH/DELETE обгоняют фоновые GET (сохранение вопросов на телефоне).
+ * До 4 (desktop) / 6 (mobile) параллельных запросов к *.supabase.co.
+ * priority > 0 — POST/PATCH/DELETE обгоняют фоновые GET; при critical — только priority ≥ 8.
  */
 export function enqueueSupabaseFetch<T>(
   task: () => Promise<T>,
   priority: number = 0
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    supabaseFetchQueue.push({
+    const job: SupabaseFetchJob<unknown> = {
       task: task as () => Promise<unknown>,
       priority,
+      enqueuedAt: Date.now(),
       resolve: resolve as (v: unknown) => void,
       reject,
-    })
+    }
+    if (priority >= 10) {
+      supabaseFetchQueue.unshift(job)
+    } else {
+      supabaseFetchQueue.push(job)
+    }
     drainSupabaseFetchQueue()
   })
 }

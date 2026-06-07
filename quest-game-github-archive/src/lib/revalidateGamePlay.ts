@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
-import { mapQuestionsForPlay } from './prefetchGameQuestions'
-import { setGamePlayCache } from './gamePlayCache'
+import { agentDebugLog } from './debugLog'
+import { mapQuestionsForPlay, prefetchQuestionsForGame } from './prefetchGameQuestions'
+import { getGamePlayCache, setGamePlayCache } from './gamePlayCache'
 let revalidateInFlight: Promise<{ game: Record<string, unknown>; questions: Record<string, unknown>[] } | null> | null =
   null
 let revalidatePaused = false
@@ -10,7 +11,15 @@ export function pauseBackgroundRevalidate() {
   revalidatePaused = true
 }
 
-export async function revalidateGamePlayFromServer(gameCode: string) {
+export function resumeBackgroundRevalidate() {
+  revalidatePaused = false
+}
+
+export function isBackgroundRevalidatePaused() {
+  return revalidatePaused
+}
+
+async function revalidateGamePlayFromServerInner(gameCode: string) {
   if (revalidatePaused) return null
   const code = gameCode.trim().toUpperCase()
   if (revalidateInFlight) return revalidateInFlight
@@ -46,6 +55,56 @@ export async function revalidateGamePlayFromServer(gameCode: string) {
   } finally {
     revalidateInFlight = null
   }
+}
+
+/** Фоновая revalidate (редактор, устаревший кэш). */
+export async function revalidateGamePlayFromServer(gameCode: string) {
+  return revalidateGamePlayFromServerInner(gameCode)
+}
+
+/** Старт игры / выход из лобби — без enqueueCritical (HTTP-приоритет в supabase.ts). */
+export function revalidateGamePlayCritical(gameCode: string) {
+  revalidatePaused = false
+  return revalidateGamePlayFromServerInner(gameCode)
+}
+
+/** Только questions — когда game уже в кэше (1 HTTP вместо games+questions). */
+export async function revalidateQuestionsForGameCritical(
+  gameId: string,
+  gameCode: string,
+  cachedGame?: Record<string, unknown> | null
+) {
+  revalidatePaused = false
+  const code = gameCode.trim().toUpperCase()
+  const game =
+    cachedGame ?? getGamePlayCache(code)?.game ?? null
+  if (!game || String(game.id) !== String(gameId)) {
+    agentDebugLog(
+      'revalidateGamePlay.ts',
+      'questions-only fallback full revalidate',
+      { gameId, hasGame: !!game },
+      'H15'
+    )
+    return revalidateGamePlayFromServerInner(gameCode)
+  }
+
+  const started = Date.now()
+  agentDebugLog(
+    'revalidateGamePlay.ts',
+    'questions-only start',
+    { gameId, code },
+    'H15'
+  )
+
+  const questions = await prefetchQuestionsForGame(gameId)
+  setGamePlayCache(code, { game, questions })
+  agentDebugLog(
+    'revalidateGamePlay.ts',
+    'questions-only done',
+    { gameId, count: questions.length, ms: Date.now() - started },
+    'H15'
+  )
+  return { game, questions }
 }
 
 export function mapRevalidatedQuestions(questions: Record<string, unknown>[]) {

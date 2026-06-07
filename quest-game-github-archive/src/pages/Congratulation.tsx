@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getGamePlayCache } from '../lib/gamePlayCache'
-import type { FinishNavigateState } from '../lib/finishNavigation'
+import { readFinishNavigateState, type FinishNavigateState } from '../lib/finishNavigation'
 import { tryUploadAvatarAfterGame } from '../lib/avatarAfterGame'
 import { Trophy, Star } from 'lucide-react'
 import AccessDeniedScreen from '../components/AccessDeniedScreen'
@@ -14,7 +14,10 @@ export default function Congratulation() {
   const { gameCode } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const finishState = location.state as FinishNavigateState | null
+  const codeFromParams = (gameCode ?? '').trim().toUpperCase()
+  const finishState =
+    (location.state as FinishNavigateState | null) ??
+    (codeFromParams ? readFinishNavigateState(codeFromParams) : null)
 
   const [game, setGame] = useState<{ title?: string } | null>(null)
   const [loading, setLoading] = useState(true)

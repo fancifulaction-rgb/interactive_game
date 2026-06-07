@@ -2,8 +2,8 @@ import { supabase } from './supabase'
 import { debugLog } from './debugLog'
 import { cancelActiveStorageUpload } from './storageUpload'
 import { setAnswerSaveInFlight } from './networkMutex'
-import { enqueueCritical } from './requestQueue'
 import { broadcastScoreUpdate } from './gameRealtime'
+import { isTransientNetworkError } from './teamRegister'
 import type { AnswerInsertPayload } from './saveAnswer'
 
 export type SubmitAutoAnswerRequest = {
@@ -36,32 +36,50 @@ async function insertAnswerFallback(payload: AnswerInsertPayload): Promise<void>
   }
 }
 
+const RPC_TRANSIENT_RETRIES = 3
+const RPC_RETRY_PAUSE_MS = [400, 900, 1800]
+
 async function submitViaRpc(
   req: SubmitAutoAnswerRequest
 ): Promise<SubmitAutoAnswerResult> {
-  const { data, error } = await supabase.rpc('submit_auto_answer', {
-    p_game_id: req.game_id,
-    p_team_id: req.team_id,
-    p_question_number: req.question_number,
-    p_answer: req.answer,
-    p_media_urls: req.media_urls,
-    p_time_spent: req.time_spent,
-    p_hints_used: req.hints_used,
-  })
+  let lastErr: unknown
+  for (let attempt = 0; attempt < RPC_TRANSIENT_RETRIES; attempt++) {
+    try {
+      const { data, error } = await supabase.rpc('submit_auto_answer', {
+        p_game_id: req.game_id,
+        p_team_id: req.team_id,
+        p_question_number: req.question_number,
+        p_answer: req.answer,
+        p_media_urls: req.media_urls,
+        p_time_spent: req.time_spent,
+        p_hints_used: req.hints_used,
+      })
 
-  if (error) throw error
-  if (!data || typeof data !== 'object') {
-    throw new Error('submit_auto_answer: empty response')
-  }
+      if (error) throw error
+      lastErr = undefined
 
-  const row = data as Record<string, unknown>
-  return {
-    is_correct: row.is_correct === true,
-    points_earned: Number(row.points_earned) || 0,
-    team_total_score: Number(row.team_total_score) || 0,
-    answer_id: typeof row.answer_id === 'string' ? row.answer_id : undefined,
-    via: 'rpc',
+      if (!data || typeof data !== 'object') {
+        throw new Error('submit_auto_answer: empty response')
+      }
+
+      const row = data as Record<string, unknown>
+      return {
+        is_correct: row.is_correct === true,
+        points_earned: Number(row.points_earned) || 0,
+        team_total_score: Number(row.team_total_score) || 0,
+        answer_id: typeof row.answer_id === 'string' ? row.answer_id : undefined,
+        via: 'rpc',
+      }
+    } catch (err) {
+      lastErr = err
+      if (attempt < RPC_TRANSIENT_RETRIES - 1 && isTransientNetworkError(err)) {
+        await new Promise((r) => setTimeout(r, RPC_RETRY_PAUSE_MS[attempt] ?? 1000))
+        continue
+      }
+      throw err
+    }
   }
+  throw lastErr ?? new Error('submit_auto_answer failed')
 }
 
 /**
@@ -132,9 +150,10 @@ export async function submitAutoAnswerToServer(
   }
 }
 
+/** HTTP-приоритет в supabase.ts; enqueueCritical на iPhone сериализовал ответы (~30с). */
 export function enqueueSubmitAutoAnswer(
   req: SubmitAutoAnswerRequest,
   fallback?: AnswerInsertPayload
 ): Promise<SubmitAutoAnswerResult> {
-  return enqueueCritical(() => submitAutoAnswerToServer(req, fallback))
+  return submitAutoAnswerToServer(req, fallback)
 }

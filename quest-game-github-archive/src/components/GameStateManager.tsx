@@ -1,18 +1,30 @@
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { useEffect, useRef, useState } from 'react'
 import { Pause } from 'lucide-react'
 import { fetchGameStateForGame } from '../lib/fetchGameState'
+import {
+  attachGameRealtime,
+  type SessionBroadcastPayload,
+} from '../lib/gameRealtime'
+import { agentDebugLog } from '../lib/debugLog'
+import {
+  getCachedSessionSnapshot,
+  rememberSessionSnapshot,
+  resolveSlowFetchFallback,
+  shouldBlockLobbyRegression,
+} from '../lib/gameSessionSnapshotCache'
 import {
   type GameStateRow,
   isGameFinished,
   isGameInLobby,
   isGamePausedDuringPlay,
+  isGameStateRowNewer,
 } from '../lib/gameSessionState'
 
 export type GameSessionSnapshot = {
   inLobby: boolean
   isPaused: boolean
   isFinished: boolean
+  sessionUnknown: boolean
 }
 
 interface GameStateManagerProps {
@@ -21,80 +33,217 @@ interface GameStateManagerProps {
 }
 
 function snapshotFromRow(row: GameStateRow | null): GameSessionSnapshot {
+  if (!row) {
+    return { inLobby: false, isPaused: false, isFinished: false, sessionUnknown: true }
+  }
   return {
     inLobby: isGameInLobby(row),
     isPaused: isGamePausedDuringPlay(row),
     isFinished: isGameFinished(row),
+    sessionUnknown: false,
   }
 }
 
-const LOBBY_POLL_MS = 2000
+const LOBBY_POLL_MS_DESKTOP = 4000
+const LOBBY_POLL_MS_MOBILE = 20000
+const PLAYING_POLL_MS_MOBILE = 45000
+const PLAYING_POLL_MS_DESKTOP = 8000
+
+function isMobileClient(): boolean {
+  if (typeof window === 'undefined') return false
+  const coarse = window.matchMedia?.('(pointer: coarse)')?.matches
+  const mobileUa = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  return !!(coarse || mobileUa)
+}
+
+function lobbyPollMs(inLobby: boolean): number {
+  if (typeof window === 'undefined') return LOBBY_POLL_MS_DESKTOP
+  const mobile = isMobileClient()
+  if (!inLobby) {
+    return mobile ? PLAYING_POLL_MS_MOBILE : PLAYING_POLL_MS_DESKTOP
+  }
+  return mobile ? LOBBY_POLL_MS_MOBILE : LOBBY_POLL_MS_DESKTOP
+}
+
+function mergeBroadcastIntoRow(
+  gameId: string,
+  prev: GameStateRow | null,
+  payload: SessionBroadcastPayload
+): GameStateRow {
+  return {
+    id: prev?.id,
+    game_id: gameId,
+    current_state:
+      payload.current_state !== undefined ? payload.current_state : prev?.current_state,
+    is_paused: payload.is_paused !== undefined ? payload.is_paused : prev?.is_paused,
+    paused_at: payload.paused_at !== undefined ? payload.paused_at : prev?.paused_at ?? null,
+    paused_by: payload.paused_by !== undefined ? payload.paused_by : prev?.paused_by ?? null,
+    updated_at:
+      payload.updated_at !== undefined && payload.updated_at !== null
+        ? payload.updated_at
+        : prev?.updated_at ?? null,
+    player_data: prev?.player_data ?? null,
+  }
+}
 
 export default function GameStateManager({ gameId, onSessionChange }: GameStateManagerProps) {
   const [gameState, setGameState] = useState<GameStateRow | null>(null)
+  const inLobbyRef = useRef(true)
 
   useEffect(() => {
     if (!gameId) return
 
-    let channel: ReturnType<typeof supabase.channel> | null = null
+    let detachRt: (() => void) | null = null
     let cancelled = false
     let pollTimer: ReturnType<typeof setInterval> | null = null
+    let hasSuccessfulApply = false
+    let setupTimeoutId: number | null = null
 
-    const apply = (row: GameStateRow | null) => {
-      setGameState(row)
-      onSessionChange(snapshotFromRow(row))
+    const schedulePoll = () => {
+      if (pollTimer) clearInterval(pollTimer)
+      pollTimer = setInterval(() => {
+        void loadGameState()
+      }, lobbyPollMs(inLobbyRef.current))
     }
 
-    const loadGameState = async () => {
+    const emitSession = (snap: GameSessionSnapshot) => {
+      const prev = getCachedSessionSnapshot(gameId)
+      if (shouldBlockLobbyRegression(prev, snap)) {
+        agentDebugLog(
+          'GameStateManager.tsx',
+          'blocked lobby regression',
+          { gameId, prevInLobby: prev?.inLobby, nextInLobby: snap.inLobby },
+          'H12'
+        )
+        return
+      }
+      const lobbyChanged = inLobbyRef.current !== snap.inLobby
+      inLobbyRef.current = snap.inLobby
+      rememberSessionSnapshot(gameId, snap)
+      onSessionChange(snap)
+      if (lobbyChanged) schedulePoll()
+    }
+
+    const cached = getCachedSessionSnapshot(gameId)
+    if (cached) {
+      hasSuccessfulApply = true
+      emitSession(cached)
+    }
+
+    const commitState = (row: GameStateRow | null) => {
+      if (!row) {
+        if (hasSuccessfulApply) return
+        setGameState(null)
+        emitSession(snapshotFromRow(null))
+        return
+      }
+
+      setGameState((prev) => {
+        if (prev && !isGameStateRowNewer(row, prev)) {
+          return prev
+        }
+        hasSuccessfulApply = true
+        emitSession(snapshotFromRow(row))
+        return row
+      })
+    }
+
+    const apply = (row: GameStateRow | null) => {
+      commitState(row)
+    }
+
+    const applyBroadcast = (payload: SessionBroadcastPayload) => {
+      setGameState((prev) => {
+        const row = mergeBroadcastIntoRow(gameId, prev, payload)
+        if (prev && !isGameStateRowNewer(row, prev)) {
+          return prev
+        }
+        hasSuccessfulApply = true
+        emitSession(snapshotFromRow(row))
+        return row
+      })
+    }
+
+    let firstApplyDone = !!cached
+
+    const loadGameState = async (force = false) => {
+      if (typeof document !== 'undefined' && document.hidden) return
       try {
-        const data = await fetchGameStateForGame(gameId)
-        if (!cancelled) apply(data)
+        const data = await fetchGameStateForGame(gameId, { force })
+        if (!cancelled) {
+          firstApplyDone = true
+          apply(data)
+        }
       } catch (err: unknown) {
         console.error('Ошибка загрузки состояния игры:', err)
+        if (!cancelled && !hasSuccessfulApply) {
+          firstApplyDone = true
+          // #region agent log
+          agentDebugLog(
+            'GameStateManager.tsx',
+            'fetch error optimistic lobby',
+            { gameId, err: err instanceof Error ? err.message : String(err) },
+            'H7'
+          )
+          // #endregion
+          const fallback = resolveSlowFetchFallback(gameId)
+          agentDebugLog(
+            'GameStateManager.tsx',
+            'fetch error slow-fetch fallback',
+            { gameId, inLobby: fallback.inLobby },
+            'H7'
+          )
+          emitSession(fallback)
+        }
       }
     }
 
     const setup = async () => {
+      setupTimeoutId = window.setTimeout(() => {
+        if (!cancelled && !firstApplyDone && !hasSuccessfulApply) {
+          firstApplyDone = true
+          const fallback = resolveSlowFetchFallback(gameId)
+          // #region agent log
+          agentDebugLog(
+            'GameStateManager.tsx',
+            'timeout slow-fetch fallback',
+            { gameId, inLobby: fallback.inLobby },
+            'H7'
+          )
+          // #endregion
+          hasSuccessfulApply = true
+          emitSession(fallback)
+        }
+      }, 1200)
+
       await loadGameState()
+      if (setupTimeoutId) window.clearTimeout(setupTimeoutId)
       if (cancelled) return
 
-      channel = supabase
-        .channel(`game-state-${gameId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'game_state',
-            filter: `game_id=eq.${gameId}`,
-          },
-          (payload) => {
-            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-              apply(payload.new as GameStateRow)
-            } else if (payload.eventType === 'DELETE') {
-              void loadGameState()
-            }
-          }
-        )
-        .subscribe()
+      detachRt = attachGameRealtime(gameId, {
+        onSessionChanged: (payload) => {
+          if (!cancelled) applyBroadcast(payload)
+        },
+      })
     }
 
     void setup()
 
-    pollTimer = setInterval(() => {
-      void loadGameState()
-    }, LOBBY_POLL_MS)
+    schedulePoll()
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void loadGameState()
+      if (document.visibilityState === 'visible') {
+        void loadGameState(true)
+      }
     }
     document.addEventListener('visibilitychange', onVisible)
 
     return () => {
       cancelled = true
+      if (setupTimeoutId) window.clearTimeout(setupTimeoutId)
       if (pollTimer) clearInterval(pollTimer)
       document.removeEventListener('visibilitychange', onVisible)
-      if (channel) supabase.removeChannel(channel)
+      detachRt?.()
     }
   }, [gameId, onSessionChange])
 

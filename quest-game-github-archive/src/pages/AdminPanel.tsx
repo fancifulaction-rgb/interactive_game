@@ -27,6 +27,7 @@ import GameControls from '../components/GameControls'
 import MessagePanel from '../components/MessagePanel'
 import TeamManagementManager from '../components/TeamManagementManager'
 import CollapsibleSection from '../components/CollapsibleSection'
+import DiagnosticLogsPanel from '../components/DiagnosticLogsPanel'
 import EventArchiveModal from '../components/EventArchiveModal'
 import {
   LogOut, Plus, Edit, Trash2, Play, Settings,
@@ -714,6 +715,7 @@ export default function AdminPanel() {
               icon={<Settings className="w-5 h-5" />}
             >
               <div className="space-y-4">
+                <DiagnosticLogsPanel />
                 {settings.filter(setting => setting.category === 'Общие').map(setting => (
                   <div key={setting.key} className="flex items-center justify-between">
                     <div className="flex-1">

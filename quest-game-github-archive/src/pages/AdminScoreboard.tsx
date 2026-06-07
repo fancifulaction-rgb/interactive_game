@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
   applyScoreBroadcastToTeams,
-  subscribeGameRealtime,
+  attachGameRealtime,
 } from '../lib/gameRealtime'
 import { Trophy, Medal, Award, Settings, Download, FileText, FileSpreadsheet } from 'lucide-react'
 import { exportToExcel, exportToPDF, exportToCSV, exportAllFormats } from '../utils/exportData'
@@ -34,7 +34,7 @@ export default function AdminScoreboard() {
   const [exporting, setExporting] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const detachRtRef = useRef<(() => void) | null>(null)
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loadSeqRef = useRef(0)
 
@@ -91,18 +91,14 @@ export default function AdminScoreboard() {
         await loadTeamsForGame(gameData.id, seq)
         if (cancelled || seq !== loadSeqRef.current) return
 
-        if (channelRef.current) {
-          supabase.removeChannel(channelRef.current)
-        }
+        detachRtRef.current?.()
 
-        const channel = subscribeGameRealtime(gameData.id, {
+        detachRtRef.current = attachGameRealtime(gameData.id, {
           onScoreUpdate: (payload) => {
             setTeams((prev) => applyScoreBroadcastToTeams(prev, payload))
           },
           onTeamsChanged: () => scheduleTeamsReload(gameData.id),
         })
-
-        channelRef.current = channel
       } catch (err: unknown) {
         if (!cancelled && seq === loadSeqRef.current) {
           console.error('Ошибка загрузки админского табло:', err)
@@ -122,10 +118,8 @@ export default function AdminScoreboard() {
         clearTimeout(reloadTimerRef.current)
         reloadTimerRef.current = null
       }
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current)
-        channelRef.current = null
-      }
+      detachRtRef.current?.()
+      detachRtRef.current = null
     }
   }, [gameCode, loadTeamsForGame])
 
