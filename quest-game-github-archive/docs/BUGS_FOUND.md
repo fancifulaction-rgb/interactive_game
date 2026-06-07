@@ -43,6 +43,18 @@
 
 Проверка: 2+ команды в лобби → ответ одной → в кэше/табло у второй команды очки не сбрасываются в 0.
 
+Ручная проверка: **отложена** — см. `docs/TEST_BACKLOG.md` (BUG_AUDIT пакет).
+
+## Исправлено 2026-06-07 (BUG_AUDIT H4 — broadcast timer leak)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 41 | `Promise.race` в `channelSendWithTimeout`: после успешного `send` таймер 1500мс всё равно reject'ил | IMP-LOG-012: `clearTimeout` в `finally` |
+
+Проверка: частые `broadcastScoreUpdate` / ответы в игре — в консоли нет unhandled rejection через 1.5с после успешного send.
+
+Ручная проверка: **отложена** — см. `docs/TEST_BACKLOG.md` (BUG_AUDIT пакет).
+
 ## Исправлено 2026-06-07 (admin + iPhone HTTP contention)
 
 | # | Проблема | Исправление |

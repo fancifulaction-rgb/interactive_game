@@ -53,12 +53,20 @@ async function channelSendWithTimeout(
   channel: RealtimeChannel,
   message: { type: 'broadcast'; event: string; payload: Record<string, unknown> }
 ): Promise<void> {
-  await Promise.race([
-    channel.send(message),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('broadcast send timeout')), BROADCAST_SEND_TIMEOUT_MS)
-    ),
-  ])
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      channel.send(message),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('broadcast send timeout')),
+          BROADCAST_SEND_TIMEOUT_MS
+        )
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 function dispatchScore(hub: GameRealtimeHub, payload: ScoreBroadcastPayload) {
