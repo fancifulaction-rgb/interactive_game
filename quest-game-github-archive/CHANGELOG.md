@@ -27,6 +27,7 @@
 - IMP-LOG-013 / BUG_AUDIT M7: таймаут broadcast send 6с на mobile, 1.5с на desktop
 - IMP-LOG-014 / BUG_AUDIT H5: «Завершить игру» на `/host/` — export без deadlock в requestQueue
 - IMP-RT-005 / BUG_AUDIT H6: poll-fallback табло 20с, postgres UPDATE на `teams`, список команд на HostView
+- IMP-LOG-015 / BUG_AUDIT C2: generation-token в `fetchGameState` — force/invalidate не ломают coalesce
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

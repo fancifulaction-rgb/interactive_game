@@ -79,6 +79,14 @@
 
 Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
 
+## Исправлено 2026-06-07 (BUG_AUDIT C2 — fetchGameState race)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 45 | `force:true` поверх in-flight GET перезаписывал `inflight`; старый `finally` сбрасывал tracking нового запроса | IMP-LOG-015: generation-token; `lastOk`/`inflight` только для актуального поколения |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
 ## Исправлено 2026-06-07 (admin + iPhone HTTP contention)
 
 | # | Проблема | Исправление |
