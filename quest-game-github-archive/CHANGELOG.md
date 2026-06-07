@@ -24,6 +24,7 @@
 - IMP-LOG-010 / BUG_AUDIT H1: первый вопрос не пропускается при выходе из лобби с `timeLeft===0` (lobby-prefetch)
 - IMP-LOG-011 / BUG_AUDIT H7: sync счёта игрока не обнуляет очки других команд в `teamsSnapshot`
 - IMP-LOG-012 / BUG_AUDIT H4: `channelSendWithTimeout` очищает таймер после успешного broadcast (нет утечки/unhandled rejection)
+- IMP-LOG-013 / BUG_AUDIT M7: таймаут broadcast send 6с на mobile, 1.5с на desktop
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

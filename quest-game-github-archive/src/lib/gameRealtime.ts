@@ -47,7 +47,17 @@ type GameRealtimeHub = {
 
 const hubs = new Map<string, GameRealtimeHub>()
 
-const BROADCAST_SEND_TIMEOUT_MS = 1500
+const BROADCAST_SEND_TIMEOUT_DESKTOP_MS = 1500
+const BROADCAST_SEND_TIMEOUT_MOBILE_MS = 6000
+
+function isMobileUa(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+}
+
+function broadcastSendTimeoutMs(): number {
+  return isMobileUa() ? BROADCAST_SEND_TIMEOUT_MOBILE_MS : BROADCAST_SEND_TIMEOUT_DESKTOP_MS
+}
 
 async function channelSendWithTimeout(
   channel: RealtimeChannel,
@@ -60,7 +70,7 @@ async function channelSendWithTimeout(
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error('broadcast send timeout')),
-          BROADCAST_SEND_TIMEOUT_MS
+          broadcastSendTimeoutMs()
         )
       }),
     ])

@@ -60,6 +60,7 @@
 | IMP-LOG-010 | Не скипать первый вопрос при timeLeft=0 | `timerArmedRef` + инициализация таймера при prefetch/входе в игру | BUG_AUDIT_HANDOFF H1 | 1 | done |
 | IMP-LOG-011 | Счёт чужих команд в кэше игрока | `syncPlayerTeamScoreFromServer` сохраняет `t.total_score` для остальных | BUG_AUDIT_HANDOFF H7 | 1 | done |
 | IMP-LOG-012 | Очистка таймера broadcast send | `clearTimeout` в `finally` у `channelSendWithTimeout` | BUG_AUDIT_HANDOFF H4 | 1 | done |
+| IMP-LOG-013 | Таймаут broadcast на mobile | 6с на mobile UA, 1.5с на desktop | BUG_AUDIT_HANDOFF M7 | 1 | done |
 
 ---
 

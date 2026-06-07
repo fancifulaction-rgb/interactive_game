@@ -55,6 +55,14 @@
 
 Ручная проверка: **отложена** — см. `docs/TEST_BACKLOG.md` (BUG_AUDIT пакет).
 
+## Исправлено 2026-06-07 (BUG_AUDIT M7 — broadcast timeout mobile)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 42 | 1500мс мало для mobile broadcast send | IMP-LOG-013: 6000мс на mobile UA |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
 ## Исправлено 2026-06-07 (admin + iPhone HTTP contention)
 
 | # | Проблема | Исправление |
