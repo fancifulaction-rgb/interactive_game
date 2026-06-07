@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { deleteGameCompletely } from '../lib/deleteGame'
 import { cloneGame } from '../lib/cloneGame'
@@ -29,6 +29,8 @@ import TeamManagementManager from '../components/TeamManagementManager'
 import CollapsibleSection from '../components/CollapsibleSection'
 import DiagnosticLogsPanel from '../components/DiagnosticLogsPanel'
 import EventArchiveModal from '../components/EventArchiveModal'
+import { useGameSessionAdmin } from '../hooks/useGameSessionAdmin'
+import { GameSessionAdminProvider } from '../contexts/GameSessionAdminContext'
 import {
   LogOut, Plus, Edit, Trash2, Play, Settings,
   Download, Users, Trophy, Palette, FileText, BarChart3, Type, Key, Radio, Calendar, Copy, X,
@@ -61,7 +63,6 @@ interface Theme {
 }
 
 interface Settings {
-  id?: string
   key: string
   value: string
   description: string
@@ -72,10 +73,11 @@ interface Settings {
 const GAME_LIST_SELECT =
   'id, title, code, theme, mask_board, total_time_sec, per_question_time_sec, created_at, scoring'
 const THEME_SELECT = 'id, name, display_name, colors, effects, created_at'
-const SETTINGS_SELECT = 'id, key, value, description, category'
+const SETTINGS_SELECT = 'key, value, description, category'
 
 export default function AdminPanel() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [games, setGames] = useState<Game[]>([])
   const [themes, setThemes] = useState<Theme[]>([])
   const [settings, setSettings] = useState<Settings[]>([])
@@ -85,6 +87,8 @@ export default function AdminPanel() {
   const [deletingGameIds, setDeletingGameIds] = useState<Set<string>>(new Set())
   const [adminSessionOk, setAdminSessionOk] = useState<boolean | null>(null)
   const [activeTab, setActiveTab] = useState<'games' | 'settings'>('games')
+  const [selectedGameId, setSelectedGameId] = useState('')
+  const gameControlsRef = useRef<HTMLDivElement>(null)
   const gamesLoadSeq = useRef(0)
   const createInFlight = useRef(false)
   const [showCreateGame, setShowCreateGame] = useState(false)
@@ -95,6 +99,7 @@ export default function AdminPanel() {
   const [cloneCode, setCloneCode] = useState('')
   const [cloneTheme, setCloneTheme] = useState('')
   const [cloneBusy, setCloneBusy] = useState(false)
+  const sessionAdmin = useGameSessionAdmin(selectedGameId)
   const [archiveGame, setArchiveGame] = useState<{ id: string; title: string } | null>(null)
 
   const refreshAdminSession = useCallback(async () => {
@@ -106,14 +111,12 @@ export default function AdminPanel() {
     setGamesLoading(true)
     setGamesError('')
     try {
-      const { data, error } = await enqueueCritical(async () => {
-        let query = supabase
-          .from('games')
-          .select(GAME_LIST_SELECT)
-          .order('created_at', { ascending: false })
-        if (signal) query = query.abortSignal(signal)
-        return query
-      })
+      let query = supabase
+        .from('games')
+        .select(GAME_LIST_SELECT)
+        .order('created_at', { ascending: false })
+      if (signal) query = query.abortSignal(signal)
+      const { data, error } = await query
 
       if (error) throw error
       if (seq !== gamesLoadSeq.current) return
@@ -140,6 +143,34 @@ export default function AdminPanel() {
   }, [loadGames])
 
   useEffect(() => {
+    setSelectedGameId((current) => {
+      if (games.length === 0) return ''
+      if (current && games.some((g) => g.id === current)) return current
+      return games[0].id
+    })
+  }, [games])
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    const gameId = searchParams.get('gameId')
+    if (tab === 'settings') {
+      setActiveTab('settings')
+    }
+    if (gameId && games.some((g) => g.id === gameId)) {
+      setSelectedGameId(gameId)
+    }
+  }, [searchParams, games])
+
+  const openGameControls = useCallback((gameId: string) => {
+    setSelectedGameId(gameId)
+    setActiveTab('settings')
+    setSearchParams({ tab: 'settings', gameId })
+    window.setTimeout(() => {
+      gameControlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 150)
+  }, [setSearchParams])
+
+  useEffect(() => {
     const isLoggedIn = localStorage.getItem('admin_logged_in')
     if (!isLoggedIn) {
       navigate('/admin/login')
@@ -148,15 +179,10 @@ export default function AdminPanel() {
 
     const abort = new AbortController()
     void (async () => {
-      await refreshAdminSession()
+      // Список игр и проверка сессии — параллельно (auth.getSession не блокирует games).
+      await Promise.all([refreshAdminSession(), loadGames(abort.signal)])
       if (abort.signal.aborted) return
-      if (activeTab === 'games') {
-        await loadGames(abort.signal)
-        return
-      }
       if (activeTab === 'settings') {
-        await loadGames(abort.signal)
-        if (abort.signal.aborted) return
         await loadSettings()
         if (abort.signal.aborted) return
         await loadThemes()
@@ -574,6 +600,13 @@ export default function AdminPanel() {
                         </div>
                       </div>
                       <div className="flex gap-1 sm:gap-2 ml-2 sm:ml-4 flex-shrink-0">
+                        <button
+                          onClick={() => openGameControls(game.id)}
+                          className="p-3 sm:p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center"
+                          title="Управление игрой"
+                        >
+                          <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
+                        </button>
                         {game.code && (
                           <button
                             onClick={() => navigate(`/host/${game.code}`)}
@@ -659,19 +692,52 @@ export default function AdminPanel() {
                     Управляйте состоянием игры и отправляйте уведомления игрокам в реальном времени
                   </p>
                 </div>
+                <div ref={gameControlsRef} className="rounded-lg border border-purple-100 bg-purple-50/40 p-4 space-y-4">
+                  <GameSessionAdminProvider value={sessionAdmin}>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Выберите игру
+                    </label>
+                    <select
+                      value={selectedGameId}
+                      onChange={(e) => setSelectedGameId(e.target.value)}
+                      disabled={gamesLoading && games.length === 0}
+                      className="w-full max-w-xl px-4 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
+                    >
+                      {gamesLoading && games.length === 0 ? (
+                        <option value="">Загрузка игр…</option>
+                      ) : games.length === 0 ? (
+                        <option value="">Нет игр</option>
+                      ) : (
+                        games.map((game) => (
+                          <option key={game.id} value={game.id}>
+                            {game.title} ({game.code})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
                 <div className="grid md:grid-cols-2 gap-6">
-                  <GameControls
-                    games={games}
-                    gamesLoading={gamesLoading}
-                    gamesError={gamesError}
-                    onRefreshGames={refreshGamesList}
-                  />
-                  <MessagePanel
-                    games={games}
-                    gamesLoading={gamesLoading}
-                    gamesError={gamesError}
-                    onRefreshGames={refreshGamesList}
-                  />
+                    <GameControls
+                      games={games}
+                      selectedGameId={selectedGameId}
+                      onSelectedGameIdChange={setSelectedGameId}
+                      gamesLoading={gamesLoading}
+                      gamesError={gamesError}
+                      onRefreshGames={refreshGamesList}
+                      hideGameSelector
+                    />
+                    <MessagePanel
+                      games={games}
+                      selectedGameId={selectedGameId}
+                      onSelectedGameIdChange={setSelectedGameId}
+                      gamesLoading={gamesLoading}
+                      gamesError={gamesError}
+                      onRefreshGames={refreshGamesList}
+                      hideGameSelector
+                    />
+                </div>
+                  </GameSessionAdminProvider>
                 </div>
               </div>
             </CollapsibleSection>

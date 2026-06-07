@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import {
   Pause,
   Play,
@@ -10,29 +10,33 @@ import {
   Trash2,
   Presentation,
   Eraser,
+  DoorOpen,
+  Lock,
 } from 'lucide-react'
-import { fetchGameStateForGame } from '../lib/fetchGameState'
 import { deleteGameCompletely } from '../lib/deleteGame'
 import { ADMIN_SESSION_HINT, hasSupabaseAdminSession } from '../lib/adminAuth'
+import { clearAdminFetchBoost, markAdminFetchBoost } from '../lib/adminFetchBoost'
 import { formatErrorMessage } from '../lib/errorMessage'
+import { logAdminAction, nextAdminActionId } from '../lib/adminActionLog'
 import { enqueueCritical } from '../lib/requestQueue'
-import { attachGameRealtime } from '../lib/gameRealtime'
-import { fetchLobbyTeams, invalidateLobbyTeamsCache } from '../lib/fetchLobbyTeams'
 import { agentDebugLog } from '../lib/debugLog'
 import {
+  closeGameSession,
   finishGameSession,
+  openLobbySession,
   pauseGameSession,
   restartGameSessionFromScratch,
   restartGameSessionToLobby,
   resumeGameSession,
   startGameSession,
+  type SessionActionResult,
 } from '../lib/gameSessionControl'
 import {
   getGameSessionStatus,
   getGameSessionStatusLabel,
   getGameStartedAt,
-  type GameStateRow,
 } from '../lib/gameSessionState'
+import { useGameSessionAdminContext } from '../contexts/GameSessionAdminContext'
 import RegistrationQrCard from './RegistrationQrCard'
 import { useNavigate } from 'react-router-dom'
 
@@ -44,9 +48,12 @@ export interface GameControlsGame {
 
 interface GameControlsProps {
   games: GameControlsGame[]
+  selectedGameId: string
+  onSelectedGameIdChange: (gameId: string) => void
   gamesLoading?: boolean
   gamesError?: string
   onRefreshGames?: () => void
+  hideGameSelector?: boolean
 }
 
 type LobbyTeam = {
@@ -58,141 +65,58 @@ type LobbyTeam = {
 
 export default function GameControls({
   games,
+  selectedGameId,
+  onSelectedGameIdChange,
   gamesLoading = false,
   gamesError = '',
   onRefreshGames,
+  hideGameSelector = false,
 }: GameControlsProps) {
   const navigate = useNavigate()
-  const [selectedGameId, setSelectedGameId] = useState<string>('')
-  const [gameState, setGameState] = useState<GameStateRow | null>(null)
-  const [teams, setTeams] = useState<LobbyTeam[]>([])
+  const session = useGameSessionAdminContext()
   const [loading, setLoading] = useState(false)
+  const [loadingLabel, setLoadingLabel] = useState('')
   const [deleting, setDeleting] = useState(false)
-  const teamsLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const adminBusyRef = useRef(false)
 
-  useEffect(() => {
-    setSelectedGameId((current) => {
-      if (games.length === 0) return ''
-      if (games.some((g) => g.id === current)) return current
-      return games[0].id
-    })
-  }, [games])
+  const gameState = session?.gameState ?? null
+  const teams = (session?.teams ?? []) as LobbyTeam[]
+  const dataLoading = session?.dataLoading ?? false
 
-  useEffect(() => {
-    if (!selectedGameId) return
-
-    void loadGameState()
-    void loadTeams(true)
-    const unsubRt = subscribeToRealtime()
-
-    return () => {
-      if (teamsLoadTimer.current) clearTimeout(teamsLoadTimer.current)
-      unsubRt()
+  const applyActionResult = async (result: SessionActionResult) => {
+    if (!session) return
+    session.applyOptimisticState(result.gameState)
+    if (result.teamsDeleted !== undefined && result.teamsDeleted >= 0) {
+      session.setTeamsDirect([])
     }
-  }, [selectedGameId])
-
-  const loadGameState = async () => {
-    try {
-      setGameState(await fetchGameStateForGame(selectedGameId))
-    } catch (err: unknown) {
-      console.error('Ошибка загрузки состояния игры:', err)
-    }
-  }
-
-  const loadTeams = async (force = false, acceptEmpty = false) => {
-    try {
-      const data = await fetchLobbyTeams(selectedGameId, { force })
-      setTeams((prev) => {
-        const next = acceptEmpty
-          ? data
-          : data.length > 0
-            ? data
-            : prev.length > 0
-              ? prev
-              : data
-        // #region agent log
-        agentDebugLog(
-          'GameControls.tsx',
-          'teams updated',
-          {
-            gameId: selectedGameId,
-            serverCount: data.length,
-            prevCount: prev.length,
-            force,
-            acceptEmpty,
-          },
-          'H6'
-        )
-        if (!acceptEmpty && data.length === 0 && prev.length > 0) {
-          agentDebugLog(
-            'GameControls.tsx',
-            'empty teams fetch kept prev',
-            { gameId: selectedGameId, prevCount: prev.length },
-            'H6'
-          )
-        }
-        // #endregion
-        return next
+    if (result.skipReload) {
+      logAdminAction(nextAdminActionId('apply'), 'reload_skipped', {
+        state: result.gameState.current_state,
       })
-    } catch (err: unknown) {
-      console.error('Ошибка загрузки команд:', err)
+      return
     }
+    await Promise.all([session.refreshGameState(true), session.refreshTeams(true, true)])
   }
 
-  const teamDisplayName = (t: LobbyTeam) => (t.team_name || t.name || 'Команда').trim()
-
-  const scheduleTeamsReload = () => {
-    if (adminBusyRef.current) return
-    if (teamsLoadTimer.current) clearTimeout(teamsLoadTimer.current)
-    teamsLoadTimer.current = setTimeout(() => {
-      teamsLoadTimer.current = null
-      if (adminBusyRef.current) return
-      void loadTeams(true)
-    }, 300)
-  }
-
-  const subscribeToRealtime = () => {
-    const detachRt = attachGameRealtime(selectedGameId, {
-      onSessionChanged: () => {
-        void loadGameState()
-      },
-      onTeamsChanged: scheduleTeamsReload,
-    })
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible' && !adminBusyRef.current) {
-        void loadGameState()
-        void loadTeams(true)
-      }
-    }
-    document.addEventListener('visibilitychange', onVisible)
-
-    const pollTimer = setInterval(() => {
-      if (document.hidden || adminBusyRef.current) return
-      void loadGameState()
-      void loadTeams(false)
-    }, 30000)
-
-    return () => {
-      clearInterval(pollTimer)
-      document.removeEventListener('visibilitychange', onVisible)
-      detachRt()
-    }
-  }
-
-  const runAction = async (action: () => Promise<void>) => {
-    if (!selectedGameId) return
-    adminBusyRef.current = true
+  const runAction = async (
+    action: () => Promise<SessionActionResult>,
+    label = 'Выполняем операцию…'
+  ) => {
+    if (!selectedGameId || !session) return
+    const actionId = nextAdminActionId(label)
+    session.setAdminBusy(true)
     setLoading(true)
+    setLoadingLabel(label)
+    markAdminFetchBoost()
+    logAdminAction(actionId, 'start', { gameId: selectedGameId, label })
     try {
-      await enqueueCritical(async () => {
-        await action()
-        await loadGameState()
-        await loadTeams(true, true)
-      })
+      const result = await enqueueCritical(action)
+      logAdminAction(actionId, 'rpc_done', { state: result.gameState.current_state })
+      setLoadingLabel('Обновляем состояние…')
+      await applyActionResult(result)
+      logAdminAction(actionId, 'done', {})
     } catch (err: unknown) {
       console.error('Ошибка управления игрой:', err)
+      logAdminAction(actionId, 'error', { msg: formatErrorMessage(err).slice(0, 160) })
       agentDebugLog(
         'GameControls.tsx',
         'runAction error',
@@ -201,16 +125,28 @@ export default function GameControls({
       )
       alert('Ошибка: ' + formatErrorMessage(err))
     } finally {
-      adminBusyRef.current = false
+      clearAdminFetchBoost()
+      session.setAdminBusy(false)
       setLoading(false)
+      setLoadingLabel('')
     }
   }
 
   const startGame = () => runAction(() => startGameSession(selectedGameId))
-
+  const openLobby = () => runAction(() => openLobbySession(selectedGameId), 'Открываем лобби…')
   const resumeGame = () => runAction(() => resumeGameSession(selectedGameId))
-
   const pauseGame = () => runAction(() => pauseGameSession(selectedGameId))
+
+  const closeGame = () => {
+    if (
+      !confirm(
+        'Закрыть игру?\n\nУчастники не смогут зарегистрироваться и войти по коде, пока вы снова не откроете лобби.'
+      )
+    ) {
+      return
+    }
+    void runAction(() => closeGameSession(selectedGameId), 'Закрываем игру…')
+  }
 
   const finishGame = () => {
     if (
@@ -231,10 +167,7 @@ export default function GameControls({
     ) {
       return
     }
-    void runAction(async () => {
-      await restartGameSessionToLobby(selectedGameId)
-      await loadTeams(true)
-    })
+    void runAction(() => restartGameSessionToLobby(selectedGameId))
   }
 
   const restartFromScratch = async () => {
@@ -244,20 +177,19 @@ export default function GameControls({
     }
     if (
       !confirm(
-        'Начать с нуля?\n\nБудут удалены ВСЕ зарегистрированные команды, ответы и очки. Игра вернётся в пустую комнату ожидания — участникам нужно зарегистрироваться заново.\n\nЭто действие нельзя отменить.'
+        'Начать с нуля?\n\nБудут удалены ВСЕ зарегистрированные команды, ответы и очки. Игра будет закрыта — участникам нужно дождаться открытия лобби администратором.\n\nЭто действие нельзя отменить.'
       )
     ) {
       return
     }
-    void runAction(async () => {
-      invalidateLobbyTeamsCache(selectedGameId)
-      await restartGameSessionFromScratch(selectedGameId)
-      setTeams([])
-    })
+    void runAction(
+      () => restartGameSessionFromScratch(selectedGameId),
+      'Сброс прогресса и удаление команд…'
+    )
   }
 
   const deleteSelectedGame = async () => {
-    if (!selectedGameId || deleting) return
+    if (!selectedGameId || deleting || !session) return
 
     if (!(await hasSupabaseAdminSession())) {
       alert(ADMIN_SESSION_HINT)
@@ -275,98 +207,118 @@ export default function GameControls({
       return
     }
 
-    adminBusyRef.current = true
+    session.setAdminBusy(true)
     setDeleting(true)
     try {
       const result = await enqueueCritical(() => deleteGameCompletely(selectedGameId))
       if (!result.success) {
         throw new Error(result.error || 'Неизвестная ошибка')
       }
-      setSelectedGameId('')
-      setGameState(null)
-      setTeams([])
+      session.setTeamsDirect([])
+      session.applyOptimisticState({
+        current_state: 'closed',
+        is_paused: false,
+        paused_at: null,
+        paused_by: null,
+        player_data: {},
+      })
+      onSelectedGameIdChange('')
       onRefreshGames?.()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('Ошибка удаления игры:', err)
       alert('Ошибка удаления игры: ' + msg)
     } finally {
-      adminBusyRef.current = false
+      session.setAdminBusy(false)
       setDeleting(false)
     }
   }
 
   const selectedGame = games.find((g) => g.id === selectedGameId)
-  const status = getGameSessionStatus(gameState)
-  const statusLabel = getGameSessionStatusLabel(status)
-  const missingStartedAt = status !== 'waiting' && !getGameStartedAt(gameState)
+  const statusKnown = !dataLoading
+  const status = statusKnown ? getGameSessionStatus(gameState) : null
+  const statusLabel = statusKnown && status ? getGameSessionStatusLabel(status) : 'Загрузка…'
+  const missingStartedAt =
+    statusKnown &&
+    status != null &&
+    (status === 'playing' || status === 'paused') &&
+    !getGameStartedAt(gameState)
+
+  const teamDisplayName = (t: LobbyTeam) => (t.team_name || t.name || 'Команда').trim()
 
   const statusColor =
-    status === 'waiting'
-      ? 'text-purple-600'
-      : status === 'paused'
-        ? 'text-orange-600'
-        : status === 'finished'
-          ? 'text-gray-600'
-          : 'text-green-600'
+    !statusKnown || !status
+      ? 'text-gray-400'
+      : status === 'closed'
+        ? 'text-gray-500'
+        : status === 'waiting'
+          ? 'text-purple-600'
+          : status === 'paused'
+            ? 'text-orange-600'
+            : status === 'finished'
+              ? 'text-gray-600'
+              : 'text-green-600'
+
+  if (!session && selectedGameId) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6 text-sm text-gray-500">
+        Загрузка контекста управления игрой…
+      </div>
+    )
+  }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
+    <div className="bg-white rounded-lg shadow p-6" id="game-controls">
       <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
         <AlertCircle className="w-5 h-5" />
         Управление игрой
       </h3>
 
       <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Выберите игру
-          </label>
-          <select
-            value={selectedGameId}
-            onChange={(e) => setSelectedGameId(e.target.value)}
-            disabled={gamesLoading && games.length === 0}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
-          >
-            {gamesLoading && games.length === 0 ? (
-              <option value="">Загрузка игр…</option>
-            ) : games.length === 0 ? (
-              <option value="">Нет игр</option>
-            ) : (
-              games.map((game) => (
-                <option key={game.id} value={game.id}>
-                  {game.title} ({game.code})
-                </option>
-              ))
-            )}
-          </select>
-          {gamesError && (
-            <p className="mt-2 text-sm text-red-600">
-              {gamesError}{' '}
-              {onRefreshGames && (
-                <button
-                  type="button"
-                  onClick={onRefreshGames}
-                  className="underline hover:text-red-800"
-                >
-                  Повторить
-                </button>
+        {!hideGameSelector && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Выберите игру</label>
+            <select
+              value={selectedGameId}
+              onChange={(e) => onSelectedGameIdChange(e.target.value)}
+              disabled={gamesLoading && games.length === 0}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
+            >
+              {gamesLoading && games.length === 0 ? (
+                <option value="">Загрузка игр…</option>
+              ) : games.length === 0 ? (
+                <option value="">Нет игр</option>
+              ) : (
+                games.map((game) => (
+                  <option key={game.id} value={game.id}>
+                    {game.title} ({game.code})
+                  </option>
+                ))
               )}
-            </p>
-          )}
-          {!gamesError && games.length === 0 && !gamesLoading && onRefreshGames && (
-            <p className="mt-2 text-sm text-gray-500">
-              Список пуст.{' '}
-              <button type="button" onClick={onRefreshGames} className="text-purple-600 underline">
-                Обновить
-              </button>
-            </p>
-          )}
-        </div>
+            </select>
+            {gamesError && (
+              <p className="mt-2 text-sm text-red-600">
+                {gamesError}{' '}
+                {onRefreshGames && (
+                  <button
+                    type="button"
+                    onClick={onRefreshGames}
+                    className="underline hover:text-red-800"
+                  >
+                    Повторить
+                  </button>
+                )}
+              </p>
+            )}
+          </div>
+        )}
 
         {selectedGame && (
           <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-            {selectedGame.code && (
+            {dataLoading && !gameState && (
+              <p className="text-sm text-gray-500 text-center py-2">Загрузка данных игры…</p>
+            )}
+            {selectedGame.code && status === 'waiting' && (
               <>
                 <RegistrationQrCard gameCode={selectedGame.code} gameTitle={selectedGame.title} />
                 <button
@@ -378,6 +330,26 @@ export default function GameControls({
                   Открыть экран ведущего (проектор)
                 </button>
               </>
+            )}
+            {selectedGame.code && status !== 'waiting' && (
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
+                <p className="font-medium text-gray-800 mb-1">QR регистрации</p>
+                <p>
+                  {status === 'closed'
+                    ? 'Лобби закрыто. Откройте лобби, чтобы показать QR и принимать команды.'
+                    : 'QR и регистрация доступны только в комнате ожидания. Экран ведущего:'}
+                </p>
+                {status !== 'closed' && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/host/${selectedGame.code}`)}
+                    className="mt-2 inline-flex items-center gap-2 text-indigo-700 hover:underline text-sm font-medium"
+                  >
+                    <Presentation className="w-4 h-4" />
+                    /host/{selectedGame.code}
+                  </button>
+                )}
+              </div>
             )}
 
             <div className="flex items-center justify-between">
@@ -421,74 +393,100 @@ export default function GameControls({
                 <p className="font-medium mb-1">Совет: время старта сессии не зафиксировано</p>
                 <p className="text-amber-800">
                   Если эта игра уже шла до обновления системы, метка{' '}
-                  <span className="font-medium">startedAt</span> могла не записаться. Тогда
-                  ограничение «опоздавшие не присоединяются» работает неполностью. Один раз нажмите{' '}
+                  <span className="font-medium">startedAt</span> могла не записаться. Один раз нажмите{' '}
                   <span className="font-medium">«Запустить заново»</span>, затем{' '}
-                  <span className="font-medium">«Начать игру»</span> — время старта сохранится.
-                  Блокировка новой регистрации после старта и завершения действует сразу.
+                  <span className="font-medium">«Начать игру»</span>.
                 </p>
               </div>
             )}
 
             <div className="space-y-2">
-              {status === 'waiting' && (
-                <button
-                  type="button"
-                  onClick={startGame}
-                  disabled={loading || deleting}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Rocket className="w-5 h-5" />
-                  Начать игру
-                </button>
-              )}
+              {statusKnown && status && (
+                <>
+                  {(status === 'closed' || status === 'finished') && (
+                    <button
+                      type="button"
+                      onClick={openLobby}
+                      disabled={loading || deleting}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <DoorOpen className="w-5 h-5" />
+                      Открыть лобби
+                    </button>
+                  )}
 
-              {status === 'playing' && (
-                <button
-                  type="button"
-                  onClick={pauseGame}
-                  disabled={loading || deleting}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Pause className="w-5 h-5" />
-                  Приостановить
-                </button>
-              )}
+                  {status === 'waiting' && (
+                    <button
+                      type="button"
+                      onClick={startGame}
+                      disabled={loading || deleting}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Rocket className="w-5 h-5" />
+                      Начать игру
+                    </button>
+                  )}
 
-              {status === 'paused' && (
-                <button
-                  type="button"
-                  onClick={resumeGame}
-                  disabled={loading || deleting}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Play className="w-5 h-5" />
-                  Продолжить игру
-                </button>
-              )}
+                  {status === 'playing' && (
+                    <button
+                      type="button"
+                      onClick={pauseGame}
+                      disabled={loading || deleting}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Pause className="w-5 h-5" />
+                      Приостановить
+                    </button>
+                  )}
 
-              {(status === 'playing' || status === 'paused') && (
-                <button
-                  type="button"
-                  onClick={finishGame}
-                  disabled={loading || deleting}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Flag className="w-4 h-4" />
-                  Завершить игру
-                </button>
-              )}
+                  {status === 'paused' && (
+                    <button
+                      type="button"
+                      onClick={resumeGame}
+                      disabled={loading || deleting}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Play className="w-5 h-5" />
+                      Продолжить игру
+                    </button>
+                  )}
 
-              {status !== 'waiting' && (
-                <button
-                  type="button"
-                  onClick={restartToLobby}
-                  disabled={loading || deleting}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  Запустить заново (сброс очков и ответов)
-                </button>
+                  {(status === 'playing' || status === 'paused') && (
+                    <button
+                      type="button"
+                      onClick={finishGame}
+                      disabled={loading || deleting}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Flag className="w-4 h-4" />
+                      Завершить игру
+                    </button>
+                  )}
+
+                  {status !== 'waiting' && status !== 'closed' && (
+                    <button
+                      type="button"
+                      onClick={restartToLobby}
+                      disabled={loading || deleting}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Запустить заново (сброс очков и ответов)
+                    </button>
+                  )}
+
+                  {status !== 'closed' && (
+                    <button
+                      type="button"
+                      onClick={closeGame}
+                      disabled={loading || deleting}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Lock className="w-4 h-4" />
+                      Закрыть игру
+                    </button>
+                  )}
+                </>
               )}
 
               <button
@@ -512,6 +510,12 @@ export default function GameControls({
               </button>
             </div>
 
+            {loading && loadingLabel && (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+                {loadingLabel}
+              </p>
+            )}
+
             {status === 'paused' && gameState?.paused_at && (
               <p className="text-xs text-gray-500 text-center">
                 Приостановлена {new Date(gameState.paused_at).toLocaleString('ru-RU')}
@@ -521,8 +525,14 @@ export default function GameControls({
 
             {status === 'finished' && (
               <p className="text-xs text-gray-500 text-center">
-                Игроки перенаправлены на финальный экран. «Запустить заново» сбросит ответы и очки,
-                вернёт команды в лобби — затем «Начать игру».
+                Игроки перенаправлены на финальный экран. «Открыть лобби» — новый заезд; «Закрыть игру» —
+                доступ по коду будет недоступен.
+              </p>
+            )}
+
+            {status === 'closed' && (
+              <p className="text-xs text-gray-500 text-center">
+                Игра закрыта. Участники не могут войти по коду, пока вы не нажмёте «Открыть лобби».
               </p>
             )}
 

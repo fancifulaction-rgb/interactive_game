@@ -22,6 +22,8 @@ const EXPECTED_MIGRATIONS = [
   '013_submit_auto_answer.sql',
   '014_event_archive.sql',
   '015_final_page_texts_and_integrity.sql',
+  '016_game_state_closed.sql',
+  '017_admin_session_rpc.sql',
 ]
 
 const REQUIRED_COLUMNS = [
@@ -37,7 +39,12 @@ const LEGACY_COLUMNS = [['answers', 'question_id'], ['answers', 'answer_text']]
 
 const REQUIRED_TABLES = ['games', 'game_state', 'questions', 'teams', 'answers', 'event_archive', 'final_page_texts']
 
-const REQUIRED_RPC = ['submit_auto_answer', 'increment_team_score']
+const REQUIRED_RPC = [
+  'submit_auto_answer',
+  'increment_team_score',
+  'admin_restart_from_scratch',
+  'admin_set_session',
+]
 
 let ok = true
 let postgresOk = true

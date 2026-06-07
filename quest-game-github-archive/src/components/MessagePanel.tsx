@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useGameSessionAdminContext } from '../contexts/GameSessionAdminContext'
 import { Send, AlertTriangle, Info, AlertCircle, Zap, Users, UserCheck } from 'lucide-react'
 
 interface MessagePanelGame {
@@ -10,9 +11,12 @@ interface MessagePanelGame {
 
 interface MessagePanelProps {
   games: MessagePanelGame[]
+  selectedGameId: string
+  onSelectedGameIdChange: (gameId: string) => void
   gamesLoading?: boolean
   gamesError?: string
   onRefreshGames?: () => void
+  hideGameSelector?: boolean
 }
 
 interface Team {
@@ -57,12 +61,15 @@ const priorityConfig = {
 
 export default function MessagePanel({
   games,
+  selectedGameId,
+  onSelectedGameIdChange,
   gamesLoading = false,
   gamesError = '',
   onRefreshGames,
+  hideGameSelector = false,
 }: MessagePanelProps) {
+  const session = useGameSessionAdminContext()
   const [teams, setTeams] = useState<Team[]>([])
-  const [selectedGameId, setSelectedGameId] = useState<string>('')
   const [message, setMessage] = useState('')
   const [priority, setPriority] = useState<Priority>('средний')
   const [hasSound, setHasSound] = useState(false)
@@ -71,38 +78,24 @@ export default function MessagePanel({
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
-    setSelectedGameId((current) => {
-      if (games.length === 0) return ''
-      if (games.some((g) => g.id === current)) return current
-      return games[0].id
-    })
-  }, [games])
-
-  useEffect(() => {
-    if (selectedGameId) {
-      loadTeams()
-      // Сброс выбранных команд при смене игры
-      setSelectedTeamIds([])
-    }
-  }, [selectedGameId])
-
-  const loadTeams = async () => {
-    if (!selectedGameId) return
-
-    try {
-      const { data, error } = await supabase
-        .from('teams')
-        .select('id, team_name, avatar_url')
-        .eq('game_id', selectedGameId)
-        .order('team_name', { ascending: true })
-
-      if (error) throw error
-      setTeams(data || [])
-    } catch (err: any) {
-      console.error('Ошибка загрузки команд:', err)
+    if (!selectedGameId) {
       setTeams([])
+      setSelectedTeamIds([])
+      return
     }
-  }
+    setSelectedTeamIds([])
+    if (session) {
+      setTeams(
+        session.teams.map((t) => ({
+          id: t.id,
+          team_name: t.team_name ?? t.name ?? '',
+          avatar_url: t.avatar_url ?? null,
+        }))
+      )
+      return
+    }
+    setTeams([])
+  }, [selectedGameId, session?.teams])
 
   const toggleTeamSelection = (teamId: string) => {
     setSelectedTeamIds(prev => 
@@ -195,13 +188,14 @@ export default function MessagePanel({
       </h3>
 
       <div className="space-y-4">
+        {!hideGameSelector && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Игра
           </label>
           <select
             value={selectedGameId}
-            onChange={(e) => setSelectedGameId(e.target.value)}
+            onChange={(e) => onSelectedGameIdChange(e.target.value)}
             disabled={gamesLoading && games.length === 0}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
           >
@@ -221,6 +215,7 @@ export default function MessagePanel({
             <p className="mt-2 text-sm text-red-600">{gamesError}</p>
           )}
         </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">

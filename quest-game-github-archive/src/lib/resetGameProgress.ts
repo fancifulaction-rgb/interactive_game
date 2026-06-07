@@ -29,21 +29,6 @@ export async function resetGameProgress(gameId: string): Promise<ResetGameProgre
   const teamIds = (teams ?? []).map((t) => t.id as string)
   let answersDeleted = 0
 
-  if (teamIds.length > 0) {
-    const { count: answersByTeam, error: answersError } = await supabase
-      .from('answers')
-      .delete({ count: 'exact' })
-      .in('team_id', teamIds)
-
-    if (answersError) {
-      return { ...empty, error: answersError.message }
-    }
-    answersDeleted = answersByTeam ?? 0
-
-    await supabase.from('message_reads').delete().in('team_id', teamIds)
-    await supabase.from('message_recipients').delete().in('team_id', teamIds)
-  }
-
   const { count: answersByGame, error: answersGameError } = await supabase
     .from('answers')
     .delete({ count: 'exact' })
@@ -52,7 +37,14 @@ export async function resetGameProgress(gameId: string): Promise<ResetGameProgre
   if (answersGameError) {
     return { ...empty, error: answersGameError.message }
   }
-  answersDeleted = Math.max(answersDeleted, answersByGame ?? 0)
+  answersDeleted = answersByGame ?? 0
+
+  if (teamIds.length > 0) {
+    await Promise.all([
+      supabase.from('message_reads').delete().in('team_id', teamIds),
+      supabase.from('message_recipients').delete().in('team_id', teamIds),
+    ])
+  }
 
   const { error: scoresError } = await supabase
     .from('teams')

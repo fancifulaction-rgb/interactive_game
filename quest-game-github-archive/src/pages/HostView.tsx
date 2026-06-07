@@ -10,17 +10,23 @@ import {
   RotateCcw,
   Trophy,
   Users,
+  DoorOpen,
+  Lock,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fetchGameStateForGame } from '../lib/fetchGameState'
+import { attachGameRealtime } from '../lib/gameRealtime'
 import { hasSupabaseAdminSession } from '../lib/adminAuth'
 import { normalizeGameAccessCode } from '../lib/gameAccessCode'
 import {
+  closeGameSession,
   finishGameSession,
+  openLobbySession,
   pauseGameSession,
   restartGameSessionToLobby,
   resumeGameSession,
   startGameSession,
+  type SessionActionResult,
 } from '../lib/gameSessionControl'
 import {
   getGameSessionStatus,
@@ -117,47 +123,46 @@ export default function HostView() {
     if (!game?.id) return
 
     const gameId = game.id
+    let rtConnected = true
+
     const poll = window.setInterval(() => {
+      if (rtConnected) return
       void fetchGameStateForGame(gameId).then(setGameState).catch(() => {})
-    }, 3000)
+    }, 30_000)
 
-    const stateChannel = supabase
-      .channel(`host-state-${gameId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'game_state', filter: `game_id=eq.${gameId}` },
-        (payload) => {
-          if (payload.eventType === 'DELETE') setGameState(null)
-          else setGameState(payload.new as GameStateRow)
-        }
-      )
-      .subscribe()
+    const detach = attachGameRealtime(gameId, {
+      onSessionChanged: () => {
+        void fetchGameStateForGame(gameId).then(setGameState).catch(() => {})
+      },
+      onGameStateChanged: (row) => setGameState(row),
+      onTeamsChanged: () => {
+        void loadTeams(gameId)
+      },
+    })
 
-    const teamsChannel = supabase
-      .channel(`host-teams-${gameId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'teams', filter: `game_id=eq.${gameId}` },
-        () => {
-          void loadTeams(gameId)
-        }
-      )
-      .subscribe()
+    const stateChannel = supabase.channel(`host-rt-ping-${gameId}`)
+    stateChannel.subscribe((status) => {
+      rtConnected = status === 'SUBSCRIBED'
+    })
 
     return () => {
       window.clearInterval(poll)
+      detach()
       supabase.removeChannel(stateChannel)
-      supabase.removeChannel(teamsChannel)
     }
   }, [game?.id, loadTeams])
 
-  const runAction = async (action: () => Promise<void>) => {
+  const runAction = async (action: () => Promise<SessionActionResult>) => {
     if (!game?.id || !canControl) return
     setActionLoading(true)
     try {
-      await action()
-      setGameState(await fetchGameStateForGame(game.id))
-      await loadTeams(game.id)
+      const result = await action()
+      setGameState(result.gameState)
+      if (result.teamsDeleted !== undefined && result.teamsDeleted > 0) {
+        setTeams([])
+      } else if (!result.skipReload) {
+        await loadTeams(game.id)
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       alert('Ошибка: ' + msg)
@@ -172,7 +177,9 @@ export default function HostView() {
   const registrationUrl = game?.code ? buildTeamRegistrationUrl(game.code) : ''
 
   const statusBadgeClass =
-    status === 'waiting'
+    status === 'closed'
+      ? 'bg-slate-500/20 text-slate-200 border-slate-400/40'
+      : status === 'waiting'
       ? 'bg-purple-500/20 text-purple-100 border-purple-400/40'
       : status === 'paused'
         ? 'bg-orange-500/20 text-orange-100 border-orange-400/40'
@@ -281,6 +288,17 @@ export default function HostView() {
       {canControl ? (
         <footer className="sticky bottom-0 border-t border-white/10 bg-slate-950/90 backdrop-blur px-6 py-4">
           <div className="max-w-4xl mx-auto flex flex-wrap gap-3 justify-center">
+            {(status === 'closed' || status === 'finished') && (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void runAction(() => openLobbySession(game.id))}
+                className="inline-flex items-center gap-2 px-8 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 font-bold disabled:opacity-50"
+              >
+                <DoorOpen className="w-5 h-5" />
+                Открыть лобби
+              </button>
+            )}
             {status === 'waiting' && (
               <button
                 type="button"
@@ -333,7 +351,7 @@ export default function HostView() {
                 Завершить
               </button>
             )}
-            {status !== 'waiting' && (
+            {status !== 'waiting' && status !== 'closed' && (
               <button
                 type="button"
                 disabled={actionLoading}
@@ -350,6 +368,25 @@ export default function HostView() {
               >
                 <RotateCcw className="w-5 h-5" />
                 Запустить заново
+              </button>
+            )}
+            {status !== 'closed' && (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => {
+                  if (
+                    confirm(
+                      'Закрыть игру? Участники не смогут войти по коду, пока лобби снова не откроют.'
+                    )
+                  ) {
+                    void runAction(() => closeGameSession(game.id))
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/20 hover:bg-white/10 disabled:opacity-50"
+              >
+                <Lock className="w-5 h-5" />
+                Закрыть игру
               </button>
             )}
           </div>

@@ -64,6 +64,13 @@ async function deleteTeamsAfterProgressReset(teamIds: string[]): Promise<DeleteT
     await supabase.from('players').delete().in('team_name', teamNames)
   }
 
+  agentDebugLog(
+    'adminTeams.ts',
+    'delete after reset teams',
+    { count: uniqueIds.length },
+    'H18'
+  )
+
   const { data: deletedRows, error: deleteError } = await supabase
     .from('teams')
     .delete()

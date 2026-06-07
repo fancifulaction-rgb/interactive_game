@@ -27,6 +27,8 @@
     "db:migrate:013": "node scripts/run-sql.mjs docs/sql-migrations/013_submit_auto_answer.sql",
     "db:migrate:014": "node scripts/run-sql.mjs docs/sql-migrations/014_event_archive.sql",
     "db:migrate:015": "node scripts/run-sql.mjs docs/sql-migrations/015_final_page_texts_and_integrity.sql",
+    "db:migrate:017": "node scripts/run-sql.mjs docs/sql-migrations/017_admin_session_rpc.sql",
+    "admin:stress": "node scripts/admin-stress.mjs",
     "db:storage": "node scripts/run-sql.mjs docs/sql-migrations/006_storage_buckets.sql",
     "db:test-connection": "node scripts/test-db-connection.mjs",
     "edge:deploy": "node scripts/deploy-edge-functions.mjs",
