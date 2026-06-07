@@ -24,7 +24,7 @@
 
 | Очередь | Лимит | Примеры |
 |---------|-------|---------|
-| `criticalQueue` | 1 одновременно | регистрация, ответ, админ `runAction`, upsert `game_state` |
+| `criticalQueue` | 1 одновременно | регистрация, ответ, админ `runAction`, RPC `admin_set_session` / `admin_restart_from_scratch` |
 | `backgroundQueue` | 1, только если critical пуст | аватар после игры, prefetch, уведомления |
 
 **Reentrancy:** внутри выполняющейся critical-задачи `criticalDepth > 0` — вложенный `enqueueCritical` выполняется сразу (иначе deadlock: пауза → `upsertGameStateForGame` → второй critical).
@@ -42,7 +42,7 @@ enqueueBackground(() => runPendingAvatarUpload())
 
 | Параметр | Значение |
 |----------|----------|
-| Параллелизм | 4 (desktop) / 6 (mobile Safari) |
+| Параллелизм | 4 (desktop) / **8 на `/admin`** / 6 (mobile) |
 | Таймаут | 45 s на попытку |
 | Retry | до 3× на `failed to fetch` / `connection reset`; **1×** для `/functions/v1/` |
 | Сортировка | выше `priority` — раньше; при равенстве — FIFO по `enqueuedAt` |
@@ -106,16 +106,18 @@ Database → Publications → `supabase_realtime` → `teams`, `answers`, `game_
 
 ---
 
-## Админ: «Начать с нуля»
+## Админ: batch RPC и shared session
 
-Поток (`gameSessionControl.restartGameSessionFromScratch`):
+Миграция `017_admin_session_rpc.sql`:
 
-1. `resetGameProgress` — answers, scores, teamIds
-2. `deleteTeamsAfterProgressReset` — только `players` + `teams` (без повторного DELETE answers)
-3. `upsertGameStateForGame` → waiting, пустой `player_data`
-4. `withTransientRetry` до 3× при transient network
+| RPC | Заменяет |
+|-----|----------|
+| `admin_restart_from_scratch(game_id)` | reset + delete teams + upsert closed (1 HTTP) |
+| `admin_set_session(game_id, action, admin_name)` | open/close/start/pause/resume/finish/restart_to_lobby |
 
-`GameControls`: `adminBusyRef` паузит poll/realtime reload команд на время `runAction`.
+Клиент: `gameSessionControl.ts` → RPC через `enqueueCritical`; fallback на REST если RPC недоступен.
+
+Админка: `useGameSessionAdmin` + `GameSessionAdminContext` — один Realtime hub на `selectedGameId` для `GameControls` и `MessagePanel` (без poll 60s). `adminBusy` блокирует reload на время `runAction`; при `skipReload: true` UI обновляется из snapshot RPC.
 
 ---
 

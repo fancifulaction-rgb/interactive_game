@@ -1,5 +1,19 @@
 # Баги и статус (2026-06-07)
 
+## Исправлено 2026-06-07 (admin + iPhone HTTP contention)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 31 | 4 параллельных GET `games` при регистрации | `gameLookupCache.fetchGameByCode` — in-flight dedupe + cache hit |
+| 32 | StrictMode: 2× `loadGameData` + шторм questions | Module-level `loadGameDataInflight`; lobby vs full select |
+| 33 | Админка «съедает» HTTP/2 канал | `GameControls`: coalesce loadTeams/state, poll 60s, debounce 800ms, skip teams poll после Realtime |
+| 34 | iPhone: questions priority 7 ждали 45s в очереди | `playerFetchBoost` — priority 9 на player routes ~30s после navigate |
+| 35 | Тяжёлый payload questions в лобби | `QUESTION_LOBBY_SELECT` для prefetch; `fetchQuestionsFullForGame` при старте игры |
+
+Дополнительно (P1): Home — не блокирует render на settings; TeamManagement delete → `enqueueCritical`; Scoreboard poll 20s; `exportAllFormats` — один `loadExportData`.
+
+DEV-логи: `sessionId` в jsonl, `ui.loading` / `register spinner end`, snapshot очереди при wait ≥3s.
+
 ## Исправлено 2026-06-07 (стабильность сети, очередь, документация)
 
 | # | Проблема | Исправление |

@@ -1,10 +1,13 @@
 /**
  * Постоянный сбор диагностических логов (DEV).
- * Файл на ПК после тестов: quest-game-github-archive/diagnostic/client-logs.jsonl
+ * На ПК после тестов: quest-game-github-archive/diagnostic/
+ *   client-logs.jsonl — общий поток
+ *   devices/{sessionId}.jsonl — по одному файлу на устройство
+ *   exports/ — полные JSON при ошибках
  */
 
 export const CLIENT_LOG_FILE_HINT =
-  'quest-game-github-archive/diagnostic/client-logs.jsonl'
+  'quest-game-github-archive/diagnostic/ (client-logs.jsonl + devices/)'
 
 const STORAGE_KEY = 'quest_client_diagnostic_v1'
 const MAX_ENTRIES = 800
@@ -24,6 +27,7 @@ export type ClientLogEntry = {
     route: string
     gameCode: string | null
     teamId: string | null
+    sessionId: string
     ua: string
     host: string
   }
@@ -31,6 +35,15 @@ export type ClientLogEntry = {
 
 let pendingFlush: ClientLogEntry[] = []
 let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+const SESSION_ID =
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `sess-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+
+export function getClientSessionId(): string {
+  return SESSION_ID
+}
 
 function isEnabled(): boolean {
   return import.meta.env.DEV
@@ -49,6 +62,7 @@ function readContext(): ClientLogEntry['ctx'] {
     route: typeof window !== 'undefined' ? window.location.pathname : '',
     gameCode,
     teamId,
+    sessionId: SESSION_ID,
     ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 160) : '',
     host: typeof window !== 'undefined' ? window.location.host : '',
   }
@@ -201,6 +215,116 @@ export function mergeImportedClientLogs(bundle: ClientLogExportBundle): number {
   const trimmed = merged.slice(-MAX_ENTRIES)
   writeRing(trimmed)
   return bundle.entries.length
+}
+
+export async function uploadClientLogBundleToServer(): Promise<boolean> {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false
+  try {
+    const res = await fetch(`${window.location.origin}/__client_logs/bundle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildClientLogExportBundle()),
+      keepalive: true,
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export type ConnectedDeviceInfo = {
+  sessionId: string
+  ua: string
+  host: string
+  route: string
+  firstSeen: number
+  lastSeen: number
+  lineCount: number
+  file: string
+  /** Логи приходили в последние ~2 мин (вкладка открыта или недавно закрыта). */
+  active?: boolean
+  idleMs?: number
+}
+
+export type ConnectedDevicesResponse = {
+  devices: ConnectedDeviceInfo[]
+  updatedAt: number
+  activeIdleMs: number
+  total: number
+  activeCount: number
+}
+
+export async function fetchConnectedDevices(opts?: {
+  activeOnly?: boolean
+}): Promise<ConnectedDeviceInfo[]> {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return []
+  try {
+    const q = opts?.activeOnly ? '?activeOnly=1' : ''
+    const res = await fetch(`${window.location.origin}/__client_logs/devices${q}`)
+    if (!res.ok) return []
+    const data = (await res.json()) as ConnectedDevicesResponse
+    return data.devices ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function fetchConnectedDevicesMeta(): Promise<ConnectedDevicesResponse | null> {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return null
+  try {
+    const res = await fetch(`${window.location.origin}/__client_logs/devices`)
+    if (!res.ok) return null
+    return (await res.json()) as ConnectedDevicesResponse
+  } catch {
+    return null
+  }
+}
+
+export async function removeDiagnosticSession(sessionId: string): Promise<boolean> {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false
+  try {
+    const res = await fetch(
+      `${window.location.origin}/__client_logs/device/${encodeURIComponent(sessionId)}`,
+      { method: 'DELETE' }
+    )
+    if (!res.ok) return false
+    const data = (await res.json()) as { ok?: boolean }
+    return data.ok === true
+  } catch {
+    return false
+  }
+}
+
+/** Удалить из списка сессии без свежих логов (по умолчанию > 2 мин). */
+export async function cleanupInactiveDiagnosticSessions(
+  olderThanMs = 2 * 60 * 1000
+): Promise<number> {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return 0
+  try {
+    const res = await fetch(`${window.location.origin}/__client_logs/devices/cleanup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ olderThanMs }),
+    })
+    if (!res.ok) return 0
+    const data = (await res.json()) as { count?: number }
+    return data.count ?? 0
+  } catch {
+    return 0
+  }
+}
+
+export async function fetchDeviceLogNdjson(sessionId: string): Promise<string | null> {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return null
+  try {
+    const res = await fetch(
+      `${window.location.origin}/__client_logs/device/${encodeURIComponent(sessionId)}`
+    )
+    if (!res.ok) return null
+    return await res.text()
+  } catch {
+    return null
+  }
 }
 
 export async function fetchServerDiagnosticLogs(): Promise<string | null> {

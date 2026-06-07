@@ -31,7 +31,7 @@ export default function Scoreboard() {
 
   useEffect(() => {
     loadData()
-    const interval = setInterval(loadData, 5000)
+    const interval = setInterval(loadData, 20_000)
     return () => clearInterval(interval)
   }, [gameCode])
 

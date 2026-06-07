@@ -1,4 +1,4 @@
-import { collectClientLog } from './clientLogCollector'
+import { collectClientLog, uploadClientLogBundleToServer } from './clientLogCollector'
 
 const INGEST_PATH = '/ingest/7fb5ad31-3ebd-4437-b10a-7b29790fa840'
 const SESSION = '017ee8'
@@ -82,6 +82,7 @@ export function saveRegistrationError(msg: string, extra: Record<string, unknown
     hypothesisId: 'H9',
   })
   agentDebugLog('TeamRegister.tsx', 'error', { msg, ...extra }, 'H9')
+  void uploadClientLogBundleToServer()
   try {
     localStorage.setItem(LAST_REG_ERROR_KEY, JSON.stringify({ msg, ...extra, ts: Date.now() }))
   } catch {

@@ -38,12 +38,17 @@ export interface ExportData {
   answers: ExportAnswerRow[]
 }
 
+const exportDataInflight = new Map<string, Promise<ExportData>>()
+
 function questionNumberOf(q: { question_number?: number; order_index?: number }, index: number): number {
   return q.question_number ?? q.order_index ?? index + 1
 }
 
 export async function loadExportData(gameId: string): Promise<ExportData> {
-  return enqueueCritical(async () => {
+  const existing = exportDataInflight.get(gameId)
+  if (existing) return existing
+
+  const promise = enqueueCritical(async () => {
     const { data: game } = await supabase
       .from('games')
       .select('id, title, created_at, code')
@@ -78,11 +83,18 @@ export async function loadExportData(gameId: string): Promise<ExportData> {
       answers: (answers || []) as ExportAnswerRow[],
     }
   })
+
+  exportDataInflight.set(gameId, promise)
+  try {
+    return await promise
+  } finally {
+    exportDataInflight.delete(gameId)
+  }
 }
 
-export async function exportToExcel(gameId: string, gameName: string) {
+export async function exportToExcel(gameId: string, gameName: string, preloaded?: ExportData) {
   await loadExportLibraries()
-  const data = await loadExportData(gameId)
+  const data = preloaded ?? (await loadExportData(gameId))
 
   const teamsData = data.teams.map((team, index) => ({
     'Место': index + 1,
@@ -147,9 +159,9 @@ export async function exportToExcel(gameId: string, gameName: string) {
   saveAs(blob, `${gameName}_результаты.xlsx`)
 }
 
-export async function exportToPDF(gameId: string, gameName: string) {
+export async function exportToPDF(gameId: string, gameName: string, preloaded?: ExportData) {
   await loadExportLibraries()
-  const data = await loadExportData(gameId)
+  const data = preloaded ?? (await loadExportData(gameId))
   
   const doc = new jsPDF()
   let yPos = 20
@@ -236,8 +248,8 @@ export async function downloadCsvFile(content: string, filename: string): Promis
   saveAs(csvWithBom, filename)
 }
 
-export async function exportToCSV(gameId: string, gameName: string) {
-  const data = await loadExportData(gameId)
+export async function exportToCSV(gameId: string, gameName: string, preloaded?: ExportData) {
+  const data = preloaded ?? (await loadExportData(gameId))
   const csvContent = buildTeamsCsvContent(data)
   const safeName = gameName.replace(/[<>:"/\\|?*]+/g, '_').slice(0, 60)
   await downloadCsvFile(csvContent, `${safeName}_результаты.csv`)
@@ -245,9 +257,10 @@ export async function exportToCSV(gameId: string, gameName: string) {
 
 export async function exportAllFormats(gameId: string, gameName: string) {
   try {
-    await exportToExcel(gameId, gameName)
-    await exportToPDF(gameId, gameName)
-    await exportToCSV(gameId, gameName)
+    const data = await loadExportData(gameId)
+    await exportToExcel(gameId, gameName, data)
+    await exportToPDF(gameId, gameName, data)
+    await exportToCSV(gameId, gameName, data)
     return true
   } catch (error) {
     console.error('Ошибка экспорта:', error)

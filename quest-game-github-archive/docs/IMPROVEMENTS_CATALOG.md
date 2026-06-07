@@ -122,6 +122,14 @@
 
 ---
 
+## P. Производительность клиента (IMP-PERF)
+
+| ID | Название | Описание | Источник | Спринт | Статус |
+|----|----------|----------|----------|--------|--------|
+| IMP-PERF-001 | Admin+player HTTP contention | In-flight dedupe games/questions; player fetch boost; lighter lobby SELECT; coalesce admin poll | iPhone jsonl QA038Q | 1 | done |
+
+---
+
 ## I. Техдолг и качество кода (IMP-TD)
 
 | ID | Название | Описание | Источник | Спринт | Статус |

@@ -112,7 +112,7 @@ export async function cloneGame(input: CloneGameInput): Promise<ClonedGame> {
 
   const { error: stateErr } = await supabase.from('game_state').insert({
     game_id: newGame.id,
-    current_state: 'waiting',
+    current_state: 'closed',
     is_paused: false,
   })
   if (stateErr) {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Users, Trash2, Check, AlertCircle, RefreshCw } from 'lucide-react'
 import type { AdminTeamRow } from '../lib/adminTeams'
 import { deleteTeamsCompletely, fetchAdminTeamsWithRetry } from '../lib/adminTeams'
+import { enqueueCritical } from '../lib/requestQueue'
 
 interface TeamManagementGame {
   id: string
@@ -126,7 +127,9 @@ function TeamManagementManager({
     setErrorMessage('')
 
     try {
-      const result = await deleteTeamsCompletely(teamsToDelete, selectedGameId)
+      const result = await enqueueCritical(() =>
+        deleteTeamsCompletely(teamsToDelete, selectedGameId)
+      )
       if (!result.success) {
         throw new Error(result.error ?? 'Не удалось удалить команды')
       }

@@ -34,6 +34,8 @@
 
 - Пауза: админ → Game Controls → пауза (все экраны `GameStateManager`).
 - Сообщения: админ → рассылка (NotificationPopup у игроков).
+- **Одна вкладка админки** на игру — лишние вкладки Game Controls / Team Management конкурируют с телефонами за HTTP к Supabase.
+- Не держать открытыми лишние табло (`/scoreboard`, `/scoreboard-detailed`) на том же ноутбуке, если iPhone «висят» на загрузке — poll табло добавляет GET в общую очередь.
 - Не открывать тяжёлый AdminScoreboard на том же ноутбуке, что раздаёт Wi‑Fi hotspot (опционально).
 
 ## Если что-то сломалось

@@ -59,13 +59,12 @@ export default function Home() {
 
   const loadQuestSettings = async (isAlive: () => boolean = () => true) => {
     try {
-      // Загружаем настройки из localStorage
       let parsedSettings = {
         quest_title: 'Интерактивный Квест',
         quest_subtitle: 'Выберите режим для начала',
         quest_logo_url: ''
       }
-      
+
       const savedSettings = localStorage.getItem('quest_settings')
       if (savedSettings) {
         try {
@@ -78,22 +77,23 @@ export default function Home() {
       const cachedLogo = sessionStorage.getItem('quest_logo_url')
       if (cachedLogo) {
         parsedSettings.quest_logo_url = cachedLogo
-        setSettings(parsedSettings)
-        setLogoLoaded(true)
-        return
-      }
-
-      const logoUrl = await fetchQuestLogoFromDb()
-
-      if (!isAlive()) return
-
-      if (logoUrl) {
-        parsedSettings.quest_logo_url = logoUrl
-        sessionStorage.setItem('quest_logo_url', logoUrl)
       }
 
       setSettings(parsedSettings)
       setLogoLoaded(true)
+
+      if (cachedLogo) return
+
+      void fetchQuestLogoFromDb()
+        .then((logoUrl) => {
+          if (!isAlive() || !logoUrl) return
+          sessionStorage.setItem('quest_logo_url', logoUrl)
+          setSettings((prev) => ({ ...prev, quest_logo_url: logoUrl }))
+        })
+        .catch((error) => {
+          if (error instanceof DOMException && error.name === 'AbortError') return
+          console.warn('Настройки с сервера недоступны, используем локальные:', error)
+        })
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return
       console.warn('Настройки с сервера недоступны, используем локальные:', error)

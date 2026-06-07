@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-06-07",
+  "source": "post-fix build + admin-stress.mjs",
+  "metrics": {
+    "settingsGet400": { "count": 0, "note": "SETTINGS_SELECT fixed — no id column" },
+    "adminRpcMs": {
+      "open_lobby": "50-186",
+      "close_game": "52-72",
+      "restart_from_scratch": "53-62",
+      "note": "single HTTP per action vs 8+ REST before"
+    },
+    "adminStress5x": {
+      "okRuns": 4,
+      "failedRuns": 1,
+      "failure": "iteration 2 open_lobby TypeError terminated (pooler blip, 70s)"
+    }
+  },
+  "build": "npm run build OK",
+  "dbVerifySchema": "REST probes OK, RPC admin_* registered"
+}

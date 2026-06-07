@@ -12,27 +12,40 @@
 Браузер (localStorage ring)
     │ collectClientLog() / debugLog()
     ▼
-POST /__client_logs  ──►  vite-client-logs-plugin  ──►  diagnostic/client-logs.jsonl
-    │
+POST /__client_logs  ──►  vite-client-logs-plugin  ──►  diagnostic/
+    │                         ├── client-logs.jsonl      (общий поток)
+    │                         ├── devices/{session}.jsonl (по устройству)
+    │                         ├── devices-manifest.json
+    │                         └── exports/*.json         (полный дамп при ошибке)
     ▼
-DiagnosticLogsPanel (AdminPanel) — скачать / импорт с телефона / очистить
+DiagnosticLogsPanel (AdminPanel) — сессии с логами, активные/неактивные, удаление из manifest
 ```
 
 | Файл | Назначение |
 |------|------------|
-| `src/lib/clientLogCollector.ts` | Кольцо ~800 записей, flush на dev-сервер, export JSON |
-| `src/lib/debugLog.ts` | `debugLog` (VITE_DEBUG_LOG), `agentDebugLog` (всегда в DEV), ring в sessionStorage |
-| `vite-client-logs-plugin.ts` | Middleware Vite: запись NDJSON на диск |
-| `src/components/DiagnosticLogsPanel.tsx` | UI в админке (DEV) |
-| `diagnostic/client-logs.jsonl` | Агрегат с ПК и телефонов (в `.gitignore`) |
+| `src/lib/clientLogCollector.ts` | Кольцо ~800 записей, flush на dev-сервер, export JSON, bundle при ошибке |
+| `src/lib/debugLog.ts` | `debugLog`, `agentDebugLog`, auto-upload bundle при ошибке регистрации |
+| `vite-client-logs-plugin.ts` | Middleware Vite: NDJSON на диск, manifest устройств |
+| `src/components/DiagnosticLogsPanel.tsx` | UI: подключённые устройства, скачать лог устройства / общий JSONL |
+| `diagnostic/` | Папка логов (в `.gitignore`, кроме `.gitkeep`) |
+
+### Автосбор с телефонов (без ручного копирования)
+
+1. Запустите `npm run dev -- --host` на ПК.
+2. Откройте игру на телефоне по `http://<IP-ПК>:5174` (не localhost).
+3. Логи автоматически пишутся в `diagnostic/devices/` и обновляют `devices-manifest.json`.
+4. В админке → **Общие** → **DiagnosticLogsPanel**: блок «Подключённые устройства» (poll 5 с).
+5. При ошибке регистрации полный JSON сохраняется в `diagnostic/exports/` через `POST /__client_logs/bundle`.
+
+Ручной экспорт с телефона нужен только если телефон не в той же Wi‑Fi сети, что dev-сервер.
 
 ---
 
 ## Что уже логируется
 
 - Старт сессии, route, `game_code`, `team_id`, UA, host
-- Ошибки `supabase.ts` fetch (URL, ms, timeout, auth)
-- Очередь `requestQueue`, регистрация `teamRegister`, GamePlay, Storage upload
+- Ошибки `supabase.ts` fetch (URL, ms, timeout, auth, **priority**, **bypassBoost**, **criticalActive**)
+- Очередь `requestQueue` (wait ≥3s: **waitedMs**, **maxSlots**, **queueByPriority**), admin actions (`adminActionLog`: phases start/rpc_done/optimistic/reload_skipped/done)
 - Realtime / revalidate (точки с `debugLog` / `collectClientLog`)
 
 Типичный сценарий: тест с **iPhone** по Wi‑Fi → на телефоне «Скачать диагностику» или на ПК «Скачать с DEV-сервера» / открыть `diagnostic/client-logs.jsonl`.

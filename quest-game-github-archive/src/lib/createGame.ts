@@ -47,7 +47,7 @@ export async function createNewGame(title = 'Новая игра'): Promise<Crea
       await enqueueCritical(async () => {
         const { error: stateError } = await supabase.from('game_state').insert({
           game_id: data.id,
-          current_state: 'waiting',
+          current_state: 'closed',
           is_paused: false,
         })
         if (stateError) {
