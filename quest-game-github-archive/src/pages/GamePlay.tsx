@@ -2,15 +2,12 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { uploadAnswerMediaQueued, cancelActiveStorageUpload } from '../lib/storageUpload'
-import {
-  applyOptimisticTeamScoreBump,
-  bumpTeamScoreInBackground,
-  syncPlayerTeamScoreFromServer,
-} from '../lib/teamScore'
-import { gradeUserAnswer, normalizeUserAnswers } from '../lib/answerGrading'
+import { applyOptimisticTeamScoreBump, syncPlayerTeamScoreFromServer } from '../lib/teamScore'
+import { normalizeUserAnswers } from '../lib/answerGrading'
 import { enqueueSubmitAutoAnswer } from '../lib/submitAutoAnswer'
 import { postponeAvatarUntilAfterAnswer } from '../lib/pendingAvatar'
-import { calculateQuestionScore } from '../lib/scoring'
+import { recoverTeamSessionIfNeeded } from '../lib/teamRegister'
+import { getTeamSessionToken } from '../lib/teamSession'
 import { agentDebugLog, debugLog } from '../lib/debugLog'
 import { getGamePlayCache, isGamePlayCacheFresh, setGamePlayCache } from '../lib/gamePlayCache'
 import {
@@ -29,7 +26,6 @@ import {
   isBackgroundRevalidatePaused,
 } from '../lib/revalidateGamePlay'
 import { enqueueCritical } from '../lib/requestQueue'
-import type { AnswerInsertPayload } from '../lib/saveAnswer'
 import { usePlayerExtrasReady } from '../lib/usePlayerExtrasReady'
 import { useTheme } from '../contexts/ThemeContext'
 import { Clock, HelpCircle, Send, Upload, X, Image, Film, Music } from 'lucide-react'
@@ -237,6 +233,21 @@ export default function GamePlay() {
         setLoading(false)
       })
   }, [game?.id, teamId, gameCode, sessionUnknown, inLobby, accessCheckNonce])
+
+  useEffect(() => {
+    if (!game?.id || !teamId || getTeamSessionToken()) return
+    const raw = localStorage.getItem('current_team')
+    if (!raw) return
+    try {
+      const team = JSON.parse(raw) as { name?: string; team_name?: string; captain_name?: string }
+      const name = (team.name ?? team.team_name ?? '').trim()
+      const captain = (team.captain_name ?? '').trim()
+      if (!name || !captain) return
+      void recoverTeamSessionIfNeeded(game.id as string, name, captain)
+    } catch {
+      /* ignore */
+    }
+  }, [game?.id, teamId])
 
   useEffect(() => {
     if (!teamId) {
@@ -592,66 +603,28 @@ export default function GamePlay() {
         userAnswers = selectedOptions
       }
 
-      const userAnswersNormalized = normalizeUserAnswers(userAnswers)
-      const { isCorrect, scoreMultiplier } = gradeUserAnswer({
-        answerCount: currentQuestion.answer_count ?? 1,
-        correctAnswers: currentQuestion.answer,
-        userAnswers: userAnswersNormalized.length ? userAnswersNormalized : [userAnswerText],
-      })
-
-      // Расчет времени и очков
       const maxTime = currentQuestion.per_question_time_sec || game.per_question_time_sec || 120
       const timeTaken = maxTime - timeLeft
-      const score = calculateQuestionScore({
-        scoring: game.scoring,
-        basePoints: currentQuestion.base_points,
-        difficulty: currentQuestion.difficulty,
-        timeTaken,
-        maxTime,
-        hintsUsed: hintLevel,
-        hintPenalties: currentQuestion.hint_penalties || [],
-        isCorrect,
-        partialMultiplier: scoreMultiplier,
-      })
-
       const questionNumber = currentQuestion.order_index ?? currentQuestionIndex + 1
       const answerPayload = userAnswers.length ? userAnswers : [userAnswerText]
-
-      const fallbackPayload: AnswerInsertPayload = {
-        game_id: game.id,
-        team_id: teamId,
-        question_number: questionNumber,
-        answer: answerPayload,
-        media_urls: mediaUrl ? [mediaUrl] : [],
-        is_correct: isCorrect,
-        points_earned: score,
-        time_spent: timeTaken,
-      }
-
-      if (isCorrect && score > 0) {
-        applyOptimisticTeamScoreBump(teamId, score, gameCode ?? '')
-      }
+      normalizeUserAnswers(answerPayload)
 
       debugLog('GamePlay.tsx:submit', 'advance ui', {
         ms: Date.now() - submitStarted,
-        optimistic: !answerFile,
       }, 'H')
 
       handleNextQuestion()
       setUploadingFile(false)
 
-      void enqueueSubmitAutoAnswer(
-        {
-          game_id: game.id,
-          team_id: teamId,
-          question_number: questionNumber,
-          answer: answerPayload,
-          media_urls: mediaUrl ? [mediaUrl] : [],
-          time_spent: timeTaken,
-          hints_used: hintLevel,
-        },
-        fallbackPayload
-      )
+      void enqueueSubmitAutoAnswer({
+        game_id: game.id,
+        team_id: teamId,
+        question_number: questionNumber,
+        answer: answerPayload,
+        media_urls: mediaUrl ? [mediaUrl] : [],
+        time_spent: timeTaken,
+        hints_used: hintLevel,
+      })
         .then((result) => {
           debugLog('GamePlay.tsx:submit', 'saved', {
             totalMs: Date.now() - submitStarted,
@@ -659,7 +632,10 @@ export default function GamePlay() {
             isCorrect: result.is_correct,
             score: result.points_earned,
           }, 'H')
-          if (result.via === 'rpc' && result.team_total_score >= 0) {
+          if (result.points_earned > 0) {
+            applyOptimisticTeamScoreBump(teamId, result.points_earned, gameCode ?? '')
+          }
+          if (result.team_total_score >= 0) {
             try {
               const raw = localStorage.getItem('current_team')
               if (raw) {
@@ -672,8 +648,6 @@ export default function GamePlay() {
             } catch {
               /* ignore */
             }
-          } else if (result.via === 'fallback' && result.points_earned > 0) {
-            bumpTeamScoreInBackground(teamId, result.points_earned, gameCode ?? '')
           }
         })
         .catch((saveErr: unknown) => {
@@ -692,7 +666,6 @@ export default function GamePlay() {
               time_spent: timeTaken,
               hints_used: hintLevel,
             },
-            fallbackPayload,
             gameCode ?? ''
           )
         })
