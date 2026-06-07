@@ -56,6 +56,7 @@
 | IMP-LOG-006 | Множественные варианты ответов | Полная поддержка в UI/БД | guides/MULTIPLE_ANSWERS | — | proposed |
 | IMP-LOG-007 | Возврат в лобби после restart_to_lobby | `shouldBlockLobbyRegression`: разрешать playing→lobby при новее `updated_at` или `lobbyEpoch++` | BUG_AUDIT_HANDOFF C1 | 1 | done |
 | IMP-LOG-008 | Проверка доступа игрока вне лобби | `getPlayAccessDenial` при `sessionKnown`, fail-closed + retry при сетевой ошибке | BUG_AUDIT_HANDOFF H2/H3 | 1 | done |
+| IMP-LOG-009 | Живая проверка доступа (без кэша) | `force` + invalidate `game_state`; повтор при lobby→playing; честный статус сети в лобби | BUG_AUDIT H3 QA | 1 | done |
 
 ---
 

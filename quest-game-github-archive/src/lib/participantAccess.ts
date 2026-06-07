@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { debugLog } from './debugLog'
 import { readFinishNavigateState } from './finishNavigation'
-import { fetchGameStateForGame } from './fetchGameState'
+import { fetchGameStateForGame, invalidateGameStateCache } from './fetchGameState'
 import { isTransientNetworkError } from './teamRegister'
 import { isScoreboardHiddenUntilFinish } from './gameSettings'
 import {
@@ -65,11 +65,16 @@ export async function getRegistrationDenial(gameId: string): Promise<string | nu
 /** Допуск на гонку «старт» vs «insert» на медленной сети (мс). */
 const LATE_JOIN_GRACE_MS = 2000
 
+async function fetchPlayAccessState(gameId: string): Promise<GameStateRow | null> {
+  invalidateGameStateCache(gameId)
+  return fetchGameStateForGame(gameId, { force: true })
+}
+
 export async function getPlayAccessDenial(
   gameId: string,
   teamId: string
 ): Promise<string | null> {
-  const state = await fetchGameStateForGame(gameId)
+  const state = await fetchPlayAccessState(gameId)
   if (!state) return PLAY_MESSAGES.invalid_session
   if (isGameClosed(state)) return PLAY_MESSAGES.closed
   if (isGameInLobby(state)) return null
@@ -80,7 +85,11 @@ export async function getPlayAccessDenial(
     .eq('id', teamId)
     .maybeSingle()
 
-  if (error || !team || team.game_id !== gameId) {
+  if (error) {
+    if (isTransientNetworkError(error)) throw error
+    return PLAY_MESSAGES.invalid_session
+  }
+  if (!team || team.game_id !== gameId) {
     return PLAY_MESSAGES.invalid_session
   }
 

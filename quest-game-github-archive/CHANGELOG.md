@@ -20,6 +20,7 @@
 ### Исправлено
 - IMP-LOG-007 / BUG_AUDIT C1: игрок возвращается в лобби после админского «Начать заново» (`restart_to_lobby`) — `updated_at` и `lobbyEpoch` в snapshot cache
 - IMP-LOG-008 / BUG_AUDIT H2/H3: проверка доступа игрока при известной сессии (не только в лобби); сетевая ошибка — fail-closed и «Повторить»
+- IMP-LOG-009 / H3: проверка доступа всегда с живым `game_state` (без кэша); повтор при входе в игру; индикатор связи в лобби
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

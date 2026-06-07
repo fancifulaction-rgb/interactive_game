@@ -131,7 +131,8 @@ export default function GamePlay() {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const loadGenRef = useRef(0)
   const finishedNavRef = useRef(false)
-  const playAccessCheckedRef = useRef(false)
+  /** Последняя успешная проверка: лобби и отдельно вход в игру (playing). */
+  const playAccessPhaseRef = useRef<'none' | 'lobby' | 'playing'>('none')
   const [teamId, setTeamId] = useState<string | null>(() =>
     typeof window !== 'undefined' ? localStorage.getItem('team_id') : null
   )
@@ -159,7 +160,7 @@ export default function GamePlay() {
   const retryPlayAccessCheck = useCallback(() => {
     setAccessDenied(null)
     setAccessDeniedRetryable(false)
-    playAccessCheckedRef.current = false
+    playAccessPhaseRef.current = 'none'
     setAccessCheckNonce((n) => n + 1)
   }, [])
 
@@ -169,13 +170,15 @@ export default function GamePlay() {
     setAccessDenied(null)
     setAccessDeniedRetryable(false)
     setPlayAccessPending(false)
-    playAccessCheckedRef.current = false
+    playAccessPhaseRef.current = 'none'
   }, [gameCode])
 
   useEffect(() => {
     if (!game?.id || !teamId || !gameCode || sessionUnknown) return
-    if (playAccessCheckedRef.current) return
-    playAccessCheckedRef.current = true
+
+    const phase: 'lobby' | 'playing' = inLobby ? 'lobby' : 'playing'
+    if (playAccessPhaseRef.current === phase) return
+
     setPlayAccessPending(true)
 
     const code = (gameCode ?? '').trim().toUpperCase()
@@ -205,22 +208,25 @@ export default function GamePlay() {
         setPlayAccessPending(false)
         if (msg) {
           // #region agent log
-          agentDebugLog('GamePlay.tsx', 'access denied', { msg, teamId }, 'H8')
+          agentDebugLog('GamePlay.tsx', 'access denied', { msg, teamId, phase }, 'H8')
           // #endregion
           setAccessDenied(msg)
           setAccessDeniedRetryable(false)
           setLoading(false)
+          return
         }
+        playAccessPhaseRef.current = phase
+        agentDebugLog('GamePlay.tsx', 'access check ok', { teamId, phase }, 'H8')
       })
       .catch((err: unknown) => {
         const errMsg = err instanceof Error ? err.message : String(err)
-        agentDebugLog('GamePlay.tsx', 'access check failed', { errMsg, teamId }, 'H8')
+        agentDebugLog('GamePlay.tsx', 'access check failed', { errMsg, teamId, phase }, 'H8')
         setPlayAccessPending(false)
         setAccessDenied(PLAY_MESSAGES.access_check_failed)
         setAccessDeniedRetryable(true)
         setLoading(false)
       })
-  }, [game?.id, teamId, gameCode, sessionUnknown, accessCheckNonce])
+  }, [game?.id, teamId, gameCode, sessionUnknown, inLobby, accessCheckNonce])
 
   useEffect(() => {
     if (!teamId) {
