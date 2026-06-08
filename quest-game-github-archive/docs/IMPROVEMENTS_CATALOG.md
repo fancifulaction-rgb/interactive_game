@@ -150,6 +150,8 @@
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
 | IMP-PERF-001 | Admin+player HTTP contention | In-flight dedupe games/questions; player fetch boost; lighter lobby SELECT; coalesce admin poll | iPhone jsonl QA038Q | 1 | done |
+| IMP-PERF-002 | Priority buckets fetch queue | Без sort на каждом drain в `requestQueue` | BUG_AUDIT_HANDOFF L2 | 1 | done |
+| IMP-PERF-003 | Critical starvation escape | После 5с в critical разрешить fetch prio ≥ 6 | BUG_AUDIT_HANDOFF L3 | 1 | done |
 
 ---
 
@@ -163,7 +165,9 @@
 | IMP-TD-004 | Code-split xlsx/jspdf | Не грузить на player routes | Bundle size | proposed | proposed |
 | IMP-TD-005 | Unit-тесты scoring.ts | calculateQuestionScore | Testing | proposed | proposed |
 | IMP-TD-006 | Консолидация Edge setup-* | Один setup script | EDGE_FUNCTIONS | proposed | proposed |
+| IMP-TD-008 | Явные поля admin `.select()` | createGame, MessagePanel, SettingsManager | BUG_AUDIT_HANDOFF L5 | 1 | done |
 | IMP-INF-009 | Schema drift verify (S7) | `db:verify-schema` включает 016–018; `00_run_all.sql` deprecated | BUG_AUDIT_HANDOFF S7 | 1 | done |
+| IMP-INF-010 | Test Edge dev-only | `supabase/functions/README.md` — test-* не в edge:deploy | BUG_AUDIT_HANDOFF L6 | 1 | done |
 
 ---
 

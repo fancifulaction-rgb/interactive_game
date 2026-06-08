@@ -34,6 +34,10 @@
 - IMP-LOG-019 / BUG_AUDIT M4: кнопка «Обновить» без вопросов сбрасывает loading в `finally`
 - IMP-LOG-020 / BUG_AUDIT M5: delete команд → `broadcastTeamsChanged`; delete игры через `enqueueCritical`
 - IMP-RT-006 / BUG_AUDIT L1: broadcast без подписчиков — ephemeral канал, hub с refCount 0 не создаётся
+- IMP-PERF-002 / BUG_AUDIT L2: priority buckets в `enqueueSupabaseFetch` — без sort на drain
+- IMP-PERF-003 / BUG_AUDIT L3: escape starvation в critical — prio ≥ 6 после 5с ожидания
+- IMP-TD-008 / BUG_AUDIT L5: явные поля в `.select()` (createGame, MessagePanel, SettingsManager)
+- IMP-INF-010 / BUG_AUDIT L6: test Edge functions помечены dev-only, не в `edge:deploy`
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

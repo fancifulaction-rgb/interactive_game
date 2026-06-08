@@ -102,7 +102,48 @@ type SupabaseFetchJob<T> = {
   reject: (e: unknown) => void
 }
 
-const supabaseFetchQueue: SupabaseFetchJob<unknown>[] = []
+/** Priority buckets — без sort на каждом drain (BUG_AUDIT L2). */
+const supabaseFetchBuckets = new Map<number, SupabaseFetchJob<unknown>[]>()
+let supabaseFetchQueueLen = 0
+let supabaseFetchMaxPriority = -1
+
+/** При critical без prio≥8 — временно разрешить prio≥6 (BUG_AUDIT L3). */
+const CRITICAL_STARVATION_ESCAPE_MS = 5000
+
+function refreshSupabaseFetchMaxPriority(): void {
+  supabaseFetchMaxPriority = -1
+  for (const p of supabaseFetchBuckets.keys()) {
+    if (p > supabaseFetchMaxPriority) supabaseFetchMaxPriority = p
+  }
+}
+
+function enqueueSupabaseFetchJob(job: SupabaseFetchJob<unknown>): void {
+  const bucket = supabaseFetchBuckets.get(job.priority) ?? []
+  bucket.push(job)
+  supabaseFetchBuckets.set(job.priority, bucket)
+  supabaseFetchQueueLen++
+  if (job.priority > supabaseFetchMaxPriority) supabaseFetchMaxPriority = job.priority
+}
+
+function dequeueSupabaseFetchJob(priority: number): SupabaseFetchJob<unknown> | undefined {
+  const bucket = supabaseFetchBuckets.get(priority)
+  if (!bucket || bucket.length === 0) return undefined
+  const job = bucket.shift()!
+  supabaseFetchQueueLen--
+  if (bucket.length === 0) {
+    supabaseFetchBuckets.delete(priority)
+    if (priority === supabaseFetchMaxPriority) refreshSupabaseFetchMaxPriority()
+  }
+  return job
+}
+
+function supabaseFetchQueueByPriority(): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const [p, bucket] of supabaseFetchBuckets) {
+    if (bucket.length > 0) counts[String(p)] = bucket.length
+  }
+  return counts
+}
 
 function acquireSupabaseFetchSlot(): Promise<void> {
   if (supabaseFetchesRunning < maxSupabaseFetches()) {
@@ -128,27 +169,57 @@ export function isCriticalSessionActive(): boolean {
   return criticalDepth > 0 || criticalRunning > 0
 }
 
+function pickFromBuckets(minPriority: number): SupabaseFetchJob<unknown> | undefined {
+  for (let p = supabaseFetchMaxPriority; p >= minPriority; p--) {
+    const job = dequeueSupabaseFetchJob(p)
+    if (job) return job
+  }
+  return undefined
+}
+
+function pickStarvationEscapeJob(): SupabaseFetchJob<unknown> | undefined {
+  const now = Date.now()
+  for (let p = supabaseFetchMaxPriority; p >= 6; p--) {
+    const bucket = supabaseFetchBuckets.get(p)
+    const head = bucket?.[0]
+    if (head && now - head.enqueuedAt >= CRITICAL_STARVATION_ESCAPE_MS) {
+      return dequeueSupabaseFetchJob(p)
+    }
+  }
+  return undefined
+}
+
 function pickNextSupabaseFetchJob(): SupabaseFetchJob<unknown> | undefined {
-  if (supabaseFetchQueue.length === 0) return undefined
-  supabaseFetchQueue.sort((a, b) => b.priority - a.priority || a.enqueuedAt - b.enqueuedAt)
+  if (supabaseFetchQueueLen === 0) return undefined
+
   if (isCriticalSessionActive()) {
-    const idx = supabaseFetchQueue.findIndex((j) => j.priority >= 8)
-    if (idx === -1) {
+    const job = pickFromBuckets(8)
+    if (job) return job
+    const escaped = pickStarvationEscapeJob()
+    if (escaped) {
       collectClientLog(
         'requestQueue.ts',
-        'critical stall: no priority>=8 job',
-        {
-          qlen: supabaseFetchQueue.length,
-          topPriority: supabaseFetchQueue[0]?.priority,
-          running: supabaseFetchesRunning,
-        },
-        { level: 'warn', hypothesisId: 'H4' }
+        'critical starvation escape',
+        { priority: escaped.priority, waitedMs: Date.now() - escaped.enqueuedAt },
+        { level: 'warn', hypothesisId: 'L3' }
       )
-      return undefined
+      return escaped
     }
-    return supabaseFetchQueue.splice(idx, 1)[0]
+    collectClientLog(
+      'requestQueue.ts',
+      'critical stall: no priority>=8 job',
+      {
+        qlen: supabaseFetchQueueLen,
+        topPriority: supabaseFetchMaxPriority,
+        running: supabaseFetchesRunning,
+        queueByPriority: supabaseFetchQueueByPriority(),
+      },
+      { level: 'warn', hypothesisId: 'H4' }
+    )
+    return undefined
   }
-  return supabaseFetchQueue.shift()
+
+  return pickFromBuckets(0)
 }
 
 function drainSupabaseFetchQueue(): void {
@@ -157,18 +228,13 @@ function drainSupabaseFetchQueue(): void {
     if (!job) break
     const waitedMs = Date.now() - job.enqueuedAt
     if (waitedMs >= 3000) {
-      const priorityCounts: Record<string, number> = {}
-      for (const q of supabaseFetchQueue) {
-        const bucket = String(q.priority)
-        priorityCounts[bucket] = (priorityCounts[bucket] ?? 0) + 1
-      }
       const payload = {
         waitedMs,
         priority: job.priority,
         running: supabaseFetchesRunning,
         maxSlots: maxSupabaseFetches(),
-        qlen: supabaseFetchQueue.length,
-        queueByPriority: priorityCounts,
+        qlen: supabaseFetchQueueLen,
+        queueByPriority: supabaseFetchQueueByPriority(),
         criticalActive: isCriticalSessionActive(),
       }
       collectClientLog('requestQueue.ts', 'supabase queue wait', payload, {
@@ -197,18 +263,13 @@ export function enqueueSupabaseFetch<T>(
   priority: number = 0
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const job: SupabaseFetchJob<unknown> = {
+    enqueueSupabaseFetchJob({
       task: task as () => Promise<unknown>,
       priority,
       enqueuedAt: Date.now(),
       resolve: resolve as (v: unknown) => void,
       reject,
-    }
-    if (priority >= 10) {
-      supabaseFetchQueue.unshift(job)
-    } else {
-      supabaseFetchQueue.push(job)
-    }
+    })
     drainSupabaseFetchQueue()
   })
 }

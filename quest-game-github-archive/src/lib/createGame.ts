@@ -40,7 +40,7 @@ export async function createNewGame(title = 'Новая игра'): Promise<Crea
     const { data, error } = await supabase
       .from('games')
       .insert({ ...base, code })
-      .select()
+      .select('id, title, code, theme, mask_board, total_time_sec, per_question_time_sec, created_at, scoring')
       .maybeSingle()
 
     if (!error && data) {

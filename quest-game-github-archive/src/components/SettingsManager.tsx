@@ -132,7 +132,7 @@ export default function SettingsManager({ settings, onUpdateSettings }: Settings
         .from('settings')
         .update({ value: newValue })
         .eq('key', key)
-        .select()
+        .select('key, value')
         .single()
 
       if (error) throw error

@@ -140,7 +140,7 @@ export default function MessagePanel({
           // Дополнительные поля, которые мы можем сохранять в JSON или добавить колонки, 
           // но пока используем существующую схему messages
         })
-        .select()
+        .select('id')
         .single()
 
       if (messageError) throw messageError
