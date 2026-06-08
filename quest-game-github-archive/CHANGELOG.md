@@ -37,6 +37,7 @@
 - `gameLookupCache`, `playerFetchBoost`, `QUESTION_LOBBY_SELECT` / `fetchQuestionsFullForGame`
 
 ### Изменено
+- IMP-INF-009 / BUG_AUDIT S7: `verify-schema-drift.mjs` — журнал 016–018, проверки `register_team`, `questions_player`; `00_run_all.sql` помечен deprecated
 - `requestQueue`: `enqueueSupabaseFetch` 4/6 слотов, приоритеты URL, блок GET &lt;8 при critical, snapshot очереди при wait ≥3s
 - `supabase.ts`: таймаут 45s, retry; player routes boost priority 9 для questions/games
 - Админ «Начать с нуля»: `deleteTeamsAfterProgressReset`, `withTransientRetry`, `adminBusyRef`

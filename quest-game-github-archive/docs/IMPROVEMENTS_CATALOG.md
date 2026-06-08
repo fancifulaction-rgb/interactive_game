@@ -157,6 +157,7 @@
 | IMP-TD-004 | Code-split xlsx/jspdf | Не грузить на player routes | Bundle size | proposed | proposed |
 | IMP-TD-005 | Unit-тесты scoring.ts | calculateQuestionScore | Testing | proposed | proposed |
 | IMP-TD-006 | Консолидация Edge setup-* | Один setup script | EDGE_FUNCTIONS | proposed | proposed |
+| IMP-INF-009 | Schema drift verify (S7) | `db:verify-schema` включает 016–018; `00_run_all.sql` deprecated | BUG_AUDIT_HANDOFF S7 | 1 | done |
 
 ---
 

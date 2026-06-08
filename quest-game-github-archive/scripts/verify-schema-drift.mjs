@@ -24,6 +24,7 @@ const EXPECTED_MIGRATIONS = [
   '015_final_page_texts_and_integrity.sql',
   '016_game_state_closed.sql',
   '017_admin_session_rpc.sql',
+  '018_security_s1_s5.sql',
 ]
 
 const REQUIRED_COLUMNS = [
@@ -33,6 +34,7 @@ const REQUIRED_COLUMNS = [
   ['answers', 'points_earned'],
   ['answers', 'time_spent'],
   ['questions', 'question_number'],
+  ['teams', 'session_token_hash'],
 ]
 
 const LEGACY_COLUMNS = [['answers', 'question_id'], ['answers', 'answer_text']]
@@ -44,7 +46,11 @@ const REQUIRED_RPC = [
   'increment_team_score',
   'admin_restart_from_scratch',
   'admin_set_session',
+  'register_team',
+  'verify_team_session',
 ]
+
+const REQUIRED_VIEWS = ['questions_player']
 
 let ok = true
 let postgresOk = true
@@ -84,6 +90,15 @@ async function rpcExists(client, name) {
     `SELECT 1 FROM pg_proc p
      JOIN pg_namespace n ON p.pronamespace = n.oid
      WHERE n.nspname = 'public' AND p.proname = $1`,
+    [name]
+  )
+  return rows.length > 0
+}
+
+async function viewExists(client, name) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM information_schema.views
+     WHERE table_schema = 'public' AND table_name = $1`,
     [name]
   )
   return rows.length > 0
@@ -186,6 +201,11 @@ try {
       else fail(`function missing: ${rpc}()`)
     }
 
+    for (const view of REQUIRED_VIEWS) {
+      if (await viewExists(client, view)) pass(`view ${view}`)
+      else fail(`view missing: ${view} (run 018)`)
+    }
+
     if (await constraintExists(client, 'answers_team_question_unique')) {
       pass('constraint answers_team_question_unique')
     } else {
@@ -232,6 +252,9 @@ if (issues.length) {
   console.log('  npm run db:migrate:013   # if submit_auto_answer missing')
   console.log('  npm run db:migrate:014   # if event_archive missing')
   console.log('  npm run db:migrate:015   # final_page_texts + integrity')
+  console.log('  npm run db:migrate:016   # game_state closed flag')
+  console.log('  npm run db:migrate:017   # admin session RPC')
+  console.log('  npm run db:migrate:018   # security S1–S5 (team session, RLS)')
   console.log('  node scripts/run-sql.mjs docs/sql-migrations/009_game_state_pause.sql')
   console.log('  Supabase Dashboard → Settings → API → Reload schema')
   process.exit(1)

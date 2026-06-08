@@ -1,4 +1,8 @@
-﻿-- Quest Game: полная установка схемы и seed. Выполнить один раз в SQL Editor.
+﻿-- DEPRECATED: не использовать для новых установок и обновлений prod.
+-- Единственный поддерживаемый путь миграций: npm run db:migrate (scripts/apply-migrations.mjs).
+-- Этот файл устарел (нет 016–018 и журнала schema_migrations). Оставлен только как архив.
+--
+-- Quest Game: полная установка схемы и seed. Выполнить один раз в SQL Editor.
 
 -- ========== 001_initial_schema.sql ==========
 -- Quest Game Database Schema
