@@ -19,6 +19,9 @@
 
 ## Сводная приоритизация
 
+> **Статус кода (2026-06-08):** все пункты C1–C2, H1–H7, M1–M2/M4–M7, S1–S7, L1–L6 реализованы в `main`.
+> M3 закрыт как неактуальный (IMP-LOG-021 rejected). **Ручная верификация** — см. `docs/TEST_BACKLOG.md` § BUG_AUDIT Sprint 1.
+
 | Приоритет | Что | Пункты |
 |-----------|-----|--------|
 | **P0 — корректность игры** | Ломает сессию/счёт прямо сейчас | C1, C2, H1, H2, H3 |
@@ -43,7 +46,7 @@
 - **Проверка:** PC+2 телефона в игре → админ «Начать с нуля» → все три устройства должны
   вернуться в лобби ≤ poll-интервала.
 
-### C2 🔍 Гонка `force` ломает coalesce/кэш состояния игры
+### C2 ✅ Гонка `force` ломает coalesce/кэш состояния игры
 - **Файл:** `src/lib/fetchGameState.ts:53-72`
 - **Серьёзность:** CRITICAL (риск стабильности)
 - **Причина:** при `force:true` поверх идущего запроса создаётся второй параллельный GET и
@@ -114,7 +117,7 @@
 
 ## P1 — Корректность и устойчивость
 
-### H1 🔍 Авто-пропуск вопроса при `timeLeft === 0`
+### H1 ✅ Авто-пропуск вопроса при `timeLeft === 0`
 - **Файл:** `src/pages/GamePlay.tsx:357-361` (+ инициализация `timeLeft=0` :77; установка
   :147 в `applyPlayData`, :335 в reset-эффекте)
 - **Серьёзность:** HIGH
@@ -152,7 +155,7 @@
   1500мс всё равно reject’ит, `setTimeout` не очищается.
 - **Фикс:** хранить timer, `clearTimeout` в `finally` (см. готовый сниппет от аудита).
 
-### H5 🔍 HostView (`/host/`): «Завершить игру» может зависнуть
+### H5 ✅ HostView (`/host/`): «Завершить игру» может зависнуть
 - **Файл:** `src/lib/gameSessionControl.ts` (`finishGameSession`→`archiveGameSession`→
   `loadExportData`), `src/pages/HostView.tsx:155-171`, `src/lib/requestQueue.ts:134-148`
 - **Серьёзность:** HIGH
@@ -185,23 +188,23 @@
 
 ## P1 — Прочая устойчивость (MEDIUM)
 
-### M1 🔍 Неполные вопросы из lobby-кэша играются без подсказок/медиа
+### M1 ✅ Неполные вопросы из lobby-кэша играются без подсказок/медиа
 - **Файл:** `src/pages/GamePlay.tsx:266-272`; `src/lib/prefetchGameQuestions.ts` (использует
   `QUESTION_LOBBY_SELECT` без `hint_levels/hint_penalties/media_url`)
 - **Фикс:** при `!inLobby` всегда дозагружать `fetchQuestionsFullForGame` и мержить, либо
   помечать lobby-кэш как `lobbyOnly` и не считать готовым к игре.
 
-### M2 🔍 Гонка таймера и отправки ответа → пропуск вопроса
+### M2 ✅ Гонка таймера и отправки ответа → пропуск вопроса
 - **Файл:** `src/pages/GamePlay.tsx:347-361, 481-572, 650-667`
 - **Фикс:** общий `advancingRef`/`isSubmittingRef`: таймер не advance’ит при активной
   отправке; submit «захватывает» индекс и гасит таймер этого индекса.
 
-### M3 🔍 Двойное начисление очков на клиенте при `via:'fallback'`
+### M3 ❌ Двойное начисление очков на клиенте при `via:'fallback'` (не актуально после IMP-SEC — только RPC)
 - **Файл:** `src/pages/GamePlay.tsx:563-565, 607-608`
 - **Фикс:** при fallback не вызывать `bumpTeamScoreInBackground`, если уже был
   `applyOptimisticTeamScoreBump`; единый путь начисления.
 
-### M4 🔍 Бесконечный спиннер при «Обновить» без вопросов
+### M4 ✅ Бесконечный спиннер при «Обновить» без вопросов
 - **Файл:** `src/pages/GamePlay.tsx:776-779, 439-467` (`setLoading(true)` без гарантии
   `setLoading(false)` на silent-return)
 - **Фикс:** `finally { setLoading(false) }` для актуального gen.
@@ -213,12 +216,12 @@
 - **Фикс:** после delete → `broadcastTeamsChanged(gameId)` + invalidate; удаление игры из
   списка обернуть в `enqueueCritical` (как в `GameControls`).
 
-### M6 🔍 Гонки invalidate+inflight в `fetchLobbyTeams` / устаревший `gameLookupCache`
+### M6 ✅ Гонки invalidate+inflight в `fetchLobbyTeams` / устаревший `gameLookupCache`
 - **Файл:** `src/lib/fetchLobbyTeams.ts` (force не обходит inflight),
   `src/lib/gameLookupCache.ts` (cache hit без revalidate, TTL до 15 мин)
 - **Фикс:** generation-token (как C2); stale-while-revalidate для lookup.
 
-### M7 🔍 BROADCAST_SEND_TIMEOUT 1500мс мал для мобильной сети
+### M7 ✅ BROADCAST_SEND_TIMEOUT 1500мс мал для мобильной сети
 - **Файл:** `src/lib/gameRealtime.ts:50`
 - **Фикс:** 4000–8000мс на mobile UA (после H4); fail не считать доставкой.
 
@@ -233,7 +236,7 @@
 - **Фикс:** guard через `hasSupabaseAdminSession()` + redirect на `/admin/login`; удалить
   legacy-режим или перевести на Supabase Auth (никогда не слать пароль в фильтр PostgREST).
 
-### S7 🔍 Дрейф миграций: `db:migrate` не применяет 016/017; `00_run_all.sql` устарел
+### S7 ✅ Дрейф миграций: `db:migrate` не применяет 016/017; `00_run_all.sql` устарел
 - **Файл:** `scripts/apply-migrations.mjs` (нет 016/017), `docs/sql-migrations/00_run_all.sql`
 - **Фикс:** добавить 016/017 в `ALL_FILES`; `npm run db:verify-schema`; пометить
   `00_run_all.sql` deprecated; единственный путь — `db:migrate`.
@@ -241,12 +244,12 @@
 ### Прочее (L1–L6)
 | ID | Файл | Проблема | Фикс |
 |----|------|----------|------|
-| L1 🔍 | `src/lib/gameRealtime.ts:80-156, 202-204` | publish-канал создаёт hub с refCount 0 (утечка) | ephemeral publish-канал без hub-map |
+| L1 ✅ | `src/lib/gameRealtime.ts:80-156, 202-204` | publish-канал создаёт hub с refCount 0 (утечка) | ephemeral publish-канал без hub-map |
 | L2 ✅ | `src/lib/requestQueue.ts` (`pickNext` sort на каждом drain) | O(n log n) на hot-path | priority buckets/heap |
-| L3 🔍 | `src/lib/requestQueue.ts:127-151` | starvation при только-фоновой очереди в critical | таймаут starvation → временно разрешить prio ≥ 6 |
+| L3 ✅ | `src/lib/requestQueue.ts:127-151` | starvation при только-фоновой очереди в critical | таймаут starvation → временно разрешить prio ≥ 6 |
 | L4 ✅ | `src/lib/storageUpload.ts` | нет проверки MIME/размера для аватаров/медиа | `uploadFileGuard.ts` + magic bytes в player-upload |
 | L5 ✅ | `createGame.ts:43`, `GameEditor.tsx:374/394`, `MessagePanel`, `SettingsManager` | `.select()`/`select('*')` без полей (не player hot-path) | явные поля |
-| L6 🔍 | `supabase/functions/test-*` | тестовые функции в репо (часть с service role) | не деплоить/удалить |
+| L6 ✅ | `supabase/functions/test-*` | тестовые функции в репо (часть с service role) | не деплоить/удалить |
 
 ---
 

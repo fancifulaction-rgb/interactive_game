@@ -103,9 +103,170 @@
 
 ---
 
-## BUG_AUDIT — пакетный ручной прогон (отложен)
+## BUG_AUDIT Sprint 1 — полный ручной прогон (2026-06-08)
 
-Авто: `npm run build` на каждый IMP. Ручной прогон — **одним заходом** после серии фиксов.
+Код всех пунктов в `main` (коммиты `7ae8503`…`293f8d2`). Прогон **одним заходом** на staging/test Supabase.
+Отмечайте `[x]` по мере проверки.
+
+### 0. Подготовка (один раз перед прогоном)
+
+- [ ] `git pull` → ветка `main` содержит `293f8d2` или новее
+- [ ] `npm run build` — без ошибок
+- [ ] `node scripts/e2e-game-flow.mjs` — «Все проверки пройдены»
+- [ ] `npm run db:verify-schema` — объекты RPC/view OK (journal gaps допустимы на legacy БД)
+- [ ] `npm run db:migrate` или точечно `db:migrate:016`…`018` — если объекты 018 отсутствуют
+- [ ] `npm run edge:deploy` — `player-upload`, `delete-game`, `delete-teams` с актуальным кодом
+- [ ] Supabase Dashboard → API → **Reload schema** после миграций
+- [ ] Оборудование: **PC (админ)** + **2+ телефона** (iPhone + Android) + опционально проектор для табло
+- [ ] Один Wi‑Fi; dev: `npm run dev -- --host`, телефоны по LAN-IP
+
+---
+
+### 1. P0 — корректность игры
+
+#### C1 / IMP-LOG-007 — возврат в лобби после «Начать заново»
+- [ ] 2 команды в игре (ответили минимум по 1 вопросу)
+- [ ] Админ: «Начать заново» / `restart_to_lobby`
+- [ ] **Все** устройства (PC + телефоны) в лобби ≤ 20 с, без перезагрузки
+- [ ] DevTools/jsonl: нет `blocked lobby regression`; `lobbyEpoch` растёт
+
+#### C2 / IMP-LOG-015 — гонка fetchGameState
+- [ ] iPhone: старт → пауза админом → resume — состояние не «откатывается»
+- [ ] Быстрые клики «Обновить» / смена паузы — нет мигания старым `game_state`
+
+#### H1 / IMP-LOG-010 — первый вопрос не skip'ится
+- [ ] Приватная вкладка / очистка site data
+- [ ] Лобби (prefetch вопросов) → админ «Старт»
+- [ ] Первый вопрос виден **полное** время таймера, не мгновенный skip
+
+#### H2 / IMP-LOG-008 — доступ не только в лобби
+- [ ] Игра уже `playing`; новая регистрация по коду → отказ «Игра уже началась…»
+- [ ] Прямой `/game/<code>` с «чужой»/несуществующей сессией → отказ
+
+#### H3 / IMP-LOG-008/009 — fail-closed при сети
+- [ ] Лобби: авиарежим → «Нет связи» / ожидание
+- [ ] Сеть вкл. → проверка доступа проходит, вход в игру OK
+- [ ] Симуляция offline **до** первой успешной проверки → экран ошибки + «Повторить» (не silent allow)
+
+#### H7 / IMP-LOG-011 — очки чужих команд в кэше
+- [ ] 2+ команды, у обеих есть очки на табло
+- [ ] Ответ одной команды → на устройстве другой **не** обнуляются чужие `total_score` в лобби/списке
+
+---
+
+### 2. P1 — устойчивость и realtime
+
+#### H4 / IMP-LOG-012 — утечка таймера broadcast
+- [ ] DevTools Console: 10+ ответов подряд или серия старт/пауза
+- [ ] **Нет** `Unhandled Promise Rejection` / `broadcast send timeout` через 1.5 с после успешного действия
+
+#### H5 / IMP-LOG-014 — завершение на `/host/`
+- [ ] `/host/<code>` (залогиненный админ) → «Завершить игру»
+- [ ] Кнопка не зависает; `finished`; запись в `event_archive` (если 014 применена)
+- [ ] Регрессия: «Завершить» из GameControls в админке — OK
+
+#### H6 / IMP-RT-005 — poll-fallback табло
+- [ ] Табло `/scoreboard-admin/<code>`: отключить Wi‑Fi на 30 с → счёт догоняет ≤20 с после включения
+- [ ] `/scoreboard/<code>` (игрок) — то же
+- [ ] HostView: новая команда в списке ≤20 с без reload
+- [ ] При хорошей сети realtime быстрее poll (нет регрессии)
+
+#### M7 / IMP-LOG-013 — broadcast timeout mobile
+- [ ] iPhone/Android: меньше ложных `broadcast send timeout` (6 с vs 1.5 с)
+- [ ] Desktop: поведение без регрессии
+
+#### M1 / IMP-LOG-017 — полные вопросы после старта
+- [ ] Вопрос с подсказками и media_url в редакторе
+- [ ] Лобби (лёгкий prefetch) → старт → в GamePlay видны **подсказки** и **медиа**
+
+#### M2 / IMP-LOG-018 — таймер vs submit
+- [ ] Ответ в последнюю секунду таймера — вопрос не skip'ится дважды
+- [ ] Нет двойного advance при медленной сети
+
+#### M4 / IMP-LOG-019 — спиннер «Обновить»
+- [ ] Игра без вопросов → «Обновить» — спиннер гаснет (не бесконечный)
+
+#### M5 / IMP-LOG-020 — delete команд/игры
+- [ ] Админ: удалить команду → исчезает на табло/лобби без reload (broadcast)
+- [ ] Удалить игру из списка — не блокирует UI (enqueueCritical)
+
+#### M6 / IMP-LOG-016 — lobby teams + lookup
+- [ ] Новая регистрация → force refresh списка команд в админке без stale in-flight
+- [ ] Повторный вход по коду: lookup мгновенный; смена title игры видна ≤60 с
+
+---
+
+### 3. P2 — гигиена
+
+#### S7 / IMP-INF-009 — schema drift
+- [ ] `npm run db:verify-schema` — RPC `register_team`, view `questions_player` OK
+- [ ] `docs/sql-migrations/00_run_all.sql` помечен deprecated в комментарии
+
+#### L1 / IMP-RT-006 — ephemeral broadcast channel
+- [ ] DevTools: после серии broadcast без подписчиков нет роста «висящих» Realtime-каналов (memory stable при длительной сессии)
+
+#### L4 / IMP-ST-004 — upload guard
+- [ ] Аватар >5 МБ или `.exe` — отказ **до** upload, понятное сообщение
+- [ ] Валидный JPEG/WebP аватар после игры — upload OK
+- [ ] Медиа ответа >50 МБ — отказ; валидное фото/видео — OK
+
+#### L5 / IMP-TD-008 — admin select (регрессия)
+- [ ] AdminPanel → Настройки / Сообщения — данные грузятся без ошибок PostgREST
+
+#### L6 / IMP-INF-010 — test Edge не в prod
+- [ ] `npm run edge:verify` — в списке deploy **нет** `test-*` функций
+
+---
+
+### 4. Безопасность (staging / test project только)
+
+> Требует миграции 018 + Edge deploy. **Не** гонять destructive-тесты на production.
+
+#### S5 / IMP-SEC-007/009 — session token + без эталона
+- [ ] e2e: регистрация возвращает session token; `submit_auto_answer` без токена → ошибка
+- [ ] Network (игрок): SELECT `questions_player` — поля `answer` **нет**
+- [ ] Попытка submit с чужим `team_id` + свой token → отказ
+
+#### S4 / IMP-SEC-008 — increment_team_score
+- [ ] REST anon вызов `increment_team_score` → 401/403 или RPC error
+
+#### S3 / IMP-SEC-010 — anon UPDATE teams/answers
+- [ ] REST anon PATCH чужой `teams.total_score` → отказ RLS
+- [ ] anon INSERT в `answers` напрямую → отказ
+
+#### S2 / IMP-SEC-011 — player-upload
+- [ ] Edge `player-upload` без session token → 400/403
+- [ ] bucket вне whitelist / path без `{gameId}/` → отказ
+
+#### S1 / IMP-SEC-012 — delete Edge
+- [ ] `delete-game` без admin JWT → 401/403
+- [ ] С валидным admin JWT → OK (на **тестовой** игре)
+
+#### S6 — admin auth (регрессия)
+- [ ] `/admin` без логина → redirect `/admin/login`
+- [ ] Legacy вход с паролем в query/filter **не** используется
+
+---
+
+### 5. Регрессия спринта (каждый прогон)
+
+- [x] API: `node scripts/e2e-game-flow.mjs`
+- [ ] Полный заезд: регистрация 2 команд → 3+ вопроса → финиш → аватар после игры
+- [ ] Пауза админом блокирует ввод игрока
+- [ ] Экспорт Excel/PDF с admin scoreboard
+- [ ] Chrome desktop + один мобильный браузер
+
+---
+
+### 6. Спринт 2–3 (по необходимости)
+
+См. секции ниже (IMP-UX, IMP-RT-001, IMP-LOG-001 UI, IMP-PRD-002, Docker, archive…).
+
+---
+
+## BUG_AUDIT — пакетный ручной прогон (legacy, см. § Sprint 1 выше)
+
+Авто: `npm run build` на каждый IMP. **Актуальный чеклист — секция «BUG_AUDIT Sprint 1» выше.**
 
 ### IMP-LOG-011 (H7 — счёт чужих команд в кэше)
 - [ ] 2+ команды в лобби, у обеих есть очки на табло
@@ -139,4 +300,4 @@
 
 ---
 
-*Последнее обновление: 2026-06-07 — BUG_AUDIT пакет (C2, M6 отложены).*
+*Последнее обновление: 2026-06-08 — полный чеклист BUG_AUDIT Sprint 1; CHANGELOG IMP-SEC-007..012.*

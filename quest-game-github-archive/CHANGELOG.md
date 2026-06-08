@@ -40,6 +40,14 @@
 - IMP-INF-010 / BUG_AUDIT L6: test Edge functions помечены dev-only, не в `edge:deploy`
 - IMP-ST-004 / BUG_AUDIT L4: guard размера/MIME/magic bytes перед Storage upload (клиент + player-upload)
 
+### Безопасность (миграция 018 + Edge deploy)
+- IMP-SEC-007 / BUG_AUDIT S5: team session token — `register_team` выдаёт токен, `submit_auto_answer` и `verify_team_session` проверяют владельца
+- IMP-SEC-008 / BUG_AUDIT S4: `increment_team_score` недоступен anon — только service_role / внутри RPC
+- IMP-SEC-009: view `questions_player` без поля `answer` — эталон не уходит на клиент игрока
+- IMP-SEC-010 / BUG_AUDIT S3: миграция 018 — убран anon UPDATE/INSERT на `teams`/`answers`/`team_scores`
+- IMP-SEC-011 / BUG_AUDIT S2: `player-upload` — team session, whitelist bucket/path, лимит размера; `confirm-admin-email` — setup secret
+- IMP-SEC-012 / BUG_AUDIT S1: `delete-game` / `delete-teams` — `verify_jwt` + проверка admin JWT внутри функции
+
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`
 - `fetchLobbyTeams`, `gameRealtime` hub, `pendingAnswerQueue`, coalesce `fetchGameState` / `prefetchGameQuestions`
