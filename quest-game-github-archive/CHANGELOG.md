@@ -33,6 +33,7 @@
 - IMP-LOG-018 / BUG_AUDIT M2: `advancingRef`/`isSubmittingRef` — таймер не skip'ит во время submit
 - IMP-LOG-019 / BUG_AUDIT M4: кнопка «Обновить» без вопросов сбрасывает loading в `finally`
 - IMP-LOG-020 / BUG_AUDIT M5: delete команд → `broadcastTeamsChanged`; delete игры через `enqueueCritical`
+- IMP-RT-006 / BUG_AUDIT L1: broadcast без подписчиков — ephemeral канал, hub с refCount 0 не создаётся
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

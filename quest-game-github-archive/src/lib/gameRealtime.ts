@@ -236,8 +236,52 @@ export function attachGameRealtime(gameId: string, handlers: GameRealtimeHandler
   }
 }
 
-function ensurePublishChannel(gameId: string): RealtimeChannel {
-  return getOrCreateHub(gameId).channel
+const PUBLISH_SUBSCRIBE_TIMEOUT_MS = 10_000
+
+function subscribeBroadcastChannel(channel: RealtimeChannel): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        reject(new Error('publish channel subscribe timeout'))
+      }
+    }, PUBLISH_SUBSCRIBE_TIMEOUT_MS)
+    channel.subscribe((status, err) => {
+      if (settled) return
+      if (status === 'SUBSCRIBED') {
+        settled = true
+        clearTimeout(timer)
+        resolve()
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        settled = true
+        clearTimeout(timer)
+        reject(err ?? new Error(`channel ${status}`))
+      }
+    })
+  })
+}
+
+/** Broadcast без attach: ephemeral канал, если hub ещё не создан (BUG_AUDIT L1). */
+async function withBroadcastChannel(
+  gameId: string,
+  send: (channel: RealtimeChannel) => Promise<void>
+): Promise<void> {
+  const hub = hubs.get(gameId)
+  if (hub) {
+    await send(hub.channel)
+    return
+  }
+
+  const channel = supabase.channel(gameChannelName(gameId), {
+    config: { broadcast: { ack: false, self: false } },
+  })
+  await subscribeBroadcastChannel(channel)
+  try {
+    await send(channel)
+  } finally {
+    supabase.removeChannel(channel)
+  }
 }
 
 /** Отправить обновление счёта всем подписчикам табло (без postgres_changes на UPDATE). */
@@ -247,12 +291,13 @@ export async function broadcastScoreUpdate(
 ): Promise<void> {
   if (!gameId) return
   try {
-    const channel = ensurePublishChannel(gameId)
-    await channelSendWithTimeout(channel, {
-      type: 'broadcast',
-      event: SCORE_BROADCAST_EVENT,
-      payload,
-    })
+    await withBroadcastChannel(gameId, (channel) =>
+      channelSendWithTimeout(channel, {
+        type: 'broadcast',
+        event: SCORE_BROADCAST_EVENT,
+        payload,
+      })
+    )
   } catch (err) {
     console.warn('broadcastScoreUpdate failed:', err)
   }
@@ -265,12 +310,13 @@ export async function broadcastSessionChanged(
 ): Promise<void> {
   if (!gameId) return
   try {
-    const channel = ensurePublishChannel(gameId)
-    await channelSendWithTimeout(channel, {
-      type: 'broadcast',
-      event: SESSION_BROADCAST_EVENT,
-      payload: { game_id: gameId, ...payload },
-    })
+    await withBroadcastChannel(gameId, (channel) =>
+      channelSendWithTimeout(channel, {
+        type: 'broadcast',
+        event: SESSION_BROADCAST_EVENT,
+        payload: { game_id: gameId, ...payload },
+      })
+    )
   } catch (err) {
     console.warn('broadcastSessionChanged failed:', err)
   }
@@ -281,12 +327,13 @@ export async function broadcastTeamsChanged(gameId: string): Promise<void> {
   if (!gameId) return
   invalidateLobbyTeamsCache(gameId)
   try {
-    const channel = ensurePublishChannel(gameId)
-    await channelSendWithTimeout(channel, {
-      type: 'broadcast',
-      event: TEAMS_BROADCAST_EVENT,
-      payload: { game_id: gameId },
-    })
+    await withBroadcastChannel(gameId, (channel) =>
+      channelSendWithTimeout(channel, {
+        type: 'broadcast',
+        event: TEAMS_BROADCAST_EVENT,
+        payload: { game_id: gameId },
+      })
+    )
     // #region agent log
     agentDebugLog('gameRealtime.ts', 'broadcastTeamsChanged ok', { gameId }, 'H5')
     // #endregion
