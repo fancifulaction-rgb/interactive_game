@@ -297,6 +297,7 @@ export default function TeamRegister() {
             game,
             questions,
             teamsSnapshot: cached?.teamsSnapshot ?? teamsSnapshot,
+            questionsLobbyOnly: true,
           })
         })
         .catch((err) => {

@@ -29,6 +29,10 @@
 - IMP-RT-005 / BUG_AUDIT H6: poll-fallback табло 20с, postgres UPDATE на `teams`, список команд на HostView
 - IMP-LOG-015 / BUG_AUDIT C2: generation-token в `fetchGameState` — force/invalidate не ломают coalesce
 - IMP-LOG-016 / BUG_AUDIT M6: generation-token в `fetchLobbyTeams`; stale-while-revalidate lookup (60с)
+- IMP-LOG-017 / BUG_AUDIT M1: full questions при старте игры — флаг `questionsLobbyOnly`, догруз hint/media
+- IMP-LOG-018 / BUG_AUDIT M2: `advancingRef`/`isSubmittingRef` — таймер не skip'ит во время submit
+- IMP-LOG-019 / BUG_AUDIT M4: кнопка «Обновить» без вопросов сбрасывает loading в `finally`
+- IMP-LOG-020 / BUG_AUDIT M5: delete команд → `broadcastTeamsChanged`; delete игры через `enqueueCritical`
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

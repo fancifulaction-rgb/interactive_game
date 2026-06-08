@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Users, Trash2, Check, AlertCircle, RefreshCw } from 'lucide-react'
 import type { AdminTeamRow } from '../lib/adminTeams'
 import { deleteTeamsCompletely, fetchAdminTeamsWithRetry } from '../lib/adminTeams'
+import { broadcastTeamsChanged } from '../lib/gameRealtime'
 import { enqueueCritical } from '../lib/requestQueue'
 
 interface TeamManagementGame {
@@ -141,6 +142,7 @@ function TeamManagementManager({
 
       setSuccessMessage(message)
       setSelectedTeamIds(new Set())
+      void broadcastTeamsChanged(selectedGameId)
       await loadTeams()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)

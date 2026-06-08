@@ -357,7 +357,7 @@ export default function AdminPanel() {
     setGames((prev) => prev.filter((g) => g.id !== gameId))
 
     try {
-      const result = await deleteGameCompletely(gameId)
+      const result = await enqueueCritical(() => deleteGameCompletely(gameId))
       if (!result.success) {
         throw new Error(result.error || 'Неизвестная ошибка')
       }

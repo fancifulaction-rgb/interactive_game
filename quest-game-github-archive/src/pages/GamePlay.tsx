@@ -9,7 +9,7 @@ import { postponeAvatarUntilAfterAnswer } from '../lib/pendingAvatar'
 import { recoverTeamSessionIfNeeded } from '../lib/teamRegister'
 import { getTeamSessionToken } from '../lib/teamSession'
 import { agentDebugLog, debugLog } from '../lib/debugLog'
-import { getGamePlayCache, isGamePlayCacheFresh, setGamePlayCache } from '../lib/gamePlayCache'
+import { getGamePlayCache, isGamePlayCacheFresh, setGamePlayCache, gamePlayCacheNeedsFullQuestions } from '../lib/gamePlayCache'
 import {
   buildFinishNavigateState,
   navigateToFinish,
@@ -127,6 +127,9 @@ export default function GamePlay() {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   /** true после хотя бы одного тика от положительного timeLeft — иначе 0 не триггерит skip. */
   const timerArmedRef = useRef(false)
+  /** Блокирует двойной advance: таймер vs submit (IMP-LOG-018 / M2). */
+  const advancingRef = useRef(false)
+  const isSubmittingRef = useRef(false)
   const loadGenRef = useRef(0)
   const finishedNavRef = useRef(false)
   /** Последняя успешная проверка: лобби и отдельно вход в игру (playing). */
@@ -301,6 +304,7 @@ export default function GamePlay() {
           game,
           questions: q,
           teamsSnapshot: cached?.teamsSnapshot,
+          questionsLobbyOnly: true,
         })
         setLoading(false)
         agentDebugLog('GamePlay.tsx', 'lobby prefetch applied', { count: q.length }, 'H14')
@@ -316,23 +320,27 @@ export default function GamePlay() {
   }, [inLobby, game, gameCode, questions.length])
 
   useEffect(() => {
-    if (inLobby || !gameCode || questions.length > 0 || sessionUnknown) return
+    if (inLobby || !gameCode || sessionUnknown) return
     const code = (gameCode ?? '').trim().toUpperCase()
     const cached = getGamePlayCache(code)
-    if (cached?.questions?.length) {
-      applyPlayData(cached.game, mapQuestionsForPlay(cached.questions) as Question[])
-      return
-    }
+    const gameRow = cached?.game ?? game
+    if (!gameRow?.id) return
+
+    if (!gamePlayCacheNeedsFullQuestions(cached) && questions.length > 0) return
+
     agentDebugLog(
       'GamePlay.tsx',
       'game start load questions',
-      { code, hasCachedGame: !!cached?.game?.id, cachedQ: cached?.questions?.length ?? 0 },
+      {
+        code,
+        hasCachedGame: !!cached?.game?.id,
+        cachedQ: cached?.questions?.length ?? 0,
+        lobbyOnly: cached?.questionsLobbyOnly,
+      },
       'H15'
     )
     resumeBackgroundRevalidate()
     const gen = ++loadGenRef.current
-    const gameRow = cached?.game ?? game
-    if (!gameRow?.id) return
     setLoading(true)
     void fetchQuestionsFullForGame(gameRow.id as string)
       .then((q) => {
@@ -343,6 +351,7 @@ export default function GamePlay() {
           game: gameRow,
           questions: q,
           teamsSnapshot: cached?.teamsSnapshot,
+          questionsLobbyOnly: false,
         })
         agentDebugLog('GamePlay.tsx', 'game start questions applied', { count: q.length }, 'H15')
       })
@@ -434,7 +443,13 @@ export default function GamePlay() {
         timerArmedRef.current = true
         setTimeLeft(timeLeft - 1)
       }, 1000)
-    } else if (timeLeft === 0 && questions.length > 0 && timerArmedRef.current) {
+    } else if (
+      timeLeft === 0 &&
+      questions.length > 0 &&
+      timerArmedRef.current &&
+      !isSubmittingRef.current &&
+      !advancingRef.current
+    ) {
       timerArmedRef.current = false
       handleNextQuestion()
     }
@@ -558,6 +573,8 @@ export default function GamePlay() {
   }
 
   const handleSubmitAnswer = async () => {
+    if (isSubmittingRef.current || advancingRef.current) return
+
     const currentQuestion = questions[currentQuestionIndex]
     const hasTextAnswer = currentQuestion.answer_count === 1 && answer.trim()
     const hasSelectedOptions = currentQuestion.answer_count > 1 && selectedOptions.length > 0
@@ -570,6 +587,8 @@ export default function GamePlay() {
 
     pauseBackgroundRevalidate()
     cancelActiveStorageUpload()
+    isSubmittingRef.current = true
+    timerArmedRef.current = false
     setUploadingFile(true)
     const submitStarted = Date.now()
     debugLog('GamePlay.tsx:submit', 'start', { hasFile: !!answerFile, q: currentQuestionIndex }, 'H')
@@ -685,27 +704,34 @@ export default function GamePlay() {
       }
     } finally {
       setUploadingFile(false)
+      isSubmittingRef.current = false
     }
   }
 
   const handleNextQuestion = () => {
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1)
-      setAnswer('')
-      setSelectedOptions([])
-      setAnswerFile(null)
-      setAnswerFilePreview(null)
-      setShowHint(false)
-      setHintLevel(0)
-      setCurrentHintDisplay(0)
-      const nextQuestion = questions[currentQuestionIndex + 1]
-      timerArmedRef.current = false
-      setTimeLeft(questionTimeSec(nextQuestion, game))
-    } else {
-      const code = (gameCode ?? '').trim().toUpperCase()
-      const cached = getGamePlayCache(code)
-      const finishState = buildFinishNavigateState(game, cached?.teamsSnapshot)
-      navigateToFinish(navigate, code, game?.finish_page_type as string | undefined, finishState)
+    if (advancingRef.current) return
+    advancingRef.current = true
+    try {
+      if (currentQuestionIndex < questions.length - 1) {
+        setCurrentQuestionIndex(currentQuestionIndex + 1)
+        setAnswer('')
+        setSelectedOptions([])
+        setAnswerFile(null)
+        setAnswerFilePreview(null)
+        setShowHint(false)
+        setHintLevel(0)
+        setCurrentHintDisplay(0)
+        const nextQuestion = questions[currentQuestionIndex + 1]
+        timerArmedRef.current = false
+        setTimeLeft(questionTimeSec(nextQuestion, game))
+      } else {
+        const code = (gameCode ?? '').trim().toUpperCase()
+        const cached = getGamePlayCache(code)
+        const finishState = buildFinishNavigateState(game, cached?.teamsSnapshot)
+        navigateToFinish(navigate, code, game?.finish_page_type as string | undefined, finishState)
+      }
+    } finally {
+      advancingRef.current = false
     }
   }
 
@@ -837,7 +863,9 @@ export default function GamePlay() {
     const reloadQuestions = () => {
       const gen = ++loadGenRef.current
       setLoading(true)
-      void loadGameData(gen, false)
+      void loadGameData(gen, false).finally(() => {
+        if (gen === loadGenRef.current) setLoading(false)
+      })
     }
 
     return playShell(

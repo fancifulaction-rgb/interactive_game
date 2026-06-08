@@ -44,7 +44,7 @@ async function revalidateGamePlayFromServerInner(gameCode: string) {
     if (questionsError) throw questionsError
 
     const questions = questionsData ?? []
-    setGamePlayCache(code, { game: gameData, questions })
+    setGamePlayCache(code, { game: gameData, questions, questionsLobbyOnly: false })
     return { game: gameData, questions }
   })()
 
@@ -95,7 +95,7 @@ export async function revalidateQuestionsForGameCritical(
   )
 
   const questions = await fetchQuestionsFullForGame(gameId)
-  setGamePlayCache(code, { game, questions })
+  setGamePlayCache(code, { game, questions, questionsLobbyOnly: false })
   agentDebugLog(
     'revalidateGamePlay.ts',
     'questions-only done',

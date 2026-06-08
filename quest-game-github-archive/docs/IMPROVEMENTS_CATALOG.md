@@ -65,6 +65,11 @@
 | IMP-LOG-014 | Завершение игры на /host | `loadExportData` без `enqueueCritical`; boost на host-route | BUG_AUDIT_HANDOFF H5 | 1 | done |
 | IMP-LOG-015 | Гонка force в fetchGameState | generation-token: inflight/lastOk только для актуального gen | BUG_AUDIT_HANDOFF C2 | 1 | done |
 | IMP-LOG-016 | Гонки lobby teams + lookup cache | generation-token в `fetchLobbyTeams`; SWR в `gameLookupCache` | BUG_AUDIT_HANDOFF M6 | 1 | done |
+| IMP-LOG-017 | Full questions после lobby prefetch | `questionsLobbyOnly` в кэше; при выходе из лобби — `fetchQuestionsFullForGame` | BUG_AUDIT_HANDOFF M1 | 1 | done |
+| IMP-LOG-018 | Гонка таймера и submit | `advancingRef` + `isSubmittingRef` — один advance на вопрос | BUG_AUDIT_HANDOFF M2 | 1 | done |
+| IMP-LOG-019 | Спиннер «Обновить» без вопросов | `reloadQuestions` → `finally { setLoading(false) }` | BUG_AUDIT_HANDOFF M4 | 1 | done |
+| IMP-LOG-020 | Realtime после delete команд | `broadcastTeamsChanged` в TeamManagement; `enqueueCritical` delete game | BUG_AUDIT_HANDOFF M5 | 1 | done |
+| IMP-LOG-021 | Двойные очки при fallback | Закрыто после IMP-SEC: только RPC, без client bump fallback | BUG_AUDIT_HANDOFF M3 | — | rejected |
 
 ---
 

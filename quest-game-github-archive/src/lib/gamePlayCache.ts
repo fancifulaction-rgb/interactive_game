@@ -13,7 +13,18 @@ export type GamePlayCache = {
   game: Record<string, unknown>
   questions: Record<string, unknown>[]
   teamsSnapshot?: TeamSnapshot[]
+  /** true — prefetch лобби без hint_levels / media_url; перед игрой нужен full fetch. */
+  questionsLobbyOnly?: boolean
   ts: number
+}
+
+/** Нужен ли догруз full questions (IMP-LOG-017 / BUG_AUDIT M1). */
+export function gamePlayCacheNeedsFullQuestions(cached: GamePlayCache | null): boolean {
+  if (!cached?.questions?.length) return true
+  if (cached.questionsLobbyOnly === true) return true
+  if (cached.questionsLobbyOnly === false) return false
+  const first = cached.questions[0]
+  return !('hint_levels' in first) && !('hint_penalties' in first) && !('media_url' in first)
 }
 
 function cacheKey(code: string) {
@@ -31,6 +42,10 @@ export function setGamePlayCache(
     game: payload.game,
     questions: payload.questions,
     teamsSnapshot: payload.teamsSnapshot ?? existing?.teamsSnapshot,
+    questionsLobbyOnly:
+      payload.questionsLobbyOnly ??
+      existing?.questionsLobbyOnly ??
+      false,
     ts: Date.now(),
   }
   const key = cacheKey(code)
