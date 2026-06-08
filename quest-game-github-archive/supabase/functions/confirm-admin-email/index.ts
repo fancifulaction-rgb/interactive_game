@@ -1,59 +1,61 @@
-Deno.serve(async (req) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE, PATCH',
-    'Access-Control-Max-Age': '86400',
-    'Access-Control-Allow-Credentials': 'false'
-  };
+import { handleCors, jsonResponse } from '../_shared/adminAuth.ts'
 
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
+Deno.serve(async (req) => {
+  const cors = handleCors(req)
+  if (cors) return cors
+
+  const setupSecret = Deno.env.get('ADMIN_SETUP_SECRET')
+  const provided = req.headers.get('x-admin-setup-secret')
+
+  if (!setupSecret || provided !== setupSecret) {
+    return jsonResponse({ error: { code: 'FORBIDDEN', message: 'Not allowed' } }, 403)
+  }
+
+  const auth = req.headers.get('Authorization')
+  if (!auth?.startsWith('Bearer ')) {
+    return jsonResponse({ error: { code: 'UNAUTHORIZED', message: 'Admin JWT required' } }, 401)
   }
 
   try {
-    // Получаем ключи Supabase
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-    // Подтверждаем email для администратора
-    const response = await fetch(`${supabaseUrl}/rest/v1/auth.users`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': serviceRoleKey,
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({
-        email_confirmed_at: new Date().toISOString(),
-        confirmed_at: new Date().toISOString()
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to confirm email: ${error}`);
+    const body = await req.json().catch(() => ({}))
+    const userId = typeof body.user_id === 'string' ? body.user_id : null
+    if (!userId) {
+      return jsonResponse({ error: { code: 'INVALID_INPUT', message: 'user_id required' } }, 400)
     }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      message: 'Admin email confirmed successfully' 
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email_confirm: true,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Failed to confirm email: ${error}`)
+    }
+
+    return jsonResponse({
+      success: true,
+      message: 'Admin email confirmed successfully',
+    })
   } catch (error) {
-    const errorResponse = {
-      error: {
-        code: 'EMAIL_CONFIRMATION_ERROR',
-        message: error.message
-      }
-    };
-
-    return new Response(JSON.stringify(errorResponse), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return jsonResponse(
+      {
+        error: {
+          code: 'EMAIL_CONFIRMATION_ERROR',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      },
+      500
+    )
   }
-});
+})

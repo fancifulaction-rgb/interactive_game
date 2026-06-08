@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { debugLog } from './debugLog'
 import { enqueueCritical, enqueueBackground } from './requestQueue'
 import { buildGameScopedFileName } from './storagePaths'
+import { getTeamSessionToken } from './teamSession'
 
 const UPLOAD_TIMEOUT_MS = 90_000
 const UPLOAD_RETRIES = 3
@@ -20,7 +21,9 @@ export function cancelActiveStorageUpload() {
 async function uploadViaEdgeFunction(
   bucket: string,
   file: File,
-  fileName: string
+  fileName: string,
+  gameId: string,
+  teamId?: string
 ): Promise<string> {
   const buffer = await file.arrayBuffer()
   const bytes = new Uint8Array(buffer)
@@ -30,12 +33,16 @@ async function uploadViaEdgeFunction(
   }
   const base64 = btoa(binary)
 
+  const sessionToken = getTeamSessionToken()
   const { data, error } = await supabase.functions.invoke('player-upload', {
     body: {
       file: base64,
       bucket,
       fileName,
       mimeType: file.type || 'application/octet-stream',
+      gameId,
+      teamId: teamId ?? localStorage.getItem('team_id'),
+      sessionToken,
     },
   })
 
@@ -58,7 +65,8 @@ async function uploadOnce(
   bucket: string,
   file: File,
   gameId: string,
-  prefix: string
+  prefix: string,
+  teamId?: string
 ): Promise<string> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -93,7 +101,7 @@ async function uploadOnce(
       const text = await res.text().catch(() => '')
       debugLog('storageUpload.ts', 'upload http error', { status: res.status, text: text.slice(0, 200) }, 'B')
       if (res.status === 401 || res.status === 403 || res.status === 400) {
-        return uploadViaEdgeFunction(bucket, file, fileName)
+        return uploadViaEdgeFunction(bucket, file, fileName, gameId, teamId)
       }
       throw new Error(`Storage ${res.status}: ${text || res.statusText}`)
     }
@@ -111,12 +119,13 @@ async function uploadWithRetry(
   bucket: string,
   file: File,
   gameId: string,
-  prefix: string
+  prefix: string,
+  teamId?: string
 ): Promise<string> {
   let lastErr: unknown
   for (let attempt = 0; attempt < UPLOAD_RETRIES; attempt++) {
     try {
-      return await uploadOnce(bucket, file, gameId, prefix)
+      return await uploadOnce(bucket, file, gameId, prefix, teamId)
     } catch (err) {
       lastErr = err
       debugLog('storageUpload.ts', 'upload retry', {
@@ -131,21 +140,14 @@ async function uploadWithRetry(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
 }
 
-/**
- * Загрузка медиа к ответу — в critical-очереди (не конкурирует с insert в той же вкладке).
- */
 export function uploadAnswerMediaQueued(file: File, gameId: string): Promise<string> {
   return enqueueCritical(() => uploadWithRetry('answer-media', file, gameId, 'answer-'))
 }
 
-/** Медиа к вопросу в GameEditor (bucket question-media). */
 export function uploadQuestionMediaQueued(file: File, gameId: string): Promise<string> {
   return enqueueCritical(() => uploadWithRetry('question-media', file, gameId, 'q-'))
 }
 
-/**
- * Загрузка аватара — в background-очереди (после игры, с разнесением пиков).
- */
 export function uploadAvatarQueued(file: File, gameId: string): Promise<string> {
   return enqueueBackground(() => uploadWithRetry('avatars', file, gameId, 'team-'))
 }
@@ -167,11 +169,17 @@ export async function uploadToPublicBucket(
 export async function uploadTeamAvatarInBackground(teamId: string, file: File, gameId: string) {
   try {
     const avatarUrl = await uploadAvatarQueued(file, gameId)
+    const sessionToken = getTeamSessionToken()
+    if (!sessionToken) {
+      throw new Error('team session token missing')
+    }
     await enqueueCritical(async () => {
-      const { error } = await supabase
-        .from('teams')
-        .update({ avatar_url: avatarUrl, avatar: avatarUrl })
-        .eq('id', teamId)
+      const { error } = await supabase.rpc('update_team_avatar', {
+        p_team_id: teamId,
+        p_game_id: gameId,
+        p_session_token: sessionToken,
+        p_avatar_url: avatarUrl,
+      })
       if (error) throw error
     })
     debugLog('storageUpload.ts', 'avatar background ok', { teamId }, 'B')

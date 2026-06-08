@@ -1,7 +1,15 @@
 // Edge Function для полного удаления команд из всех связанных таблиц
 // Обеспечивает CASCADE удаление данных команды из всей системы
 
+import { handleCors, requireAuthenticatedUser } from '../_shared/adminAuth.ts'
+
 Deno.serve(async (req) => {
+    const cors = handleCors(req)
+    if (cors) return cors
+
+    const auth = await requireAuthenticatedUser(req)
+    if (auth instanceof Response) return auth
+
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -10,12 +18,7 @@ Deno.serve(async (req) => {
         'Access-Control-Allow-Credentials': 'false'
     };
 
-    if (req.method === 'OPTIONS') {
-        return new Response(null, { status: 200, headers: corsHeaders });
-    }
-
     try {
-        // Получаем параметры запроса
         const requestData = await req.json();
         const { team_ids, game_id } = requestData;
 

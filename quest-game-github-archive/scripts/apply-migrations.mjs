@@ -29,6 +29,9 @@ const ALL_FILES = [
   '013_submit_auto_answer.sql',
   '014_event_archive.sql',
   '015_final_page_texts_and_integrity.sql',
+  '016_game_state_closed.sql',
+  '017_admin_session_rpc.sql',
+  '018_security_s1_s5.sql',
 ]
 
 const filterArg = process.argv[2]

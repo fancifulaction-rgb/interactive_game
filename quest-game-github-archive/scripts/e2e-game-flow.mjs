@@ -105,28 +105,26 @@ if (gameId) {
   else ok(`Вопросов: ${data?.length}`)
 }
 
-// 3. Команда
+// 3. Команда (register_team — IMP-SEC-007)
+let teamSessionToken = null
 if (gameId) {
-  const { data, error } = await supabase
-    .from('teams')
-    .insert({
-      game_id: gameId,
-      team_name: 'E2E Команда',
-      captain_name: 'Тестер',
-      name: 'E2E Команда',
-      total_score: 0,
-    })
-    .select()
-    .single()
-  if (error) fail('Регистрация команды', error)
+  const { data, error } = await supabase.rpc('register_team', {
+    p_game_id: gameId,
+    p_team_name: 'E2E Команда',
+    p_captain_name: 'Тестер',
+  })
+  if (error) fail('Регистрация команды (register_team)', error)
   else {
-    teamId = data.id
-    ok('Команда зарегистрирована')
+    const row = data?.team ?? data
+    teamId = row?.id ?? null
+    teamSessionToken = data?.session_token ?? data?.sessionToken ?? null
+    if (!teamId || !teamSessionToken) fail('Регистрация команды', new Error('нет team id или session_token'))
+    else ok('Команда зарегистрирована (session token)')
   }
 }
 
 // 4. Ответ
-if (gameId && teamId) {
+if (gameId && teamId && teamSessionToken) {
   const { data: submitData, error: submitErr } = await supabase.rpc('submit_auto_answer', {
     p_game_id: gameId,
     p_team_id: teamId,
@@ -135,30 +133,10 @@ if (gameId && teamId) {
     p_media_urls: [],
     p_time_spent: 10,
     p_hints_used: 0,
+    p_session_token: teamSessionToken,
   })
-  if (submitErr) {
-    const { error } = await supabase.from('answers').insert({
-      game_id: gameId,
-      team_id: teamId,
-      question_number: 1,
-      answer: ['Москва'],
-      media_urls: [],
-      is_correct: true,
-      points_earned: 100,
-      time_spent: 10,
-    })
-    if (error) fail('Отправка ответа', error)
-    else ok('Ответ сохранён (fallback insert)')
-
-    const { error: uerr } = await supabase.rpc('increment_team_score', {
-      p_team_id: teamId,
-      p_delta: 100,
-    })
-    if (uerr) fail('Обновление счёта', uerr)
-    else ok('Счёт команды обновлён (fallback)')
-  } else {
-    ok(`Ответ через submit_auto_answer, очки: ${submitData?.points_earned ?? '?'}`)
-  }
+  if (submitErr) fail('Отправка ответа (submit_auto_answer)', submitErr)
+  else ok(`Ответ через submit_auto_answer, очки: ${submitData?.points_earned ?? '?'}`)
 }
 
 // 5. Сообщения (messages, не admin_messages)

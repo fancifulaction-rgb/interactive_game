@@ -4,8 +4,9 @@
 
 | Угроза | Вероятность | Текущая защита |
 |--------|-------------|----------------|
-| Чтение всех игр/ответов с anon key | Высокая | **Слабая** — RLS `USING (true)` |
-| Подмена `total_score` через API | Средняя | Клиент пишет score; нет RPC |
+| Чтение всех игр/ответов с anon key | Средняя | Миграция 018: нет anon SELECT answers; `questions_player` без эталона |
+| Подмена `total_score` через API | Низкая | anon REVOKE на `increment_team_score`; счёт только в `submit_auto_answer` |
+| Ответ от чужой команды | Низкая | Team session token (HMAC в БД), проверка в RPC и Edge upload |
 | Загрузка мусора в Storage | Средняя | Размер/MIME buckets; публичный upload |
 | Утечка service role | Критично | Только `.env` / Edge secrets, не `VITE_*` |
 | XSS на фронте | Низкая-средняя | React escape; проверять `dangerouslySetInnerHTML` |
@@ -13,7 +14,7 @@
 ## Аутентификация
 
 - **Админ:** Supabase Auth (email/password).
-- **Игрок:** без аккаунта; идентификация по `team_id` в localStorage.
+- **Игрок:** без аккаунта; `team_id` + **session token** в localStorage (`teamSession.ts`), выдаётся при `register_team` / `recover_team_session`.
 
 Создание админа: `scripts/create_admin_script.js` (service role, локально).
 
@@ -48,7 +49,15 @@ git diff | findstr SERVICE_ROLE
 
 ## Edge Functions
 
-Service role живёт только на сервере Deno. Функции должны валидировать вход (размер base64, allowed buckets).
+Service role живёт только на сервере Deno.
+
+| Функция | JWT | Проверки |
+|---------|-----|----------|
+| `delete-game`, `delete-teams` | да | authenticated admin (`_shared/adminAuth.ts`) |
+| `player-upload` | нет (anon игрок) | bucket whitelist, path `{gameId}/…`, размер, `verify_team_session` |
+| `confirm-admin-email` | да + `ADMIN_SETUP_SECRET` | одноразовый setup, не для прода без секрета |
+
+Миграция: `docs/sql-migrations/018_security_s1_s5.sql` (`npm run db:migrate:018`).
 
 ## Удаление команд с клиента (IMP-SEC-001)
 
@@ -62,11 +71,9 @@ Service role живёт только на сервере Deno. Функции д
 
 ## Клиентский счёт и ответы
 
-Сейчас `is_correct` и `points_earned` вычисляются на клиенте и отправляются в `answers`.
+Авто-вопросы: только `submit_auto_answer` с session token; очки и `is_correct` на сервере (IMP-LOG-001 + IMP-SEC-007/008). Прямой INSERT в `answers` и `increment_team_score` с клиента убраны.
 
-**Риск:** модификация запроса в DevTools.
-
-**План:** IMP-LOG-001 — серверная проверка для авто-вопросов; медиа-вопросы — статус выставляет админ.
+Медиа-вопросы: статус выставляет админ.
 
 ## Storage
 

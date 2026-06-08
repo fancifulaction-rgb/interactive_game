@@ -3,6 +3,7 @@ import { debugLog } from './debugLog'
 import { readFinishNavigateState } from './finishNavigation'
 import { fetchGameStateForGame, invalidateGameStateCache } from './fetchGameState'
 import { isTransientNetworkError } from './teamRegister'
+import { getTeamSessionToken } from './teamSession'
 import { isScoreboardHiddenUntilFinish } from './gameSettings'
 import {
   getGameStartedAt,
@@ -198,13 +199,16 @@ export async function verifyFinishPageAccess(
     return { allowed: false, message: FINISH_MESSAGES.not_yet }
   }
 
-  const { count, error: answersError } = await supabase
-    .from('answers')
-    .select('id', { count: 'exact', head: true })
-    .eq('team_id', session.teamId)
-
-  if (!answersError && (count ?? 0) > 0) {
-    return { allowed: true }
+  const sessionToken = getTeamSessionToken()
+  if (sessionToken && game?.id) {
+    const { data: hasAnswers, error: answersError } = await supabase.rpc('team_has_answers', {
+      p_team_id: session.teamId,
+      p_game_id: game.id,
+      p_session_token: sessionToken,
+    })
+    if (!answersError && hasAnswers === true) {
+      return { allowed: true }
+    }
   }
 
   return { allowed: false, message: FINISH_MESSAGES.not_yet }

@@ -161,7 +161,7 @@ export default function ScoreboardDetailed() {
             setGame(gameData)
 
             const questionsRes = await supabase
-              .from('questions')
+              .from('questions_player')
               .select('id, question_number, order_index, question_text')
               .eq('game_id', gameId)
               .order('question_number', { ascending: true })
@@ -188,15 +188,15 @@ export default function ScoreboardDetailed() {
           const teamsData = teamsRes.data ?? []
           setTeams(teamsData)
 
-          const answersRes = await supabase
-            .from('answers')
-            .select('team_id, question_number, is_correct, points_earned, time_spent, answer')
-            .eq('game_id', gameId)
+          const { data: answersData, error: answersError } = await supabase.rpc(
+            'get_scoreboard_answers',
+            { p_game_id: gameId }
+          )
 
-          if (answersRes.error) throw answersRes.error
+          if (answersError) throw answersError
           if (seq !== loadSeqRef.current) return
 
-          setTeamDetails(buildTeamDetails(teamsData, questionsData, answersRes.data ?? []))
+          setTeamDetails(buildTeamDetails(teamsData, questionsData, answersData ?? []))
         })
       } catch (err: unknown) {
         if (seq === loadSeqRef.current) {

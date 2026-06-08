@@ -3,6 +3,11 @@ import { broadcastTeamsChanged } from './gameRealtime'
 import { schedulePendingAvatar } from './pendingAvatar'
 import { agentDebugLog, debugLog } from './debugLog'
 import { enqueueCritical } from './requestQueue'
+import {
+  parseRegisterTeamRpc,
+  setTeamSessionToken,
+  type RegisterTeamRpcRow,
+} from './teamSession'
 
 export type RegisterTeamInput = {
   gameId: string
@@ -52,6 +57,38 @@ export async function withTransientRetry<T>(
   throw last
 }
 
+async function registerTeamViaRpc(
+  gameId: string,
+  teamName: string,
+  captainName: string
+): Promise<{ team: RegisterTeamRpcRow; sessionToken: string }> {
+  const { data, error } = await supabase.rpc('register_team', {
+    p_game_id: gameId,
+    p_team_name: teamName.trim(),
+    p_captain_name: captainName.trim(),
+  })
+  if (error) throw new Error(error.message)
+  const parsed = parseRegisterTeamRpc(data)
+  if (!parsed) throw new Error('register_team: invalid response')
+  return parsed
+}
+
+async function recoverTeamSessionViaRpc(
+  gameId: string,
+  teamName: string,
+  captainName: string
+): Promise<{ team: RegisterTeamRpcRow; sessionToken: string }> {
+  const { data, error } = await supabase.rpc('recover_team_session', {
+    p_game_id: gameId,
+    p_team_name: teamName.trim(),
+    p_captain_name: captainName.trim(),
+  })
+  if (error) throw new Error(error.message)
+  const parsed = parseRegisterTeamRpc(data)
+  if (!parsed) throw new Error('recover_team_session: invalid response')
+  return parsed
+}
+
 async function findRegisteredTeam(gameId: string, teamName: string, captainName: string) {
   for (let attempt = 0; attempt < RECOVERY_LOOKUP_ATTEMPTS; attempt++) {
     if (attempt > 0) {
@@ -77,18 +114,6 @@ async function findRegisteredTeam(gameId: string, teamName: string, captainName:
   return null
 }
 
-async function insertTeamOnce(row: Record<string, unknown>) {
-  const { data: team, error: teamError } = await supabase
-    .from('teams')
-    .insert(row)
-    .select(TEAM_RETURN_COLUMNS)
-    .maybeSingle()
-
-  if (teamError) throw new Error(teamError.message)
-  if (!team) throw new Error('Не удалось создать команду')
-  return team
-}
-
 /** Вызов только внутри `enqueueCritical` (без повторной постановки в очередь). */
 export async function registerTeamDirect(input: RegisterTeamInput) {
   debugLog('teamRegister.ts:registerTeam', 'start', {
@@ -97,60 +122,73 @@ export async function registerTeamDirect(input: RegisterTeamInput) {
     avatarSize: input.avatarFile?.size,
   }, 'B')
 
-  const row = {
-    game_id: input.gameId,
-    team_name: input.teamName.trim(),
-    captain_name: input.captainName.trim(),
-    name: input.teamName.trim(),
-    avatar_url: null,
-    avatar: null,
-    total_score: 0,
-    registration_time: new Date().toISOString(),
-  }
+  debugLog('teamRegister.ts', 'team register rpc start', {}, 'C')
+  agentDebugLog('teamRegister.ts', 'register rpc start', { gameId: input.gameId }, 'H11')
 
-  debugLog('teamRegister.ts', 'team insert start', {}, 'C')
-  agentDebugLog('teamRegister.ts', 'insert start', { gameId: input.gameId }, 'H11')
+  let team: RegisterTeamRpcRow
+  let sessionToken: string
 
-  let team: Awaited<ReturnType<typeof insertTeamOnce>>
   try {
-    team = await insertTeamOnce(row)
-    agentDebugLog('teamRegister.ts', 'insert ok', { teamId: team.id }, 'H11')
+    const result = await registerTeamViaRpc(input.gameId, input.teamName, input.captainName)
+    team = result.team
+    sessionToken = result.sessionToken
+    agentDebugLog('teamRegister.ts', 'register rpc ok', { teamId: team.id }, 'H11')
   } catch (err) {
     if (!isTransientNetworkError(err)) throw err
     const netMsg = err instanceof Error ? err.message : String(err)
-    agentDebugLog('teamRegister.ts', 'insert network fail', { netMsg }, 'H11')
+    agentDebugLog('teamRegister.ts', 'register network fail', { netMsg }, 'H11')
     await new Promise((r) => setTimeout(r, RECOVERY_PAUSE_MS))
-    const recovered = await findRegisteredTeam(input.gameId, input.teamName, input.captainName)
-    if (recovered) {
-      agentDebugLog('teamRegister.ts', 'recovered after network fail', { teamId: recovered.id }, 'H11')
-      team = recovered
-    } else {
-      try {
-        team = await insertTeamOnce(row)
-        agentDebugLog('teamRegister.ts', 'insert ok on retry', { teamId: team.id }, 'H11')
-      } catch (retryErr) {
-        if (!isTransientNetworkError(retryErr)) throw retryErr
-        await new Promise((r) => setTimeout(r, RECOVERY_PAUSE_MS))
-        const recovered2 = await findRegisteredTeam(input.gameId, input.teamName, input.captainName)
-        if (!recovered2) throw retryErr
-        agentDebugLog('teamRegister.ts', 'recovered on retry fail', { teamId: recovered2.id }, 'H11')
-        team = recovered2
-      }
+
+    try {
+      const recovered = await recoverTeamSessionViaRpc(
+        input.gameId,
+        input.teamName,
+        input.captainName
+      )
+      team = recovered.team
+      sessionToken = recovered.sessionToken
+      agentDebugLog('teamRegister.ts', 'recover session after fail', { teamId: team.id }, 'H11')
+    } catch {
+      const existing = await findRegisteredTeam(input.gameId, input.teamName, input.captainName)
+      if (!existing) throw err
+      const recovered2 = await recoverTeamSessionViaRpc(
+        input.gameId,
+        input.teamName,
+        input.captainName
+      )
+      team = recovered2.team
+      sessionToken = recovered2.sessionToken
+      agentDebugLog('teamRegister.ts', 'recover session after lookup', { teamId: team.id }, 'H11')
     }
   }
 
-  debugLog('teamRegister.ts', 'team insert ok', { teamId: team.id }, 'C')
+  setTeamSessionToken(sessionToken)
+  debugLog('teamRegister.ts', 'team register ok', { teamId: team.id }, 'C')
 
   if (input.avatarFile) {
     schedulePendingAvatar(team.id, input.gameId, input.avatarFile)
   }
 
-  // Не блокируем UI: postgres_changes teams INSERT + poll админки; channel.send на iOS висит ~10с.
   void broadcastTeamsChanged(input.gameId)
 
-  return { team, gameCode: input.gameCode }
+  return { team, gameCode: input.gameCode, sessionToken }
 }
 
 export function registerTeam(input: RegisterTeamInput) {
   return enqueueCritical(() => registerTeamDirect(input))
+}
+
+/** Восстановить токен для уже зарегистрированной команды (обновление страницы без токена). */
+export async function recoverTeamSessionIfNeeded(
+  gameId: string,
+  teamName: string,
+  captainName: string
+): Promise<string | null> {
+  try {
+    const { sessionToken } = await recoverTeamSessionViaRpc(gameId, teamName, captainName)
+    setTeamSessionToken(sessionToken)
+    return sessionToken
+  } catch {
+    return null
+  }
 }

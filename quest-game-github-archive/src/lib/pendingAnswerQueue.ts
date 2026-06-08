@@ -1,4 +1,3 @@
-import type { AnswerInsertPayload } from './saveAnswer'
 import { agentDebugLog } from './debugLog'
 import { isTransientNetworkError } from './teamRegister'
 import type { SubmitAutoAnswerRequest } from './submitAutoAnswer'
@@ -11,7 +10,6 @@ const FLUSH_INTERVAL_MS = 5000
 export type PendingAnswerItem = {
   id: string
   req: SubmitAutoAnswerRequest
-  fallback?: AnswerInsertPayload
   gameCode: string
   attempts: number
   at: number
@@ -45,7 +43,6 @@ function writeQueue(items: PendingAnswerItem[]) {
 
 export function enqueuePendingAnswer(
   req: SubmitAutoAnswerRequest,
-  fallback: AnswerInsertPayload | undefined,
   gameCode: string
 ): void {
   const queue = readQueue()
@@ -57,20 +54,17 @@ export function enqueuePendingAnswer(
   queue.push({
     id: `${req.team_id}:${req.question_number}:${Date.now()}`,
     req,
-    fallback,
     gameCode: gameCode.trim().toUpperCase(),
     attempts: 0,
     at: Date.now(),
   })
   writeQueue(queue)
-  // #region agent log
   agentDebugLog(
     'pendingAnswerQueue.ts',
     'enqueued',
     { q: req.question_number, teamId: req.team_id, len: queue.length },
     'H7'
   )
-  // #endregion
 }
 
 export async function flushPendingAnswers(): Promise<void> {
@@ -83,21 +77,18 @@ export async function flushPendingAnswers(): Promise<void> {
 
   for (const item of queue) {
     try {
-      await submitAutoAnswerToServer(item.req, item.fallback)
-      // #region agent log
+      await submitAutoAnswerToServer(item.req)
       agentDebugLog(
         'pendingAnswerQueue.ts',
         'flushed',
         { q: item.req.question_number, attempts: item.attempts },
         'H7'
       )
-      // #endregion
     } catch (err) {
       const nextAttempts = item.attempts + 1
       if (nextAttempts < MAX_ATTEMPTS && isTransientNetworkError(err)) {
         remaining.push({ ...item, attempts: nextAttempts })
       } else {
-        // #region agent log
         agentDebugLog(
           'pendingAnswerQueue.ts',
           'flush drop',
@@ -108,7 +99,6 @@ export async function flushPendingAnswers(): Promise<void> {
           },
           'H7'
         )
-        // #endregion
       }
     }
   }
