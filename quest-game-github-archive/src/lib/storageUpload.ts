@@ -3,6 +3,7 @@ import { debugLog } from './debugLog'
 import { enqueueCritical, enqueueBackground } from './requestQueue'
 import { buildGameScopedFileName } from './storagePaths'
 import { getTeamSessionToken } from './teamSession'
+import { assertUploadAllowed } from './uploadFileGuard'
 
 const UPLOAD_TIMEOUT_MS = 90_000
 const UPLOAD_RETRIES = 3
@@ -122,6 +123,7 @@ async function uploadWithRetry(
   prefix: string,
   teamId?: string
 ): Promise<string> {
+  await assertUploadAllowed(bucket, file)
   let lastErr: unknown
   for (let attempt = 0; attempt < UPLOAD_RETRIES; attempt++) {
     try {

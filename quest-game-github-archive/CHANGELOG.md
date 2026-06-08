@@ -38,6 +38,7 @@
 - IMP-PERF-003 / BUG_AUDIT L3: escape starvation в critical — prio ≥ 6 после 5с ожидания
 - IMP-TD-008 / BUG_AUDIT L5: явные поля в `.select()` (createGame, MessagePanel, SettingsManager)
 - IMP-INF-010 / BUG_AUDIT L6: test Edge functions помечены dev-only, не в `edge:deploy`
+- IMP-ST-004 / BUG_AUDIT L4: guard размера/MIME/magic bytes перед Storage upload (клиент + player-upload)
 
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`

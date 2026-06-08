@@ -244,7 +244,7 @@
 | L1 🔍 | `src/lib/gameRealtime.ts:80-156, 202-204` | publish-канал создаёт hub с refCount 0 (утечка) | ephemeral publish-канал без hub-map |
 | L2 ✅ | `src/lib/requestQueue.ts` (`pickNext` sort на каждом drain) | O(n log n) на hot-path | priority buckets/heap |
 | L3 🔍 | `src/lib/requestQueue.ts:127-151` | starvation при только-фоновой очереди в critical | таймаут starvation → временно разрешить prio ≥ 6 |
-| L4 🔍 | `src/lib/storageUpload.ts` | нет проверки MIME/размера для аватаров/медиа | общий guard size+MIME; magic bytes на сервере |
+| L4 ✅ | `src/lib/storageUpload.ts` | нет проверки MIME/размера для аватаров/медиа | `uploadFileGuard.ts` + magic bytes в player-upload |
 | L5 ✅ | `createGame.ts:43`, `GameEditor.tsx:374/394`, `MessagePanel`, `SettingsManager` | `.select()`/`select('*')` без полей (не player hot-path) | явные поля |
 | L6 🔍 | `supabase/functions/test-*` | тестовые функции в репо (часть с service role) | не деплоить/удалить |
 

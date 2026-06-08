@@ -34,6 +34,8 @@ Deno.serve(async (req) => {
       teamId,
       sessionToken,
       fileByteLength: fileData.byteLength,
+      mimeType,
+      fileHead: fileData.slice(0, 12),
     })
     if (validationError) {
       return jsonResponse({ error: { code: 'INVALID_INPUT', message: validationError } }, 400)

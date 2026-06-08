@@ -142,6 +142,7 @@
 | IMP-ST-001 | Лимит длительности видео на клиенте | Сжатие перед upload | Scale | proposed | proposed |
 | IMP-ST-002 | Серверное перекодирование видео | Edge ffmpeg (тяжело) | — | proposed | proposed |
 | IMP-ST-003 | Префикс game_id во всех paths | Упрощение delete-game | DATA_LIFECYCLE | 1 | done |
+| IMP-ST-004 | MIME/size guard upload | `uploadFileGuard.ts` + magic bytes в player-upload | BUG_AUDIT_HANDOFF L4 | 1 | done |
 
 ---
 
