@@ -4,7 +4,7 @@ import { cancelActiveStorageUpload } from './storageUpload'
 import { setAnswerSaveInFlight } from './networkMutex'
 import { broadcastScoreUpdate } from './gameRealtime'
 import { isTransientNetworkError } from './teamRegister'
-import type { AnswerInsertPayload } from './saveAnswer'
+import { getTeamSessionToken } from './teamSession'
 
 export type SubmitAutoAnswerRequest = {
   game_id: string
@@ -14,6 +14,7 @@ export type SubmitAutoAnswerRequest = {
   media_urls: string[]
   time_spent: number
   hints_used: number
+  session_token?: string
 }
 
 export type SubmitAutoAnswerResult = {
@@ -21,19 +22,7 @@ export type SubmitAutoAnswerResult = {
   points_earned: number
   team_total_score: number
   answer_id?: string
-  via: 'rpc' | 'fallback'
-}
-
-async function insertAnswerFallback(payload: AnswerInsertPayload): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { error } = await supabase.from('answers').insert(payload)
-    if (!error) return
-    if (attempt < 2) {
-      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)))
-    } else {
-      throw new Error(error.message)
-    }
-  }
+  via: 'rpc'
 }
 
 const RPC_TRANSIENT_RETRIES = 3
@@ -42,6 +31,11 @@ const RPC_RETRY_PAUSE_MS = [400, 900, 1800]
 async function submitViaRpc(
   req: SubmitAutoAnswerRequest
 ): Promise<SubmitAutoAnswerResult> {
+  const sessionToken = req.session_token ?? getTeamSessionToken()
+  if (!sessionToken) {
+    throw new Error('team session token missing — перерегистрируйтесь в лобби')
+  }
+
   let lastErr: unknown
   for (let attempt = 0; attempt < RPC_TRANSIENT_RETRIES; attempt++) {
     try {
@@ -53,6 +47,7 @@ async function submitViaRpc(
         p_media_urls: req.media_urls,
         p_time_spent: req.time_spent,
         p_hints_used: req.hints_used,
+        p_session_token: sessionToken,
       })
 
       if (error) throw error
@@ -83,12 +78,10 @@ async function submitViaRpc(
 }
 
 /**
- * Сервер считает is_correct и points (IMP-LOG-001).
- * Fallback — прямой insert, если RPC ещё не применена в БД.
+ * Сервер считает is_correct и points (IMP-LOG-001). Требует team session token (IMP-SEC).
  */
 export async function submitAutoAnswerToServer(
-  req: SubmitAutoAnswerRequest,
-  fallback?: AnswerInsertPayload
+  req: SubmitAutoAnswerRequest
 ): Promise<SubmitAutoAnswerResult> {
   cancelActiveStorageUpload()
   setAnswerSaveInFlight(true)
@@ -96,64 +89,25 @@ export async function submitAutoAnswerToServer(
   debugLog('submitAutoAnswer.ts', 'start', { q: req.question_number }, 'H')
 
   try {
-    try {
-      const result = await submitViaRpc(req)
-      debugLog('submitAutoAnswer.ts', 'rpc ok', { ms: Date.now() - started, ...result }, 'H')
+    const result = await submitViaRpc(req)
+    debugLog('submitAutoAnswer.ts', 'rpc ok', { ms: Date.now() - started, ...result }, 'H')
 
-      if (result.points_earned > 0) {
-        void broadcastScoreUpdate(req.game_id, {
-          team_id: req.team_id,
-          total_score: result.team_total_score,
-          delta: result.points_earned,
-        })
-      }
-
-      return result
-    } catch (rpcErr) {
-      const msg = rpcErr instanceof Error ? rpcErr.message : String(rpcErr)
-      const errName = rpcErr instanceof Error ? rpcErr.name : 'Error'
-      const missingRpc =
-        msg.includes('submit_auto_answer') ||
-        msg.includes('Could not find the function') ||
-        msg.includes('schema cache')
-
-      // #region agent log
-      debugLog(
-        'submitAutoAnswer.ts',
-        'rpc error',
-        {
-          ms: Date.now() - started,
-          q: req.question_number,
-          errName,
-          msg: msg.slice(0, 200),
-          missingRpc,
-          hasFallback: !!fallback,
-        },
-        missingRpc ? 'H5' : 'H1'
-      )
-      // #endregion
-
-      if (!missingRpc || !fallback) throw rpcErr
-
-      debugLog('submitAutoAnswer.ts', 'rpc missing, fallback insert', { msg }, 'H')
-      await insertAnswerFallback(fallback)
-
-      return {
-        is_correct: fallback.is_correct,
-        points_earned: fallback.points_earned,
-        team_total_score: 0,
-        via: 'fallback',
-      }
+    if (result.points_earned > 0) {
+      void broadcastScoreUpdate(req.game_id, {
+        team_id: req.team_id,
+        total_score: result.team_total_score,
+        delta: result.points_earned,
+      })
     }
+
+    return result
   } finally {
     setAnswerSaveInFlight(false)
   }
 }
 
-/** HTTP-приоритет в supabase.ts; enqueueCritical на iPhone сериализовал ответы (~30с). */
 export function enqueueSubmitAutoAnswer(
-  req: SubmitAutoAnswerRequest,
-  fallback?: AnswerInsertPayload
+  req: SubmitAutoAnswerRequest
 ): Promise<SubmitAutoAnswerResult> {
-  return submitAutoAnswerToServer(req, fallback)
+  return submitAutoAnswerToServer(req)
 }

@@ -2,15 +2,12 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { uploadAnswerMediaQueued, cancelActiveStorageUpload } from '../lib/storageUpload'
-import {
-  applyOptimisticTeamScoreBump,
-  bumpTeamScoreInBackground,
-  syncPlayerTeamScoreFromServer,
-} from '../lib/teamScore'
-import { gradeUserAnswer, normalizeUserAnswers } from '../lib/answerGrading'
+import { applyOptimisticTeamScoreBump, syncPlayerTeamScoreFromServer } from '../lib/teamScore'
+import { normalizeUserAnswers } from '../lib/answerGrading'
 import { enqueueSubmitAutoAnswer } from '../lib/submitAutoAnswer'
 import { postponeAvatarUntilAfterAnswer } from '../lib/pendingAvatar'
-import { calculateQuestionScore } from '../lib/scoring'
+import { recoverTeamSessionIfNeeded } from '../lib/teamRegister'
+import { getTeamSessionToken } from '../lib/teamSession'
 import { agentDebugLog, debugLog } from '../lib/debugLog'
 import { getGamePlayCache, isGamePlayCacheFresh, setGamePlayCache } from '../lib/gamePlayCache'
 import {
@@ -29,7 +26,6 @@ import {
   isBackgroundRevalidatePaused,
 } from '../lib/revalidateGamePlay'
 import { enqueueCritical } from '../lib/requestQueue'
-import type { AnswerInsertPayload } from '../lib/saveAnswer'
 import { usePlayerExtrasReady } from '../lib/usePlayerExtrasReady'
 import { useTheme } from '../contexts/ThemeContext'
 import { Clock, HelpCircle, Send, Upload, X, Image, Film, Music } from 'lucide-react'
@@ -85,6 +81,9 @@ export default function GamePlay() {
   const [isFinished, setIsFinished] = useState(false)
   const [isClosed, setIsClosed] = useState(false)
   const [accessDenied, setAccessDenied] = useState<string | null>(null)
+  const [accessDeniedRetryable, setAccessDeniedRetryable] = useState(false)
+  const [playAccessPending, setPlayAccessPending] = useState(false)
+  const [accessCheckNonce, setAccessCheckNonce] = useState(0)
   const [sessionUnknown, setSessionUnknown] = useState(true)
   useEffect(() => {
     startPendingAnswerFlushLoop()
@@ -126,9 +125,12 @@ export default function GamePlay() {
     setIsClosed(session.isClosed)
   }, [])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  /** true после хотя бы одного тика от положительного timeLeft — иначе 0 не триггерит skip. */
+  const timerArmedRef = useRef(false)
   const loadGenRef = useRef(0)
   const finishedNavRef = useRef(false)
-  const playAccessCheckedRef = useRef(false)
+  /** Последняя успешная проверка: лобби и отдельно вход в игру (playing). */
+  const playAccessPhaseRef = useRef<'none' | 'lobby' | 'playing'>('none')
   const [teamId, setTeamId] = useState<string | null>(() =>
     typeof window !== 'undefined' ? localStorage.getItem('team_id') : null
   )
@@ -138,32 +140,52 @@ export default function GamePlay() {
   }, [gameCode])
   const extrasReady = usePlayerExtrasReady(game?.id, loading)
 
+  const questionTimeSec = useCallback(
+    (q: Question, gameData?: Record<string, unknown> | null) =>
+      q.per_question_time_sec ||
+      (gameData?.per_question_time_sec as number) ||
+      (game?.per_question_time_sec as number) ||
+      120,
+    [game]
+  )
+
   const applyPlayData = (gameData: Record<string, unknown>, mappedQuestions: Question[]) => {
     setGame(gameData)
     if (gameData.theme) setTheme(gameData.theme as string)
     setQuestions(mappedQuestions as Question[])
     if (mappedQuestions.length > 0) {
-      const first = mappedQuestions[0]
-      setTimeLeft(
-        first.per_question_time_sec ||
-          (gameData.per_question_time_sec as number) ||
-          120
-      )
+      timerArmedRef.current = false
+      setTimeLeft(questionTimeSec(mappedQuestions[0], gameData))
     }
     setLoading(false)
   }
+
+  const retryPlayAccessCheck = useCallback(() => {
+    setAccessDenied(null)
+    setAccessDeniedRetryable(false)
+    playAccessPhaseRef.current = 'none'
+    setAccessCheckNonce((n) => n + 1)
+  }, [])
 
   useEffect(() => {
     setSessionKnown(false)
     setSessionUnknown(true)
     setAccessDenied(null)
-    playAccessCheckedRef.current = false
+    setAccessDeniedRetryable(false)
+    setPlayAccessPending(false)
+    playAccessPhaseRef.current = 'none'
   }, [gameCode])
 
   useEffect(() => {
-    if (!game?.id || !teamId || !gameCode || !sessionKnown || !inLobby) return
-    if (playAccessCheckedRef.current) return
-    playAccessCheckedRef.current = true
+    if (!game?.id || !teamId || !gameCode || sessionUnknown) return
+
+    const phase: 'lobby' | 'playing' = inLobby ? 'lobby' : 'playing'
+    if (playAccessPhaseRef.current === phase) return
+
+    // Полный экран только при первой проверке (лобби или холодный вход в playing).
+    // lobby→playing: UI не прячем — иначе мелькает первый вопрос.
+    const blockUi = phase === 'lobby' || playAccessPhaseRef.current === 'none'
+    if (blockUi) setPlayAccessPending(true)
 
     const code = (gameCode ?? '').trim().toUpperCase()
     const stored = readStoredPlayerSession(code)
@@ -180,26 +202,52 @@ export default function GamePlay() {
         'H8'
       )
       // #endregion
-      setAccessDenied('Сессия команды недействительна. Зарегистрируйтесь для этой игры.')
+      setPlayAccessPending(false)
+      setAccessDenied(PLAY_MESSAGES.invalid_session)
+      setAccessDeniedRetryable(false)
       setLoading(false)
       return
     }
 
     void getPlayAccessDenial(game.id as string, teamId)
       .then((msg) => {
+        setPlayAccessPending(false)
         if (msg) {
           // #region agent log
-          agentDebugLog('GamePlay.tsx', 'access denied', { msg, teamId }, 'H8')
+          agentDebugLog('GamePlay.tsx', 'access denied', { msg, teamId, phase }, 'H8')
           // #endregion
           setAccessDenied(msg)
+          setAccessDeniedRetryable(false)
           setLoading(false)
+          return
         }
+        playAccessPhaseRef.current = phase
+        agentDebugLog('GamePlay.tsx', 'access check ok', { teamId, phase }, 'H8')
       })
       .catch((err: unknown) => {
         const errMsg = err instanceof Error ? err.message : String(err)
-        agentDebugLog('GamePlay.tsx', 'access check failed', { errMsg, teamId }, 'H8')
+        agentDebugLog('GamePlay.tsx', 'access check failed', { errMsg, teamId, phase }, 'H8')
+        setPlayAccessPending(false)
+        setAccessDenied(PLAY_MESSAGES.access_check_failed)
+        setAccessDeniedRetryable(true)
+        setLoading(false)
       })
-  }, [game?.id, teamId, gameCode, sessionKnown, inLobby])
+  }, [game?.id, teamId, gameCode, sessionUnknown, inLobby, accessCheckNonce])
+
+  useEffect(() => {
+    if (!game?.id || !teamId || getTeamSessionToken()) return
+    const raw = localStorage.getItem('current_team')
+    if (!raw) return
+    try {
+      const team = JSON.parse(raw) as { name?: string; team_name?: string; captain_name?: string }
+      const name = (team.name ?? team.team_name ?? '').trim()
+      const captain = (team.captain_name ?? '').trim()
+      if (!name || !captain) return
+      void recoverTeamSessionIfNeeded(game.id as string, name, captain)
+    } catch {
+      /* ignore */
+    }
+  }, [game?.id, teamId])
 
   useEffect(() => {
     if (!teamId) {
@@ -236,6 +284,8 @@ export default function GamePlay() {
     if (cached?.questions?.length) {
       const mapped = mapQuestionsForPlay(cached.questions) as Question[]
       setQuestions(mapped)
+      timerArmedRef.current = false
+      setTimeLeft(questionTimeSec(mapped[0], game))
       setLoading(false)
       return
     }
@@ -245,6 +295,8 @@ export default function GamePlay() {
         if (!q.length) return
         const mapped = mapQuestionsForPlay(q) as Question[]
         setQuestions(mapped)
+        timerArmedRef.current = false
+        setTimeLeft(questionTimeSec(mapped[0], game))
         setGamePlayCache(code, {
           game,
           questions: q,
@@ -331,12 +383,35 @@ export default function GamePlay() {
     finishedNavRef.current = false
 
     if (questions.length > 0) {
-      const first = questions[0]
-      setTimeLeft(
-        first.per_question_time_sec || (game?.per_question_time_sec as number) || 120
+      timerArmedRef.current = false
+      setTimeLeft(questionTimeSec(questions[0], game))
+    }
+  }, [inLobby, teamId, gameCode, questions.length, game, questionTimeSec])
+
+  useEffect(() => {
+    if (inLobby || isPaused || isFinished || questions.length === 0) return
+    const q = questions[currentQuestionIndex]
+    if (!q) return
+    if (timeLeft === 0 && !timerArmedRef.current) {
+      timerArmedRef.current = false
+      setTimeLeft(questionTimeSec(q, game))
+      agentDebugLog(
+        'GamePlay.tsx',
+        'timer init on play entry',
+        { index: currentQuestionIndex },
+        'H1'
       )
     }
-  }, [inLobby, teamId, gameCode])
+  }, [
+    inLobby,
+    isPaused,
+    isFinished,
+    questions,
+    currentQuestionIndex,
+    timeLeft,
+    game,
+    questionTimeSec,
+  ])
 
   // Счёт с сервера (после сброса заезда админом) — после idle, чтобы не конкурировать с входом в лобби.
   useEffect(() => {
@@ -355,8 +430,12 @@ export default function GamePlay() {
     }
 
     if (timeLeft > 0) {
-      timerRef.current = setTimeout(() => setTimeLeft(timeLeft - 1), 1000)
-    } else if (timeLeft === 0 && questions.length > 0) {
+      timerRef.current = setTimeout(() => {
+        timerArmedRef.current = true
+        setTimeLeft(timeLeft - 1)
+      }, 1000)
+    } else if (timeLeft === 0 && questions.length > 0 && timerArmedRef.current) {
+      timerArmedRef.current = false
       handleNextQuestion()
     }
 
@@ -524,66 +603,28 @@ export default function GamePlay() {
         userAnswers = selectedOptions
       }
 
-      const userAnswersNormalized = normalizeUserAnswers(userAnswers)
-      const { isCorrect, scoreMultiplier } = gradeUserAnswer({
-        answerCount: currentQuestion.answer_count ?? 1,
-        correctAnswers: currentQuestion.answer,
-        userAnswers: userAnswersNormalized.length ? userAnswersNormalized : [userAnswerText],
-      })
-
-      // Расчет времени и очков
       const maxTime = currentQuestion.per_question_time_sec || game.per_question_time_sec || 120
       const timeTaken = maxTime - timeLeft
-      const score = calculateQuestionScore({
-        scoring: game.scoring,
-        basePoints: currentQuestion.base_points,
-        difficulty: currentQuestion.difficulty,
-        timeTaken,
-        maxTime,
-        hintsUsed: hintLevel,
-        hintPenalties: currentQuestion.hint_penalties || [],
-        isCorrect,
-        partialMultiplier: scoreMultiplier,
-      })
-
       const questionNumber = currentQuestion.order_index ?? currentQuestionIndex + 1
       const answerPayload = userAnswers.length ? userAnswers : [userAnswerText]
-
-      const fallbackPayload: AnswerInsertPayload = {
-        game_id: game.id,
-        team_id: teamId,
-        question_number: questionNumber,
-        answer: answerPayload,
-        media_urls: mediaUrl ? [mediaUrl] : [],
-        is_correct: isCorrect,
-        points_earned: score,
-        time_spent: timeTaken,
-      }
-
-      if (isCorrect && score > 0) {
-        applyOptimisticTeamScoreBump(teamId, score, gameCode ?? '')
-      }
+      normalizeUserAnswers(answerPayload)
 
       debugLog('GamePlay.tsx:submit', 'advance ui', {
         ms: Date.now() - submitStarted,
-        optimistic: !answerFile,
       }, 'H')
 
       handleNextQuestion()
       setUploadingFile(false)
 
-      void enqueueSubmitAutoAnswer(
-        {
-          game_id: game.id,
-          team_id: teamId,
-          question_number: questionNumber,
-          answer: answerPayload,
-          media_urls: mediaUrl ? [mediaUrl] : [],
-          time_spent: timeTaken,
-          hints_used: hintLevel,
-        },
-        fallbackPayload
-      )
+      void enqueueSubmitAutoAnswer({
+        game_id: game.id,
+        team_id: teamId,
+        question_number: questionNumber,
+        answer: answerPayload,
+        media_urls: mediaUrl ? [mediaUrl] : [],
+        time_spent: timeTaken,
+        hints_used: hintLevel,
+      })
         .then((result) => {
           debugLog('GamePlay.tsx:submit', 'saved', {
             totalMs: Date.now() - submitStarted,
@@ -591,7 +632,10 @@ export default function GamePlay() {
             isCorrect: result.is_correct,
             score: result.points_earned,
           }, 'H')
-          if (result.via === 'rpc' && result.team_total_score >= 0) {
+          if (result.points_earned > 0) {
+            applyOptimisticTeamScoreBump(teamId, result.points_earned, gameCode ?? '')
+          }
+          if (result.team_total_score >= 0) {
             try {
               const raw = localStorage.getItem('current_team')
               if (raw) {
@@ -604,8 +648,6 @@ export default function GamePlay() {
             } catch {
               /* ignore */
             }
-          } else if (result.via === 'fallback' && result.points_earned > 0) {
-            bumpTeamScoreInBackground(teamId, result.points_earned, gameCode ?? '')
           }
         })
         .catch((saveErr: unknown) => {
@@ -624,7 +666,6 @@ export default function GamePlay() {
               time_spent: timeTaken,
               hints_used: hintLevel,
             },
-            fallbackPayload,
             gameCode ?? ''
           )
         })
@@ -658,7 +699,8 @@ export default function GamePlay() {
       setHintLevel(0)
       setCurrentHintDisplay(0)
       const nextQuestion = questions[currentQuestionIndex + 1]
-      setTimeLeft(nextQuestion.per_question_time_sec || game.per_question_time_sec || 120)
+      timerArmedRef.current = false
+      setTimeLeft(questionTimeSec(nextQuestion, game))
     } else {
       const code = (gameCode ?? '').trim().toUpperCase()
       const cached = getGamePlayCache(code)
@@ -719,7 +761,13 @@ export default function GamePlay() {
   )
 
   if (accessDenied) {
-    return playShell(<AccessDeniedScreen message={accessDenied} showRegisterLink />)
+    return playShell(
+      <AccessDeniedScreen
+        message={accessDenied}
+        showRegisterLink={!accessDeniedRetryable}
+        onRetry={accessDeniedRetryable ? retryPlayAccessCheck : undefined}
+      />
+    )
   }
 
   if (isClosed && sessionKnown && game) {
@@ -734,6 +782,19 @@ export default function GamePlay() {
 
   const hasFreshPlayCache = codeForSession.length > 0 && isGamePlayCacheFresh(codeForSession)
   const waitingForSession = !!(game && sessionUnknown && !hasFreshPlayCache)
+
+  if (playAccessPending) {
+    return playShell(
+      <div
+        className="min-h-screen theme-background flex items-center justify-center"
+        style={{
+          background: 'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
+        }}
+      >
+        <div className="text-white text-xl">Проверка доступа...</div>
+      </div>
+    )
+  }
 
   if ((!game && loading) || waitingForSession) {
     return playShell(

@@ -1,12 +1,24 @@
 import { supabase } from './supabase'
 import type { GameStateRow } from './gameSessionState'
 
-const inflight = new Map<string, Promise<GameStateRow | null>>()
+type InflightEntry = {
+  promise: Promise<GameStateRow | null>
+  gen: number
+}
+
+const inflight = new Map<string, InflightEntry>()
 const lastOk = new Map<string, { at: number; row: GameStateRow | null }>()
+const generation = new Map<string, number>()
+
+function bumpGeneration(gameId: string): number {
+  const next = (generation.get(gameId) ?? 0) + 1
+  generation.set(gameId, next)
+  return next
+}
 
 export function invalidateGameStateCache(gameId: string): void {
+  bumpGeneration(gameId)
   lastOk.delete(gameId)
-  inflight.delete(gameId)
 }
 
 const MIN_INTERVAL_MS = 800
@@ -50,8 +62,15 @@ export function fetchGameStateForGame(
   const now = Date.now()
   const minGap = isMobileUa() ? MIN_INTERVAL_MOBILE_MS : MIN_INTERVAL_MS
 
+  if (force) {
+    bumpGeneration(gameId)
+    lastOk.delete(gameId)
+  }
+
+  const reqGen = generation.get(gameId) ?? 0
+
   const running = inflight.get(gameId)
-  if (running && !force) return running
+  if (running && !force) return running.promise
 
   if (!force) {
     const cached = lastOk.get(gameId)
@@ -62,13 +81,18 @@ export function fetchGameStateForGame(
 
   const promise = fetchGameStateForGameDirect(gameId)
     .then((row) => {
-      lastOk.set(gameId, { at: Date.now(), row })
+      if ((generation.get(gameId) ?? 0) === reqGen) {
+        lastOk.set(gameId, { at: Date.now(), row })
+      }
       return row
     })
     .finally(() => {
-      inflight.delete(gameId)
+      const entry = inflight.get(gameId)
+      if (entry?.gen === reqGen) {
+        inflight.delete(gameId)
+      }
     })
 
-  inflight.set(gameId, promise)
+  inflight.set(gameId, { promise, gen: reqGen })
   return promise
 }

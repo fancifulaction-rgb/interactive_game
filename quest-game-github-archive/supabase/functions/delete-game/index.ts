@@ -1,4 +1,12 @@
+import { handleCors, jsonResponse, requireAuthenticatedUser } from '../_shared/adminAuth.ts'
+
 Deno.serve(async (req) => {
+  const cors = handleCors(req)
+  if (cors) return cors
+
+  const auth = await requireAuthenticatedUser(req)
+  if (auth instanceof Response) return auth
+
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -6,10 +14,6 @@ Deno.serve(async (req) => {
     'Access-Control-Max-Age': '86400',
     'Access-Control-Allow-Credentials': 'false'
   };
-
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
 
   try {
     const { gameId } = await req.json();

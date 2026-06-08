@@ -1,5 +1,100 @@
 # Баги и статус (2026-06-07)
 
+## Исправлено 2026-06-07 (BUG_AUDIT C1 — lobby regression)
+
+| # | Проблема | Причина | Исправление |
+|---|----------|---------|-------------|
+| 36 | Игрок не возвращается в лобби после «Начать заново» | `shouldBlockLobbyRegression` блокировал любой переход playing→lobby, в т.ч. свежий `restart_to_lobby` | IMP-LOG-007: в snapshot — `updatedAtMs` + `lobbyEpoch`; регрессия разрешена, если серверное состояние новее |
+
+Проверка: PC + 2 телефона в игре → админ «Начать заново» → все устройства в лобби ≤ poll-интервала.
+
+Ручная проверка 2026-06-07 (QA038Q, PC + iPhone + Android + админ): все устройства вернулись в лобби после двух `restart_to_lobby`; в device jsonl нет `blocked lobby regression`, `lobbyEpoch` инкрементируется. Коммит: `2e9516e`.
+
+## Исправлено 2026-06-07 (BUG_AUDIT H2/H3 — play access)
+
+| # | Проблема | Причина | Исправление |
+|---|----------|---------|-------------|
+| 37 | Опоздавшая команда попадает в игру, если сессия уже `playing` | `getPlayAccessDenial` запускался только при `inLobby` | IMP-LOG-008: проверка при известной сессии (`!sessionUnknown`), экран ожидания до результата |
+| 38 | Сетевая ошибка проверки доступа молча разрешала игру | `.catch` только логировал | IMP-LOG-008: `access_check_failed` + кнопка «Повторить», fail-closed |
+
+Проверка: `npm run build`, `node scripts/e2e-game-flow.mjs`; ручной — открыть `/game/<code>` после старта с «чужой»/поздней сессией → отказ; симулировать offline при проверке → retry.
+
+Ручная проверка 2026-06-07:
+- **H2** (QA038Q, после старта): регистрация новой команды блокируется с текстом «Игра уже началась. Присоединиться к этой сессии больше нельзя.» — OK. Убран лишний DEV-блок диагностики на форме регистрации для ожидаемых отказов.
+- **H3** (2× Android + iPhone): сеть отключали **во время игры** (вопросы уже в кэше) — офлайн-прохождение ожидаемо; `access check failed` в логах нет (начальная проверка уже прошла). Android после reconnect — OK; iPhone — краткий возврат в лобби, затем «Проверка доступа» и перезагрузка вопросов (stale `game_state` при восстановлении сети, отдельный follow-up).
+- **H3 gap (2026-06-07 QA):** проверка проходила по кэшу `lastOk` после регистрации; офлайн в лобби + старт игры — зависание. **IMP-LOG-009:** `invalidateGameStateCache` + `force`, отдельная фаза lobby/playing, честный статус сети в `GameLobby`.
+- **H3 verified (2026-06-07):** 3 устройства — лобби онлайн → авиарежим → «Нет связи с сервером»; после включения сети проверка доступа (фаза playing) проходит автоматически, вход в игру OK. Fail-экран при reconnect не требуется.
+
+## Исправлено 2026-06-07 (BUG_AUDIT H1 — timer skip)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 39 | Первый вопрос мгновенно пропускался после старта (lobby-prefetch оставлял `timeLeft===0`) | IMP-LOG-010: `timerArmedRef`, инициализация `timeLeft` при prefetch и при входе в игру |
+
+Проверка: очистить кэш / приватная вкладка → лобби (prefetch) → старт → первый вопрос виден полное время.
+
+Ручная проверка 2026-06-07: первый вопрос не пропускается; одно мелькание при старте (экран «Проверка доступа» на фазе playing) — убрано: фоновая проверка после lobby.
+
+## Исправлено 2026-06-07 (BUG_AUDIT H7 — team score cache)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 40 | `syncPlayerTeamScoreFromServer` ставил `total_score: 0` всем командам кроме своей в кэше | IMP-LOG-011: для чужих команд оставляем `t.total_score` |
+
+Проверка: 2+ команды в лобби → ответ одной → в кэше/табло у второй команды очки не сбрасываются в 0.
+
+Ручная проверка: **отложена** — см. `docs/TEST_BACKLOG.md` (BUG_AUDIT пакет).
+
+## Исправлено 2026-06-07 (BUG_AUDIT H4 — broadcast timer leak)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 41 | `Promise.race` в `channelSendWithTimeout`: после успешного `send` таймер 1500мс всё равно reject'ил | IMP-LOG-012: `clearTimeout` в `finally` |
+
+Проверка: частые `broadcastScoreUpdate` / ответы в игре — в консоли нет unhandled rejection через 1.5с после успешного send.
+
+Ручная проверка: **отложена** — см. `docs/TEST_BACKLOG.md` (BUG_AUDIT пакет).
+
+## Исправлено 2026-06-07 (BUG_AUDIT M7 — broadcast timeout mobile)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 42 | 1500мс мало для mobile broadcast send | IMP-LOG-013: 6000мс на mobile UA |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
+## Исправлено 2026-06-07 (BUG_AUDIT H5 — host finish hang)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 43 | «Завершить игру» на `/host/` зависало: `loadExportData` в `enqueueCritical` + teams/questions prio &lt; 8 | IMP-LOG-014: export без critical; `markAdminFetchBoost` в HostView; `/host` как admin-route для GET |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
+## Исправлено 2026-06-07 (BUG_AUDIT H6 — scoreboard poll-fallback)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 44 | Табло/HostView зависели от broadcast; postgres без UPDATE teams | IMP-RT-005: poll 20с на Admin/Player scoreboard + HostView teams; postgres UPDATE `teams` |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
+## Исправлено 2026-06-07 (BUG_AUDIT C2 — fetchGameState race)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 45 | `force:true` поверх in-flight GET перезаписывал `inflight`; старый `finally` сбрасывал tracking нового запроса | IMP-LOG-015: generation-token; `lastOk`/`inflight` только для актуального поколения |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
+## Исправлено 2026-06-07 (BUG_AUDIT M6 — lobby teams + lookup cache)
+
+| # | Проблема | Исправление |
+|---|----------|-------------|
+| 46 | `fetchLobbyTeams({ force })` не обходил in-flight; `gameLookupCache` отдавал 15-мин stale без revalidate | IMP-LOG-016: generation-token в lobby teams; SWR lookup (фоновый refresh после 60с) |
+
+Ручная проверка: **отложена** — `docs/TEST_BACKLOG.md`.
+
 ## Исправлено 2026-06-07 (admin + iPhone HTTP contention)
 
 | # | Проблема | Исправление |

@@ -41,6 +41,7 @@
 | IMP-RT-002 | Убрать poll 5s AdminScoreboard | Снизить REST при проекторе | Внутренний техдолг | 3 | done |
 | IMP-RT-003 | Единый канал на game_id | Один channel/game для state+score | Architecture | 3 | proposed |
 | IMP-RT-004 | Отложенный Realtime 8s → настройка | Флаг в settings игры | PlayerScoreboard | — | proposed |
+| IMP-RT-005 | Poll-fallback табло | 20с REST + postgres UPDATE teams; HostView список команд | BUG_AUDIT_HANDOFF H6 | 1 | done |
 
 ---
 
@@ -54,6 +55,16 @@
 | IMP-LOG-004 | Пересмотр штрафов подсказок | Исправить пропадающие hints | BACKLOG | — | proposed |
 | IMP-LOG-005 | Пауза и итоговый счёт | Проверить формулу при is_paused | BACKLOG | — | proposed |
 | IMP-LOG-006 | Множественные варианты ответов | Полная поддержка в UI/БД | guides/MULTIPLE_ANSWERS | — | proposed |
+| IMP-LOG-007 | Возврат в лобби после restart_to_lobby | `shouldBlockLobbyRegression`: разрешать playing→lobby при новее `updated_at` или `lobbyEpoch++` | BUG_AUDIT_HANDOFF C1 | 1 | done |
+| IMP-LOG-008 | Проверка доступа игрока вне лобби | `getPlayAccessDenial` при `sessionKnown`, fail-closed + retry при сетевой ошибке | BUG_AUDIT_HANDOFF H2/H3 | 1 | done |
+| IMP-LOG-009 | Живая проверка доступа (без кэша) | `force` + invalidate `game_state`; повтор при lobby→playing; честный статус сети в лобби | BUG_AUDIT H3 QA | 1 | done |
+| IMP-LOG-010 | Не скипать первый вопрос при timeLeft=0 | `timerArmedRef` + инициализация таймера при prefetch/входе в игру | BUG_AUDIT_HANDOFF H1 | 1 | done |
+| IMP-LOG-011 | Счёт чужих команд в кэше игрока | `syncPlayerTeamScoreFromServer` сохраняет `t.total_score` для остальных | BUG_AUDIT_HANDOFF H7 | 1 | done |
+| IMP-LOG-012 | Очистка таймера broadcast send | `clearTimeout` в `finally` у `channelSendWithTimeout` | BUG_AUDIT_HANDOFF H4 | 1 | done |
+| IMP-LOG-013 | Таймаут broadcast на mobile | 6с на mobile UA, 1.5с на desktop | BUG_AUDIT_HANDOFF M7 | 1 | done |
+| IMP-LOG-014 | Завершение игры на /host | `loadExportData` без `enqueueCritical`; boost на host-route | BUG_AUDIT_HANDOFF H5 | 1 | done |
+| IMP-LOG-015 | Гонка force в fetchGameState | generation-token: inflight/lastOk только для актуального gen | BUG_AUDIT_HANDOFF C2 | 1 | done |
+| IMP-LOG-016 | Гонки lobby teams + lookup cache | generation-token в `fetchLobbyTeams`; SWR в `gameLookupCache` | BUG_AUDIT_HANDOFF M6 | 1 | done |
 
 ---
 
@@ -109,6 +120,12 @@
 | IMP-SEC-004 | Смена пароля админа без plaintext | AdminPanel | BACKLOG | proposed | proposed |
 | IMP-SEC-005 | Регистрация админа по email | Self-service | BACKLOG | proposed | proposed |
 | IMP-SEC-006 | Документ PRIVACY_GDPR | EU корпоративы | Optional doc | proposed | proposed |
+| IMP-SEC-007 | Team session token | `register_team` выдаёт токен; `submit_auto_answer` проверяет | BUG_AUDIT S5 | 1 | done |
+| IMP-SEC-008 | Закрыть `increment_team_score` для anon | Только через `submit_auto_answer` / service_role | BUG_AUDIT S4 | 1 | done |
+| IMP-SEC-009 | View `questions_player` | Эталон `answer` не на клиенте игрока | BUG_AUDIT S5 | 1 | done |
+| IMP-SEC-010 | Убрать anon UPDATE/INSERT на teams/answers/scores | Миграция 018 | BUG_AUDIT S3 | 1 | done |
+| IMP-SEC-011 | Защита `player-upload` + `confirm-admin-email` | Team session + bucket whitelist; setup secret | BUG_AUDIT S2 | 1 | done |
+| IMP-SEC-012 | JWT на delete Edge | `verify_jwt` + `requireAuthenticatedUser` | BUG_AUDIT S1 | 1 | done |
 
 ---
 

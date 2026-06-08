@@ -17,6 +17,19 @@
 
 ## [Unreleased] — Спринт 1 (стабильность сети)
 
+### Исправлено
+- IMP-LOG-007 / BUG_AUDIT C1: игрок возвращается в лобби после админского «Начать заново» (`restart_to_lobby`) — `updated_at` и `lobbyEpoch` в snapshot cache
+- IMP-LOG-008 / BUG_AUDIT H2/H3: проверка доступа игрока при известной сессии (не только в лобби); сетевая ошибка — fail-closed и «Повторить»
+- IMP-LOG-009 / H3: проверка доступа всегда с живым `game_state` (без кэша); повтор при входе в игру; индикатор связи в лобби
+- IMP-LOG-010 / BUG_AUDIT H1: первый вопрос не пропускается при выходе из лобби с `timeLeft===0` (lobby-prefetch)
+- IMP-LOG-011 / BUG_AUDIT H7: sync счёта игрока не обнуляет очки других команд в `teamsSnapshot`
+- IMP-LOG-012 / BUG_AUDIT H4: `channelSendWithTimeout` очищает таймер после успешного broadcast (нет утечки/unhandled rejection)
+- IMP-LOG-013 / BUG_AUDIT M7: таймаут broadcast send 6с на mobile, 1.5с на desktop
+- IMP-LOG-014 / BUG_AUDIT H5: «Завершить игру» на `/host/` — export без deadlock в requestQueue
+- IMP-RT-005 / BUG_AUDIT H6: poll-fallback табло 20с, postgres UPDATE на `teams`, список команд на HostView
+- IMP-LOG-015 / BUG_AUDIT C2: generation-token в `fetchGameState` — force/invalidate не ломают coalesce
+- IMP-LOG-016 / BUG_AUDIT M6: generation-token в `fetchLobbyTeams`; stale-while-revalidate lookup (60с)
+
 ### Добавлено
 - DEV-диагностика: `clientLogCollector`, `vite-client-logs-plugin`, `DiagnosticLogsPanel`, `docs/DIAGNOSTICS.md`
 - `fetchLobbyTeams`, `gameRealtime` hub, `pendingAnswerQueue`, coalesce `fetchGameState` / `prefetchGameQuestions`

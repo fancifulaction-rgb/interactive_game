@@ -22,6 +22,12 @@ export function getGameStartedAt(state: GameStateRow | null | undefined): string
   return typeof raw === 'string' && raw.length > 0 ? raw : null
 }
 
+/** Монотонный счётчик «начать заново» в лобби (player_data.lobbyEpoch). */
+export function getLobbyEpoch(state: GameStateRow | null | undefined): number {
+  const raw = state?.player_data?.lobbyEpoch
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : 0
+}
+
 export type GameSessionStatus = 'closed' | 'waiting' | 'playing' | 'paused' | 'finished'
 
 function normalizedState(state: GameStateRow | null | undefined): string {

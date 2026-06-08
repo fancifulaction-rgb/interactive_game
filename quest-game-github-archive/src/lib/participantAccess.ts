@@ -1,8 +1,9 @@
 import { supabase } from './supabase'
 import { debugLog } from './debugLog'
 import { readFinishNavigateState } from './finishNavigation'
-import { fetchGameStateForGame } from './fetchGameState'
+import { fetchGameStateForGame, invalidateGameStateCache } from './fetchGameState'
 import { isTransientNetworkError } from './teamRegister'
+import { getTeamSessionToken } from './teamSession'
 import { isScoreboardHiddenUntilFinish } from './gameSettings'
 import {
   getGameStartedAt,
@@ -31,6 +32,7 @@ export const PLAY_MESSAGES = {
   closed: 'Игра пока закрыта. Дождитесь объявления ведущего.',
   invalid_session: 'Сессия команды недействительна. Зарегистрируйтесь для этой игры.',
   late_join: 'Игра уже началась. Вы не успели присоединиться к этой сессии.',
+  access_check_failed: 'Не удалось проверить доступ. Проверьте сеть и повторите попытку.',
 } as const
 
 export function readStoredPlayerSession(gameCode: string): { teamId: string } | null {
@@ -64,11 +66,16 @@ export async function getRegistrationDenial(gameId: string): Promise<string | nu
 /** Допуск на гонку «старт» vs «insert» на медленной сети (мс). */
 const LATE_JOIN_GRACE_MS = 2000
 
+async function fetchPlayAccessState(gameId: string): Promise<GameStateRow | null> {
+  invalidateGameStateCache(gameId)
+  return fetchGameStateForGame(gameId, { force: true })
+}
+
 export async function getPlayAccessDenial(
   gameId: string,
   teamId: string
 ): Promise<string | null> {
-  const state = await fetchGameStateForGame(gameId)
+  const state = await fetchPlayAccessState(gameId)
   if (!state) return PLAY_MESSAGES.invalid_session
   if (isGameClosed(state)) return PLAY_MESSAGES.closed
   if (isGameInLobby(state)) return null
@@ -79,7 +86,11 @@ export async function getPlayAccessDenial(
     .eq('id', teamId)
     .maybeSingle()
 
-  if (error || !team || team.game_id !== gameId) {
+  if (error) {
+    if (isTransientNetworkError(error)) throw error
+    return PLAY_MESSAGES.invalid_session
+  }
+  if (!team || team.game_id !== gameId) {
     return PLAY_MESSAGES.invalid_session
   }
 
@@ -188,13 +199,16 @@ export async function verifyFinishPageAccess(
     return { allowed: false, message: FINISH_MESSAGES.not_yet }
   }
 
-  const { count, error: answersError } = await supabase
-    .from('answers')
-    .select('id', { count: 'exact', head: true })
-    .eq('team_id', session.teamId)
-
-  if (!answersError && (count ?? 0) > 0) {
-    return { allowed: true }
+  const sessionToken = getTeamSessionToken()
+  if (sessionToken && game?.id) {
+    const { data: hasAnswers, error: answersError } = await supabase.rpc('team_has_answers', {
+      p_team_id: session.teamId,
+      p_game_id: game.id,
+      p_session_token: sessionToken,
+    })
+    if (!answersError && hasAnswers === true) {
+      return { allowed: true }
+    }
   }
 
   return { allowed: false, message: FINISH_MESSAGES.not_yet }

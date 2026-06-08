@@ -19,7 +19,7 @@ async function fetchQuestionsOnce(
   const started = Date.now()
   agentDebugLog('prefetchGameQuestions.ts', `${label} start`, { gameId }, 'H14')
   const { data, error } = await supabase
-    .from('questions')
+    .from('questions_player')
     .select(select)
     .eq('game_id', gameId)
     .order('question_number', { ascending: true })

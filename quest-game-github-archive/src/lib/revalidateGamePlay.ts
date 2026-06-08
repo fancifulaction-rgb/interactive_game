@@ -36,7 +36,7 @@ async function revalidateGamePlayFromServerInner(gameCode: string) {
     if (!gameData) return null
 
     const { data: questionsData, error: questionsError } = await supabase
-      .from('questions')
+      .from('questions_player')
       .select(QUESTION_DB_SELECT)
       .eq('game_id', gameData.id)
       .order('question_number', { ascending: true })

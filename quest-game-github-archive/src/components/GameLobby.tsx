@@ -50,8 +50,11 @@ function mergeTeamsById(server: LobbyTeam[], seed: LobbyTeam[]): LobbyTeam[] {
   )
 }
 
+type LobbyConnectionState = 'checking' | 'ok' | 'offline'
+
 export default function GameLobby({ gameId, gameCode, gameTitle, myTeamName }: GameLobbyProps) {
   const loadInFlightRef = useRef(false)
+  const [connectionState, setConnectionState] = useState<LobbyConnectionState>('checking')
   const [teams, setTeams] = useState<LobbyTeam[]>(() => {
     const code = (gameCode ?? '').trim().toUpperCase()
     if (!code) return []
@@ -114,12 +117,14 @@ export default function GameLobby({ gameId, gameCode, gameTitle, myTeamName }: G
           }
           return merged
         })
+        setConnectionState(typeof navigator !== 'undefined' && navigator.onLine ? 'ok' : 'offline')
         return
       } catch (error) {
         if (attempt < LOBBY_RETRY_DELAYS_MS.length - 1) {
           await new Promise((r) => setTimeout(r, LOBBY_RETRY_DELAYS_MS[attempt]))
         } else {
           console.error('GameLobby: не удалось загрузить команды', error)
+          setConnectionState('offline')
         }
       }
     }
@@ -127,6 +132,20 @@ export default function GameLobby({ gameId, gameCode, gameTitle, myTeamName }: G
       loadInFlightRef.current = false
     }
   }, [gameId, gameCode])
+
+  useEffect(() => {
+    const onOnline = () => {
+      setConnectionState('checking')
+      void loadTeams()
+    }
+    const onOffline = () => setConnectionState('offline')
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+    }
+  }, [loadTeams])
 
   useEffect(() => {
     void loadTeams()
@@ -174,9 +193,27 @@ export default function GameLobby({ gameId, gameCode, gameTitle, myTeamName }: G
             Ожидайте сигнала ведущего. Игра начнётся, когда администратор нажмёт{' '}
             <span className="font-semibold">«Начать игру»</span>.
           </p>
-          <div className="flex items-center justify-center gap-2 mt-3 text-purple-700">
-            <div className="w-2 h-2 bg-purple-600 rounded-full animate-pulse" />
-            <span className="text-sm font-medium">Подключение активно</span>
+          <div
+            className={`flex items-center justify-center gap-2 mt-3 text-sm font-medium ${
+              connectionState === 'offline' ? 'text-amber-800' : 'text-purple-700'
+            }`}
+          >
+            <div
+              className={`w-2 h-2 rounded-full ${
+                connectionState === 'offline'
+                  ? 'bg-amber-500'
+                  : connectionState === 'ok'
+                    ? 'bg-purple-600 animate-pulse'
+                    : 'bg-purple-400 animate-pulse'
+              }`}
+            />
+            <span>
+              {connectionState === 'offline'
+                ? 'Нет связи с сервером. Включите интернет — обновление продолжится автоматически.'
+                : connectionState === 'ok'
+                  ? 'Подключение активно'
+                  : 'Проверка связи…'}
+            </span>
           </div>
         </div>
 

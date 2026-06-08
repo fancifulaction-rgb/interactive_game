@@ -100,7 +100,7 @@
 - **Фикс:** убрать grant для anon; вызывать только из `submit_auto_answer`; проверять
   session-token/HMAC команды.
 
-### S5 🔍 `submit_auto_answer` не проверяет владельца `team_id`; утечка эталонных ответов
+### S5 ✅ `submit_auto_answer` не проверяет владельца `team_id`; утечка эталонных ответов
 - **Файл:** `docs/sql-migrations/013_submit_auto_answer.sql`; RLS `011:11, 23`;
   `src/lib/prefetchGameQuestions.ts`
 - **Серьёзность:** HIGH→CRITICAL

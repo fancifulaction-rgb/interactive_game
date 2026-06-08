@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import {
   applyScoreBroadcastToTeams,
   attachGameRealtime,
+  SCOREBOARD_POLL_FALLBACK_MS,
 } from '../lib/gameRealtime'
 import { Trophy, Medal, Award, Settings, Download, FileText, FileSpreadsheet } from 'lucide-react'
 import { exportToExcel, exportToPDF, exportToCSV, exportAllFormats } from '../utils/exportData'
@@ -35,6 +36,7 @@ export default function AdminScoreboard() {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const detachRtRef = useRef<(() => void) | null>(null)
+  const pollTimerRef = useRef<number | null>(null)
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loadSeqRef = useRef(0)
 
@@ -99,6 +101,12 @@ export default function AdminScoreboard() {
           },
           onTeamsChanged: () => scheduleTeamsReload(gameData.id),
         })
+
+        if (pollTimerRef.current != null) window.clearInterval(pollTimerRef.current)
+        pollTimerRef.current = window.setInterval(() => {
+          if (typeof document !== 'undefined' && document.hidden) return
+          scheduleTeamsReload(gameData.id)
+        }, SCOREBOARD_POLL_FALLBACK_MS) as unknown as number
       } catch (err: unknown) {
         if (!cancelled && seq === loadSeqRef.current) {
           console.error('Ошибка загрузки админского табло:', err)
@@ -117,6 +125,10 @@ export default function AdminScoreboard() {
       if (reloadTimerRef.current) {
         clearTimeout(reloadTimerRef.current)
         reloadTimerRef.current = null
+      }
+      if (pollTimerRef.current != null) {
+        window.clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
       }
       detachRtRef.current?.()
       detachRtRef.current = null

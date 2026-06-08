@@ -5,12 +5,14 @@ interface AccessDeniedScreenProps {
   title?: string
   message: string
   showRegisterLink?: boolean
+  onRetry?: () => void
 }
 
 export default function AccessDeniedScreen({
   title = 'Доступ закрыт',
   message,
   showRegisterLink = false,
+  onRetry,
 }: AccessDeniedScreenProps) {
   const navigate = useNavigate()
 
@@ -23,6 +25,15 @@ export default function AccessDeniedScreen({
         <h1 className="text-2xl font-bold text-gray-800 mb-3">{title}</h1>
         <p className="text-gray-600 mb-6">{message}</p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            >
+              Повторить
+            </button>
+          )}
           <button
             type="button"
             onClick={() => navigate('/')}
