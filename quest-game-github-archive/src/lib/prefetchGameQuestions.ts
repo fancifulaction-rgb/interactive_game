@@ -1,13 +1,20 @@
 import { agentDebugLog } from './debugLog'
 import { supabase } from './supabase'
 
-/** Полный select для игры (подсказки, медиа). */
+/** Полный select для админки / таблицы questions (с эталоном answer). */
 export const QUESTION_DB_SELECT =
   'id, game_id, question_number, order_index, question_text, question_type, type, options, answer, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url'
 
-/** Лёгкий select для лобби / prefetch — без media и hint JSON. */
+/** Лёгкий select для лобби — таблица questions. */
 export const QUESTION_LOBBY_SELECT =
   'id, game_id, question_number, order_index, question_text, question_type, type, options, answer, answer_count, difficulty, points, per_question_time_sec'
+
+/** Игрок: view questions_player без поля answer (IMP-SEC-009). */
+export const QUESTION_PLAYER_SELECT =
+  'id, game_id, question_number, order_index, question_text, question_type, type, options, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url'
+
+export const QUESTION_PLAYER_LOBBY_SELECT =
+  'id, game_id, question_number, order_index, question_text, question_type, type, options, answer_count, difficulty, points, per_question_time_sec'
 
 const questionsInFlight = new Map<string, Promise<Record<string, unknown>[]>>()
 
@@ -62,14 +69,14 @@ function runDeduped(
 /** Лёгкий prefetch для лобби и регистрации. */
 export function prefetchQuestionsForGame(gameId: string): Promise<Record<string, unknown>[]> {
   return runDeduped(`${gameId}:lobby`, () =>
-    fetchQuestionsOnce(gameId, QUESTION_LOBBY_SELECT, 'prefetch lobby')
+    fetchQuestionsOnce(gameId, QUESTION_PLAYER_LOBBY_SELECT, 'prefetch lobby')
   )
 }
 
 /** Полный fetch перед стартом игры (подсказки, media_url). */
 export function fetchQuestionsFullForGame(gameId: string): Promise<Record<string, unknown>[]> {
   return runDeduped(`${gameId}:full`, () =>
-    fetchQuestionsOnce(gameId, QUESTION_DB_SELECT, 'prefetch full')
+    fetchQuestionsOnce(gameId, QUESTION_PLAYER_SELECT, 'prefetch full')
   )
 }
 

@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { agentDebugLog } from './debugLog'
-import { mapQuestionsForPlay, fetchQuestionsFullForGame, QUESTION_DB_SELECT } from './prefetchGameQuestions'
+import { mapQuestionsForPlay, fetchQuestionsFullForGame, QUESTION_PLAYER_SELECT } from './prefetchGameQuestions'
 import { getGamePlayCache, setGamePlayCache } from './gamePlayCache'
 let revalidateInFlight: Promise<{ game: Record<string, unknown>; questions: Record<string, unknown>[] } | null> | null =
   null
@@ -37,7 +37,7 @@ async function revalidateGamePlayFromServerInner(gameCode: string) {
 
     const { data: questionsData, error: questionsError } = await supabase
       .from('questions_player')
-      .select(QUESTION_DB_SELECT)
+      .select(QUESTION_PLAYER_SELECT)
       .eq('game_id', gameData.id)
       .order('question_number', { ascending: true })
 
