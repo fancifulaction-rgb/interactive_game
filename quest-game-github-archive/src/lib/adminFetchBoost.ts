@@ -5,7 +5,12 @@ const BOOST_MS = 90_000
 export function isAdminRoute(): boolean {
   if (typeof window === 'undefined') return false
   const path = window.location.pathname
-  return path.startsWith('/admin') || path.startsWith('/host')
+  return (
+    path.startsWith('/admin') ||
+    path.startsWith('/host') ||
+    path.startsWith('/scoreboard-detailed') ||
+    path.startsWith('/scoreboard-admin')
+  )
 }
 
 /** На время critical-действий админки (scratch, pause, start) — GET priority 9. */

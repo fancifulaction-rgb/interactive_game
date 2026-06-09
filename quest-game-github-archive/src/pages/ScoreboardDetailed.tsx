@@ -3,9 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { answerJsonToDisplayText } from '../lib/answerDisplay'
 import { attachGameRealtime } from '../lib/gameRealtime'
-import { enqueueCritical } from '../lib/requestQueue'
+import { markAdminFetchBoost } from '../lib/adminFetchBoost'
 import { Trophy, Medal, Award, ArrowLeft, Download, FileText, FileSpreadsheet, BarChart3 } from 'lucide-react'
 import { exportToExcel, exportToPDF, exportToCSV, exportAllFormats } from '../utils/exportData'
+import AccessDeniedScreen from '../components/AccessDeniedScreen'
+import { hasSupabaseAdminSession, isAdminPanelLoggedIn } from '../lib/adminAuth'
 
 interface TeamScore {
   id: string
@@ -43,22 +45,39 @@ export default function ScoreboardDetailed() {
   const [questions, setQuestions] = useState<any[]>([])
   const [teamDetails, setTeamDetails] = useState<{[teamId: string]: TeamDetails}>({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [adminAccess, setAdminAccess] = useState<'checking' | 'allowed' | 'denied'>('checking')
   const [selectedQuestion, setSelectedQuestion] = useState<{
     team: TeamScore
     result: QuestionResult
     question: any
   } | null>(null)
   const loadSeqRef = useRef(0)
-  const inFlightRef = useRef(false)
   const cachedGameIdRef = useRef<string | null>(null)
   const cachedQuestionsRef = useRef<any[]>([])
 
   useEffect(() => {
-    const adminLoggedIn = localStorage.getItem('admin_logged_in')
-    setIsAdmin(!!adminLoggedIn)
+    let cancelled = false
+    void (async () => {
+      if (isAdminPanelLoggedIn()) {
+        if (!cancelled) {
+          setIsAdmin(true)
+          setAdminAccess('allowed')
+        }
+        return
+      }
+      const session = await hasSupabaseAdminSession()
+      if (!cancelled) {
+        setIsAdmin(session)
+        setAdminAccess(session ? 'allowed' : 'denied')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const buildTeamDetails = (
@@ -131,79 +150,77 @@ export default function ScoreboardDetailed() {
 
   const loadData = useCallback(
     async (options?: { refreshOnly?: boolean }) => {
-      if (!gameCode || inFlightRef.current) return
+      if (!gameCode) return
 
       const refreshOnly = options?.refreshOnly ?? false
       const seq = ++loadSeqRef.current
-      inFlightRef.current = true
 
       if (!refreshOnly) {
         setLoading(true)
+        setLoadError(null)
       }
 
       try {
-        await enqueueCritical(async () => {
-          let gameId = cachedGameIdRef.current
-          let questionsData = cachedQuestionsRef.current
+        let gameId = cachedGameIdRef.current
+        let questionsData = cachedQuestionsRef.current
 
-          if (!refreshOnly || !gameId) {
-            const { data: gameData, error: gameError } = await supabase
-              .from('games')
-              .select('id, code, title, mask_board')
-              .eq('code', gameCode)
-              .maybeSingle()
+        if (!refreshOnly || !gameId) {
+          const { data: gameData, error: gameError } = await supabase
+            .from('games')
+            .select('id, code, title, mask_board')
+            .eq('code', gameCode)
+            .maybeSingle()
 
-            if (gameError) throw gameError
-            if (!gameData || seq !== loadSeqRef.current) return
+          if (gameError) throw gameError
+          if (!gameData || seq !== loadSeqRef.current) return
 
-            gameId = gameData.id
-            cachedGameIdRef.current = gameId
-            setGame(gameData)
+          gameId = gameData.id
+          cachedGameIdRef.current = gameId
+          setGame(gameData)
 
-            const questionsRes = await supabase
-              .from('questions_player')
-              .select('id, question_number, order_index, question_text')
-              .eq('game_id', gameId)
-              .order('question_number', { ascending: true })
-
-            if (questionsRes.error) throw questionsRes.error
-            if (seq !== loadSeqRef.current) return
-
-            questionsData = questionsRes.data ?? []
-            cachedQuestionsRef.current = questionsData
-            setQuestions(questionsData)
-          }
-
-          if (!gameId) return
-
-          const teamsRes = await supabase
-            .from('teams')
-            .select('id, team_name, captain_name, avatar_url, total_score, registration_time')
+          const questionsRes = await supabase
+            .from('questions')
+            .select('id, question_number, order_index, question_text')
             .eq('game_id', gameId)
-            .order('total_score', { ascending: false })
+            .order('question_number', { ascending: true })
 
-          if (teamsRes.error) throw teamsRes.error
+          if (questionsRes.error) throw questionsRes.error
           if (seq !== loadSeqRef.current) return
 
-          const teamsData = teamsRes.data ?? []
-          setTeams(teamsData)
+          questionsData = questionsRes.data ?? []
+          cachedQuestionsRef.current = questionsData
+          setQuestions(questionsData)
+        }
 
-          const { data: answersData, error: answersError } = await supabase.rpc(
-            'get_scoreboard_answers',
-            { p_game_id: gameId }
-          )
+        if (!gameId) return
 
-          if (answersError) throw answersError
-          if (seq !== loadSeqRef.current) return
+        const teamsRes = await supabase
+          .from('teams')
+          .select('id, team_name, captain_name, avatar_url, total_score, registration_time')
+          .eq('game_id', gameId)
+          .order('total_score', { ascending: false })
 
-          setTeamDetails(buildTeamDetails(teamsData, questionsData, answersData ?? []))
-        })
+        if (teamsRes.error) throw teamsRes.error
+        if (seq !== loadSeqRef.current) return
+
+        const teamsData = teamsRes.data ?? []
+        setTeams(teamsData)
+
+        const { data: answersData, error: answersError } = await supabase.rpc(
+          'get_scoreboard_answers',
+          { p_game_id: gameId }
+        )
+
+        if (answersError) throw answersError
+        if (seq !== loadSeqRef.current) return
+
+        setTeamDetails(buildTeamDetails(teamsData, questionsData, answersData ?? []))
       } catch (err: unknown) {
         if (seq === loadSeqRef.current) {
           console.error('Ошибка загрузки табло:', err)
+          setLoadError('Не удалось загрузить детальное табло. Попробуйте обновить страницу.')
         }
       } finally {
-        inFlightRef.current = false
         if (seq === loadSeqRef.current) {
           setLoading(false)
         }
@@ -213,8 +230,9 @@ export default function ScoreboardDetailed() {
   )
 
   useEffect(() => {
-    if (!gameCode) return
+    if (!gameCode || adminAccess !== 'allowed') return
 
+    markAdminFetchBoost()
     cachedGameIdRef.current = null
     cachedQuestionsRef.current = []
     void loadData({ refreshOnly: false })
@@ -228,7 +246,7 @@ export default function ScoreboardDetailed() {
       clearInterval(interval)
       loadSeqRef.current++
     }
-  }, [gameCode, loadData])
+  }, [gameCode, adminAccess, loadData])
 
   useEffect(() => {
     const gameId = cachedGameIdRef.current ?? game?.id
@@ -281,11 +299,40 @@ export default function ScoreboardDetailed() {
     }
   }
 
+  if (adminAccess === 'checking') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-xl">Проверка доступа…</div>
+      </div>
+    )
+  }
+
+  if (adminAccess === 'denied') {
+    return (
+      <AccessDeniedScreen
+        title="Доступ ограничен"
+        message="Детальное табло доступно только организатору. Войдите в админ-панель через email."
+        showRegisterLink={false}
+      />
+    )
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-xl">Загрузка табло...</div>
       </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <AccessDeniedScreen
+        title="Ошибка загрузки"
+        message={loadError}
+        showRegisterLink={false}
+        onRetry={() => void loadData({ refreshOnly: false })}
+      />
     )
   }
 
