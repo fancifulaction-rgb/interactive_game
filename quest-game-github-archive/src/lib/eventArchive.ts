@@ -86,7 +86,7 @@ const ARCHIVE_SELECT =
 
 export async function listEventArchivesForGame(
   gameId: string,
-  limit = 20
+  limit = 100
 ): Promise<EventArchiveRow[]> {
   const { data, error } = await supabase
     .from('event_archive')

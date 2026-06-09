@@ -73,6 +73,9 @@ export default function EventArchiveModal({ gameId, gameTitle, onClose }: Props)
               История заездов
             </h2>
             <p className="text-sm text-gray-600 mt-1 truncate">{gameTitle}</p>
+            {rows.length > 0 && (
+              <p className="text-xs text-gray-500 mt-1">Сохранено заездов: {rows.length}</p>
+            )}
           </div>
           <button
             type="button"
