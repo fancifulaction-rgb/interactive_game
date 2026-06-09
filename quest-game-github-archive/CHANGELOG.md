@@ -5,6 +5,27 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 и этот проект следует [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.16] — 2026-06-08
+
+### Добавлено
+- `VITE_PUBLIC_URL` — QR и ссылки регистрации работают по LAN, не только localhost (P-001)
+- `useGameFinishedRedirect` — авто-переход на табло после финиша при разрешённых результатах
+- `docs/MANUAL_QA_CHECKLIST.md` — ручной QA с отметками тестировщика и ответами агента
+- `scripts/security-smoke.mjs` — API-smoke для IMP-SEC без браузера
+
+### Исправлено
+- Сообщения админа доходят до всех команд; типы и poll/realtime в NotificationPopup (P-002)
+- Аватары: отложенный upload, retry, broadcast после RPC — появляются на табло (P-003)
+- PDF-экспорт с кириллицей (Roboto TTF) (P-005)
+- Архив заездов: лимит списка, alert при ошибке финиша (P-008)
+- Табло после финиша: очки, экран ожидания, блок прямого URL во время игры (P-010)
+- Детализированное табло из админки: доступ Supabase Auth, без deadlock `enqueueCritical` (P-011, P-012)
+- Удалённая команда сразу выходит из лобби на своём телефоне (P-009, P-013)
+- GameControls: блок старта без вопросов; editor/admin fetch priorities
+
+### Изменено
+- `.gitignore`: вся папка `diagnostic/` локально (в git только `.gitkeep`)
+
 ## [1.2.15] — 2026-06-05
 
 ### Добавлено
