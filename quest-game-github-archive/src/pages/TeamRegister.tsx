@@ -23,6 +23,12 @@ import { markRegistrationSubmitBoost } from '../lib/registrationBoost'
 import { saveTeamSession } from '../lib/playerSession'
 import { rememberSessionSnapshot } from '../lib/gameSessionSnapshotCache'
 import { getRegistrationDenialFromState } from '../lib/participantAccess'
+import {
+  GAME_ACCESS_CODE_MAX,
+  GAME_ACCESS_CODE_MIN,
+  gameAccessCodeValidationMessage,
+  normalizeGameAccessCode,
+} from '../lib/gameAccessCode'
 import { downloadClientLogsJson } from '../lib/clientLogCollector'
 import { readRegistrationCodeFromSearch } from '../lib/registrationUrl'
 import { ArrowLeft, Users, User, Upload, Hash } from 'lucide-react'
@@ -70,15 +76,15 @@ export default function TeamRegister() {
 
   useEffect(() => {
     const fromUrl = readRegistrationCodeFromSearch(searchParams.toString())
-    if (fromUrl.length >= 4) {
+    if (fromUrl.length >= GAME_ACCESS_CODE_MIN) {
       setGameCode(fromUrl)
     }
   }, [searchParams])
 
   // Прогрев lookup игры и game_state до submit — debounce, иначе каждый символ = GET в очередь.
   useEffect(() => {
-    const normalizedCode = gameCode.trim().toUpperCase()
-    if (normalizedCode.length < 4) return
+    const normalizedCode = normalizeGameAccessCode(gameCode)
+    if (normalizedCode.length < GAME_ACCESS_CODE_MIN) return
 
     const warmState = (gameId: string) => {
       void fetchGameStateForGame(gameId).catch(() => {})
@@ -129,7 +135,14 @@ export default function TeamRegister() {
     submitSpinnerStartedRef.current = Date.now()
     markPlayerFetchBoost()
     markRegistrationSubmitBoost()
-    const normalizedCode = gameCode.trim().toUpperCase()
+    const normalizedCode = normalizeGameAccessCode(gameCode)
+    const codeError = gameAccessCodeValidationMessage(normalizedCode)
+    if (codeError) {
+      setError(codeError)
+      setLoading(false)
+      submittingRef.current = false
+      return
+    }
     debugLog('TeamRegister.tsx:submit', 'start', { normalizedCode, hasAvatar: !!avatarFile }, 'D')
     // #region agent log
     agentDebugLog(
@@ -435,14 +448,13 @@ export default function TeamRegister() {
                   type="text"
                   value={gameCode}
                   onChange={(e) => {
-                    // Разрешаем только буквы и цифры, от 4 до 6 символов
-                    const value = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6)
+                    const value = normalizeGameAccessCode(e.target.value)
                     setGameCode(value)
                   }}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-2xl font-bold tracking-widest"
                   placeholder="ABC123"
-                  maxLength={6}
-                  pattern="[a-zA-Z0-9]{4,6}"
+                  maxLength={GAME_ACCESS_CODE_MAX}
+                  autoComplete="off"
                   required
                 />
               </div>

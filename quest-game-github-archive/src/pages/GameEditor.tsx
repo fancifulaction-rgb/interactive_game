@@ -8,6 +8,15 @@ import { QUESTION_DB_SELECT } from '../lib/prefetchGameQuestions'
 import { formatErrorMessage } from '../lib/errorMessage'
 import { enqueueCritical } from '../lib/requestQueue'
 import { saveQuestionsForGame } from '../lib/saveGameQuestions'
+import {
+  assertGameAccessCodeAvailable,
+  GAME_ACCESS_CODE_MAX,
+  gameAccessCodeRangeLabel,
+  gameAccessCodeValidationMessage,
+  generateGameAccessCode,
+  normalizeGameAccessCode,
+} from '../lib/gameAccessCode'
+import { fetchGameAccessCodeDefaultLength } from '../lib/gameAccessCodeSettings'
 import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown } from 'lucide-react'
 import { generateQuestionsWithAi, type AiQuestionProvider } from '../lib/generateQuestions'
 import CollapsibleSection from '../components/CollapsibleSection'
@@ -74,6 +83,10 @@ export default function GameEditor() {
     }
     void loadGameData()
   }, [gameId])
+
+  useEffect(() => {
+    void fetchGameAccessCodeDefaultLength()
+  }, [])
 
   const normalizeQuestion = (q: Record<string, unknown>): Question => {
     let answer: string[] = []
@@ -170,12 +183,21 @@ export default function GameEditor() {
   const handleSaveGame = async () => {
     setSaving(true)
     try {
+      const code = normalizeGameAccessCode(game?.code || '')
+      const codeError = gameAccessCodeValidationMessage(code)
+      if (codeError) {
+        alert(codeError)
+        return
+      }
+
+      await assertGameAccessCodeAvailable(code, gameId)
+
       const { error } = await enqueueCritical(async () =>
         supabase
           .from('games')
           .update({
             title: game?.title || '',
-            code: game?.code || '',
+            code,
             theme: game?.theme || 'default',
             finish_page_type: game?.finish_page_type || 'scoreboard',
             mask_board: game?.mask_board || false,
@@ -683,21 +705,32 @@ export default function GameEditor() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Код доступа (4-6 символов: буквы и цифры)</label>
-              <input
-                type="text"
-                value={safeGame.code || ''}
-                onChange={(e) => {
-                  // Разрешаем только буквы и цифры, от 4 до 6 символов
-                  const value = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6)
-                  setGame({ ...game, code: value })
-                }}
-                maxLength={6}
-                pattern="[a-zA-Z0-9]{4,6}"
-                className="w-full px-4 py-2 border rounded-lg text-center text-2xl font-bold"
-                placeholder="ABC123"
-              />
-              <p className="text-sm text-gray-600 mt-1">Поддерживаются коды от 4 до 6 символов (буквы и цифры)</p>
+              <label className="block text-sm font-medium mb-2">
+                Код доступа ({gameAccessCodeRangeLabel()} символов: буквы и цифры)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={safeGame.code || ''}
+                  onChange={(e) => {
+                    const value = normalizeGameAccessCode(e.target.value)
+                    setGame({ ...game, code: value })
+                  }}
+                  maxLength={GAME_ACCESS_CODE_MAX}
+                  className="flex-1 px-4 py-2 border rounded-lg text-center text-2xl font-bold"
+                  placeholder="ABC123"
+                />
+                <button
+                  type="button"
+                  onClick={() => setGame({ ...game, code: generateGameAccessCode() })}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 whitespace-nowrap"
+                >
+                  Сгенерировать
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Коды от {gameAccessCodeRangeLabel()} символов; при сохранении проверяется уникальность
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">Тема оформления</label>

@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { generateGameAccessCode } from './gameAccessCode'
+import { fetchGameAccessCodeDefaultLength } from './gameAccessCodeSettings'
 import { enqueueCritical } from './requestQueue'
 
 const DEFAULT_SCORING = {
@@ -34,9 +35,10 @@ export async function createNewGame(title = 'Новая игра'): Promise<Crea
   }
 
   let lastError: Error | null = null
+  const codeLength = await fetchGameAccessCodeDefaultLength()
 
   for (let attempt = 0; attempt < 8; attempt++) {
-    const code = generateGameAccessCode()
+    const code = generateGameAccessCode(codeLength)
     const { data, error } = await supabase
       .from('games')
       .insert({ ...base, code })

@@ -14,10 +14,17 @@ import {
 } from '../lib/adminAuth'
 import { enqueueBackground, enqueueCritical } from '../lib/requestQueue'
 import {
+  GAME_ACCESS_CODE_MAX,
+  GAME_ACCESS_CODE_MIN,
+  gameAccessCodeRangeLabel,
+  gameAccessCodeValidationMessage,
   generateGameAccessCode,
-  isValidGameAccessCode,
   normalizeGameAccessCode,
 } from '../lib/gameAccessCode'
+import {
+  fetchGameAccessCodeDefaultLength,
+  saveGameAccessCodeDefaultLength,
+} from '../lib/gameAccessCodeSettings'
 import ThemeManager from '../components/ThemeManager'
 import SettingsManager from '../components/SettingsManager'
 import QuestSettingsManager from '../components/QuestSettingsManager'
@@ -100,8 +107,13 @@ export default function AdminPanel() {
   const [cloneCode, setCloneCode] = useState('')
   const [cloneTheme, setCloneTheme] = useState('')
   const [cloneBusy, setCloneBusy] = useState(false)
-  const sessionAdmin = useGameSessionAdmin(selectedGameId)
+  const [autoCodeLength, setAutoCodeLength] = useState(6)
+  const [autoCodeLengthSaving, setAutoCodeLengthSaving] = useState(false)
+  useEffect(() => {
+    void fetchGameAccessCodeDefaultLength().then(setAutoCodeLength)
+  }, [])
   const [archiveGame, setArchiveGame] = useState<{ id: string; title: string } | null>(null)
+  const sessionAdmin = useGameSessionAdmin(selectedGameId)
 
   const refreshAdminSession = useCallback(async () => {
     setAdminSessionOk(await hasSupabaseAdminSession())
@@ -223,8 +235,24 @@ export default function AdminPanel() {
 
       if (error) throw error
       setSettings(data || [])
+      const length = await fetchGameAccessCodeDefaultLength()
+      setAutoCodeLength(length)
     } catch (err: any) {
       console.error('Ошибка загрузки настроек:', err)
+    }
+  }
+
+  const handleSaveAutoCodeLength = async () => {
+    setAutoCodeLengthSaving(true)
+    try {
+      const saved = await saveGameAccessCodeDefaultLength(autoCodeLength)
+      setAutoCodeLength(saved)
+      alert(`Длина автогенерации кодов сохранена: ${saved} символов`)
+      await loadSettings()
+    } catch (err: unknown) {
+      alert('Ошибка сохранения: ' + formatErrorMessage(err))
+    } finally {
+      setAutoCodeLengthSaving(false)
     }
   }
 
@@ -277,7 +305,7 @@ export default function AdminPanel() {
   const openCloneModal = (game: Game) => {
     setCloneSource(game)
     setCloneTitle(`Копия: ${game.title}`)
-    setCloneCode(generateGameAccessCode())
+    setCloneCode(generateGameAccessCode(autoCodeLength))
     setCloneTheme(game.theme || 'new-year')
     if (themes.length === 0) {
       void loadThemes()
@@ -305,8 +333,9 @@ export default function AdminPanel() {
       alert('Укажите название игры')
       return
     }
-    if (!isValidGameAccessCode(code)) {
-      alert('Код доступа: ровно 6 символов (латинские буквы A–Z и цифры 0–9)')
+    const codeError = gameAccessCodeValidationMessage(code)
+    if (codeError) {
+      alert(codeError)
       return
     }
 
@@ -790,7 +819,32 @@ export default function AdminPanel() {
             >
               <div className="space-y-4">
                 <DiagnosticLogsPanel />
-                {settings.filter(setting => setting.category === 'Общие').map(setting => (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <h4 className="font-medium text-gray-800 mb-1">Длина кодов при автосоздании</h4>
+                  <p className="text-sm text-gray-500 mb-3">
+                    При создании или клонировании игры код генерируется автоматически ({gameAccessCodeRangeLabel()} символов)
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="number"
+                      min={GAME_ACCESS_CODE_MIN}
+                      max={GAME_ACCESS_CODE_MAX}
+                      value={autoCodeLength}
+                      onChange={(e) => setAutoCodeLength(Number(e.target.value))}
+                      className="w-24 px-3 py-2 border border-gray-300 rounded-lg"
+                    />
+                    <span className="text-sm text-gray-600">символов (по умолчанию 6)</span>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveAutoCodeLength()}
+                      disabled={autoCodeLengthSaving}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+                    >
+                      {autoCodeLengthSaving ? 'Сохранение…' : 'Сохранить'}
+                    </button>
+                  </div>
+                </div>
+                {settings.filter(setting => setting.category === 'Общие' && setting.key !== 'game_access_code_length').map(setting => (
                   <div key={setting.key} className="flex items-center justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3">
@@ -812,7 +866,7 @@ export default function AdminPanel() {
                     </div>
                   </div>
                 ))}
-                {settings.filter(setting => setting.category === 'Общие').length === 0 && (
+                {settings.filter(setting => setting.category === 'Общие' && setting.key !== 'game_access_code_length').length === 0 && (
                   <p className="text-gray-500 text-sm">Нет настроек в этой категории</p>
                 )}
               </div>
@@ -1007,20 +1061,20 @@ export default function AdminPanel() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Код доступа (6 символов)
+                  Код доступа ({gameAccessCodeRangeLabel()} символов)
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={cloneCode}
                     onChange={(e) => setCloneCode(normalizeGameAccessCode(e.target.value))}
-                    maxLength={6}
+                    maxLength={GAME_ACCESS_CODE_MAX}
                     disabled={cloneBusy}
                     className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-mono text-lg tracking-widest uppercase focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                   <button
                     type="button"
-                    onClick={() => setCloneCode(generateGameAccessCode())}
+                    onClick={() => setCloneCode(generateGameAccessCode(autoCodeLength))}
                     disabled={cloneBusy}
                     className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
                   >

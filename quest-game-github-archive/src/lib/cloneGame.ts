@@ -1,5 +1,9 @@
 import { supabase } from './supabase'
-import { isValidGameAccessCode, normalizeGameAccessCode } from './gameAccessCode'
+import {
+  assertGameAccessCodeAvailable,
+  gameAccessCodeValidationMessage,
+  normalizeGameAccessCode,
+} from './gameAccessCode'
 import { QUESTION_DB_SELECT } from './prefetchGameQuestions'
 
 export type CloneGameInput = {
@@ -51,20 +55,12 @@ export async function cloneGame(input: CloneGameInput): Promise<ClonedGame> {
   if (!title) {
     throw new Error('Укажите название игры')
   }
-  if (!isValidGameAccessCode(code)) {
-    throw new Error('Код доступа: ровно 6 латинских букв или цифр (A–Z, 0–9)')
+  const codeError = gameAccessCodeValidationMessage(code)
+  if (codeError) {
+    throw new Error(codeError)
   }
 
-  const { data: existing, error: dupErr } = await supabase
-    .from('games')
-    .select('id')
-    .eq('code', code)
-    .maybeSingle()
-
-  if (dupErr) throw dupErr
-  if (existing) {
-    throw new Error(`Код «${code}» уже занят другой игрой. Выберите другой код.`)
-  }
+  await assertGameAccessCodeAvailable(code)
 
   const { data: source, error: sourceErr } = await supabase
     .from('games')

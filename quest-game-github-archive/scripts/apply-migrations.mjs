@@ -32,6 +32,9 @@ const ALL_FILES = [
   '016_game_state_closed.sql',
   '017_admin_session_rpc.sql',
   '018_security_s1_s5.sql',
+  '019_game_access_code_length.sql',
+  '020_game_code_varchar10.sql',
+  '021_drop_legacy_rls_allow_all.sql',
 ]
 
 const filterArg = process.argv[2]
