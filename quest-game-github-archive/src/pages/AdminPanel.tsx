@@ -86,7 +86,8 @@ export default function AdminPanel() {
   const [creatingGame, setCreatingGame] = useState(false)
   const [deletingGameIds, setDeletingGameIds] = useState<Set<string>>(new Set())
   const [adminSessionOk, setAdminSessionOk] = useState<boolean | null>(null)
-  const [activeTab, setActiveTab] = useState<'games' | 'settings'>('games')
+  const activeTab: 'games' | 'settings' =
+    searchParams.get('tab') === 'settings' ? 'settings' : 'games'
   const [selectedGameId, setSelectedGameId] = useState('')
   const gameControlsRef = useRef<HTMLDivElement>(null)
   const gamesLoadSeq = useRef(0)
@@ -151,11 +152,7 @@ export default function AdminPanel() {
   }, [games])
 
   useEffect(() => {
-    const tab = searchParams.get('tab')
     const gameId = searchParams.get('gameId')
-    if (tab === 'settings') {
-      setActiveTab('settings')
-    }
     if (gameId && games.some((g) => g.id === gameId)) {
       setSelectedGameId(gameId)
     }
@@ -163,7 +160,6 @@ export default function AdminPanel() {
 
   const openGameControls = useCallback((gameId: string) => {
     setSelectedGameId(gameId)
-    setActiveTab('settings')
     setSearchParams({ tab: 'settings', gameId })
     window.setTimeout(() => {
       gameControlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -179,6 +175,18 @@ export default function AdminPanel() {
 
     const abort = new AbortController()
     void (async () => {
+      const hasSession = await hasSupabaseAdminSession()
+      if (abort.signal.aborted) return
+      if (!hasSession) {
+        localStorage.removeItem('admin_logged_in')
+        localStorage.removeItem('admin_email')
+        localStorage.removeItem('admin_username')
+        localStorage.removeItem('admin_user_id')
+        resetAuthSessionCache()
+        navigate('/admin/login')
+        return
+      }
+
       // Список игр и проверка сессии — параллельно (auth.getSession не блокирует games).
       await Promise.all([refreshAdminSession(), loadGames(abort.signal)])
       if (abort.signal.aborted) return
@@ -477,7 +485,7 @@ export default function AdminPanel() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="flex gap-4 mb-6">
           <button
-            onClick={() => setActiveTab('games')}
+            onClick={() => setSearchParams({})}
             className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
               activeTab === 'games'
                 ? 'bg-purple-600 text-white'
@@ -488,7 +496,7 @@ export default function AdminPanel() {
             Игры
           </button>
           <button
-            onClick={() => setActiveTab('settings')}
+            onClick={() => setSearchParams({ tab: 'settings' })}
             className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
               activeTab === 'settings'
                 ? 'bg-purple-600 text-white'

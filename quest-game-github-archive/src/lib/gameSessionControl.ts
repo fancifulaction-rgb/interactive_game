@@ -2,7 +2,7 @@ import { agentDebugLog } from './debugLog'
 import { logAdminAction, nextAdminActionId } from './adminActionLog'
 import { supabase } from './supabase'
 import { enqueueCritical } from './requestQueue'
-import { archiveGameSession } from './eventArchive'
+import { archiveGameSession, type ArchiveGameSessionResult } from './eventArchive'
 import { fetchGameStateForGame, invalidateGameStateCache } from './fetchGameState'
 import { deleteAllTeamsForGame } from './adminTeams'
 import { broadcastSessionChanged, broadcastTeamsChanged } from './gameRealtime'
@@ -36,6 +36,7 @@ export type SessionActionResult = {
   gameState: GameStateRow
   teamsDeleted?: number
   skipReload?: boolean
+  archive?: ArchiveGameSessionResult
 }
 
 function isRpcUnavailable(err: unknown): boolean {
@@ -298,7 +299,7 @@ export async function finishGameSession(gameId: string): Promise<SessionActionRe
   if (!archive.success) {
     console.warn('Не удалось сохранить архив заезда:', archive.error)
   }
-  return result
+  return { ...result, archive }
 }
 
 export async function restartGameSessionToLobby(gameId: string): Promise<SessionActionResult> {

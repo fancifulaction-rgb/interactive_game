@@ -66,6 +66,16 @@ function runDeduped(
   return promise
 }
 
+/** Количество сохранённых вопросов (таблица questions, для админки). */
+export async function countQuestionsForGame(gameId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('questions')
+    .select('id', { count: 'exact', head: true })
+    .eq('game_id', gameId)
+  if (error) throw error
+  return count ?? 0
+}
+
 /** Лёгкий prefetch для лобби и регистрации. */
 export function prefetchQuestionsForGame(gameId: string): Promise<Record<string, unknown>[]> {
   return runDeduped(`${gameId}:lobby`, () =>

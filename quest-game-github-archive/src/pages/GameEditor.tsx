@@ -117,47 +117,45 @@ export default function GameEditor() {
     const gen = ++loadGenRef.current
     setLoading(true)
     try {
-      await enqueueCritical(async () => {
-        const { data: gameData, error: gameError } = await supabase
-          .from('games')
-          .select(
-            'id, title, code, theme, finish_page_type, mask_board, settings, total_time_sec, per_question_time_sec, scoring'
-          )
-          .eq('id', gameId)
-          .maybeSingle()
+      const { data: gameData, error: gameError } = await supabase
+        .from('games')
+        .select(
+          'id, title, code, theme, finish_page_type, mask_board, settings, total_time_sec, per_question_time_sec, scoring'
+        )
+        .eq('id', gameId)
+        .maybeSingle()
 
-        if (gameError) throw gameError
-        if (gen !== loadGenRef.current) return
-        if (!gameData) {
-          alert('Игра не найдена')
-          navigate('/admin/panel')
-          return
-        }
+      if (gameError) throw gameError
+      if (gen !== loadGenRef.current) return
+      if (!gameData) {
+        alert('Игра не найдена')
+        navigate('/admin/panel')
+        return
+      }
 
-        const scoring =
-          gameData.scoring && typeof gameData.scoring === 'object'
-            ? gameData.scoring
-            : {
-                p_base: 100,
-                k_diff: 1.0,
-                k_time: 0.5,
-                k_skip: 0.8,
-                k_fast: 1.2,
-                combo_bonus: 10,
-              }
-        if (gen !== loadGenRef.current) return
-        setGame({ ...gameData, scoring })
+      const scoring =
+        gameData.scoring && typeof gameData.scoring === 'object'
+          ? gameData.scoring
+          : {
+              p_base: 100,
+              k_diff: 1.0,
+              k_time: 0.5,
+              k_skip: 0.8,
+              k_fast: 1.2,
+              combo_bonus: 10,
+            }
+      if (gen !== loadGenRef.current) return
+      setGame({ ...gameData, scoring })
 
-        const { data: questionsData, error: questionsError } = await supabase
-          .from('questions')
-          .select(QUESTION_DB_SELECT)
-          .eq('game_id', gameId)
-          .order('question_number', { ascending: true })
+      const { data: questionsData, error: questionsError } = await supabase
+        .from('questions')
+        .select(QUESTION_DB_SELECT)
+        .eq('game_id', gameId)
+        .order('question_number', { ascending: true })
 
-        if (questionsError) throw questionsError
-        if (gen !== loadGenRef.current) return
-        setQuestions((questionsData || []).map((q) => normalizeQuestion(q)))
-      })
+      if (questionsError) throw questionsError
+      if (gen !== loadGenRef.current) return
+      setQuestions((questionsData || []).map((q) => normalizeQuestion(q)))
     } catch (err: unknown) {
       if (gen !== loadGenRef.current) return
       console.error('Ошибка загрузки:', err)

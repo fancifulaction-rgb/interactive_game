@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Pause,
   Play,
@@ -14,6 +14,7 @@ import {
   Lock,
 } from 'lucide-react'
 import { deleteGameCompletely } from '../lib/deleteGame'
+import { countQuestionsForGame } from '../lib/prefetchGameQuestions'
 import { ADMIN_SESSION_HINT, hasSupabaseAdminSession } from '../lib/adminAuth'
 import { clearAdminFetchBoost, markAdminFetchBoost } from '../lib/adminFetchBoost'
 import { formatErrorMessage } from '../lib/errorMessage'
@@ -77,10 +78,29 @@ export default function GameControls({
   const [loading, setLoading] = useState(false)
   const [loadingLabel, setLoadingLabel] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [questionCount, setQuestionCount] = useState<number | null>(null)
 
   const gameState = session?.gameState ?? null
   const teams = (session?.teams ?? []) as LobbyTeam[]
   const dataLoading = session?.dataLoading ?? false
+
+  useEffect(() => {
+    if (!selectedGameId) {
+      setQuestionCount(null)
+      return
+    }
+    let cancelled = false
+    void countQuestionsForGame(selectedGameId)
+      .then((count) => {
+        if (!cancelled) setQuestionCount(count)
+      })
+      .catch(() => {
+        if (!cancelled) setQuestionCount(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedGameId, gameState?.updated_at])
 
   const applyActionResult = async (result: SessionActionResult) => {
     if (!session) return
@@ -113,6 +133,15 @@ export default function GameControls({
       logAdminAction(actionId, 'rpc_done', { state: result.gameState.current_state })
       setLoadingLabel('Обновляем состояние…')
       await applyActionResult(result)
+      if (result.archive) {
+        if (result.archive.success) {
+          console.info('Архив заезда сохранён:', result.archive.archiveId)
+        } else {
+          alert(
+            `Игра завершена, но архив не сохранён: ${result.archive.error ?? 'неизвестная ошибка'}.\n\nПроверьте миграцию 014 (event_archive) и права доступа.`
+          )
+        }
+      }
       logAdminAction(actionId, 'done', {})
     } catch (err: unknown) {
       console.error('Ошибка управления игрой:', err)
@@ -132,7 +161,26 @@ export default function GameControls({
     }
   }
 
-  const startGame = () => runAction(() => startGameSession(selectedGameId))
+  const startGame = async () => {
+    if (!selectedGameId) return
+    let count = questionCount
+    if (count === null) {
+      try {
+        count = await countQuestionsForGame(selectedGameId)
+        setQuestionCount(count)
+      } catch {
+        alert('Не удалось проверить список вопросов. Попробуйте снова.')
+        return
+      }
+    }
+    if (count < 1) {
+      alert(
+        'Нельзя начать игру без вопросов.\n\nОткройте редактор (карандаш), добавьте вопросы и нажмите «Сохранить вопросы», затем снова «Начать игру».'
+      )
+      return
+    }
+    void runAction(() => startGameSession(selectedGameId))
+  }
   const openLobby = () => runAction(() => openLobbySession(selectedGameId), 'Открываем лобби…')
   const resumeGame = () => runAction(() => resumeGameSession(selectedGameId))
   const pauseGame = () => runAction(() => pauseGameSession(selectedGameId))
@@ -415,11 +463,28 @@ export default function GameControls({
                     </button>
                   )}
 
+                  {status === 'waiting' && questionCount === 0 && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      <p className="font-medium mb-1">Нет сохранённых вопросов</p>
+                      <p className="mb-2">
+                        Игра не может начаться, пока в редакторе не добавлены и сохранены вопросы
+                        («Сохранить вопросы»).
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/admin/game/${selectedGameId}/edit`)}
+                        className="text-purple-700 font-semibold hover:underline"
+                      >
+                        Открыть редактор →
+                      </button>
+                    </div>
+                  )}
+
                   {status === 'waiting' && (
                     <button
                       type="button"
-                      onClick={startGame}
-                      disabled={loading || deleting}
+                      onClick={() => void startGame()}
+                      disabled={loading || deleting || questionCount === 0}
                       className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Rocket className="w-5 h-5" />

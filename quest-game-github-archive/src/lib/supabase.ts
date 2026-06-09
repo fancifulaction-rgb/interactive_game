@@ -249,6 +249,8 @@ function fetchPriority(url: string, init?: RequestInit): number {
   }
   if (path.includes('/questions')) {
     if (isPlayerRoute() && isPlayerFetchBoostActive()) return 9
+    // Админка: questions GET ≥8 — иначе deadlock в enqueueCritical (GameEditor load).
+    if (isAdminRoute()) return 8
     return 7
   }
   if (path.includes('/answers')) return 6
