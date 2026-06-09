@@ -23,6 +23,7 @@
 
 ## Открытые напоминания (без дублирования каталога)
 
+- **Перед prod:** [TEST_BACKLOG.md](TEST_BACKLOG.md) § «Перед выпуском в prod» (migrate, security-smoke, npm audit)
 - Перед крупным мероприятием: [OPERATIONS.md](OPERATIONS.md)
 - Известные сетевые баги: [BUGS_FOUND.md](BUGS_FOUND.md)
 
