@@ -112,23 +112,21 @@ if (gameId) {
   else ok('IMP-UX-001', 'game_state=waiting')
 }
 
-// Регистрация команды (anon)
+// Регистрация команды (register_team — session token, IMP-SEC-007)
+let teamSessionToken = null
 if (gameId) {
-  const { data, error } = await supabase
-    .from('teams')
-    .insert({
-      game_id: gameId,
-      team_name: 'QA Команда',
-      captain_name: 'Автотест',
-      name: 'QA Команда',
-      total_score: 0,
-    })
-    .select()
-    .single()
-  if (error) fail('register', 'Регистрация команды', error)
+  const { data, error } = await supabase.rpc('register_team', {
+    p_game_id: gameId,
+    p_team_name: 'QA Команда',
+    p_captain_name: 'Автотест',
+  })
+  if (error) fail('register', 'Регистрация команды (register_team)', error)
   else {
-    teamId = data.id
-    ok('register', `Команда ${teamId.slice(0, 8)}`)
+    const row = data?.team ?? data
+    teamId = row?.id ?? null
+    teamSessionToken = data?.session_token ?? data?.sessionToken ?? null
+    if (!teamId || !teamSessionToken) fail('register', 'нет team id или session_token', '')
+    else ok('register', `Команда ${teamId.slice(0, 8)}`)
   }
 }
 
@@ -143,7 +141,7 @@ if (gameId) {
 }
 
 // Ответы + scoring
-if (gameId && teamId) {
+if (gameId && teamId && teamSessionToken) {
   const { data: d1, error: e1 } = await supabase.rpc('submit_auto_answer', {
     p_game_id: gameId,
     p_team_id: teamId,
@@ -152,6 +150,7 @@ if (gameId && teamId) {
     p_media_urls: [],
     p_time_spent: 8,
     p_hints_used: 0,
+    p_session_token: teamSessionToken,
   })
   if (e1) fail('IMP-LOG-001', 'submit_auto_answer Q1', e1)
   else ok('IMP-LOG-001', `Q1 очки: ${d1?.points_earned ?? '?'}`)
@@ -164,6 +163,7 @@ if (gameId && teamId) {
     p_media_urls: [],
     p_time_spent: 5,
     p_hints_used: 0,
+    p_session_token: teamSessionToken,
   })
   if (e2) fail('IMP-LOG-001-q2', 'submit_auto_answer Q2', e2)
   else ok('IMP-LOG-001-q2', `Q2 очки: ${d2?.points_earned ?? '?'}`)
