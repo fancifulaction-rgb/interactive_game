@@ -93,8 +93,15 @@ export default function AdminPanel() {
   const [creatingGame, setCreatingGame] = useState(false)
   const [deletingGameIds, setDeletingGameIds] = useState<Set<string>>(new Set())
   const [adminSessionOk, setAdminSessionOk] = useState<boolean | null>(null)
-  const activeTab: 'games' | 'settings' =
-    searchParams.get('tab') === 'settings' ? 'settings' : 'games'
+  type AdminTab = 'games' | 'manage' | 'settings'
+  const tabParam = searchParams.get('tab')
+  const gameIdParam = searchParams.get('gameId')
+  const activeTab: AdminTab =
+    tabParam === 'manage' || (tabParam === 'settings' && gameIdParam)
+      ? 'manage'
+      : tabParam === 'settings'
+        ? 'settings'
+        : 'games'
   const [selectedGameId, setSelectedGameId] = useState('')
   const gameControlsRef = useRef<HTMLDivElement>(null)
   const gamesLoadSeq = useRef(0)
@@ -170,12 +177,23 @@ export default function AdminPanel() {
     }
   }, [searchParams, games])
 
+  useEffect(() => {
+    if (tabParam === 'settings' && gameIdParam) {
+      setSearchParams({ tab: 'manage', gameId: gameIdParam }, { replace: true })
+    }
+  }, [tabParam, gameIdParam, setSearchParams])
+
   const openGameControls = useCallback((gameId: string) => {
     setSelectedGameId(gameId)
-    setSearchParams({ tab: 'settings', gameId })
+    setSearchParams({ tab: 'manage', gameId })
     window.setTimeout(() => {
       gameControlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 150)
+  }, [setSearchParams])
+
+  const handleManageGameSelect = useCallback((gameId: string) => {
+    setSelectedGameId(gameId)
+    setSearchParams({ tab: 'manage', gameId })
   }, [setSearchParams])
 
   useEffect(() => {
@@ -525,6 +543,21 @@ export default function AdminPanel() {
             Игры
           </button>
           <button
+            onClick={() => {
+              const gameId = selectedGameId || games[0]?.id
+              setSearchParams(gameId ? { tab: 'manage', gameId } : { tab: 'manage' })
+              refreshGamesList()
+            }}
+            className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
+              activeTab === 'manage'
+                ? 'bg-purple-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <Radio className="w-5 h-5 inline-block mr-2" />
+            Управление игрой
+          </button>
+          <button
             onClick={() => setSearchParams({ tab: 'settings' })}
             className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
               activeTab === 'settings'
@@ -642,7 +675,7 @@ export default function AdminPanel() {
                           className="p-3 sm:p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center"
                           title="Управление игрой"
                         >
-                          <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
+                          <Radio className="w-5 h-5 sm:w-6 sm:h-6" />
                         </button>
                         {game.code && (
                           <button
@@ -707,6 +740,104 @@ export default function AdminPanel() {
           </div>
         )}
 
+        {activeTab === 'manage' && (
+          <div className="space-y-8">
+            {adminSessionOk === false && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {ADMIN_SESSION_HINT}
+              </div>
+            )}
+
+            {gamesError && (
+              <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 flex flex-wrap items-center justify-between gap-2">
+                <span>Не удалось загрузить список игр: {gamesError}</span>
+                <button
+                  type="button"
+                  onClick={() => void loadGames()}
+                  className="px-3 py-1 rounded bg-red-100 hover:bg-red-200 text-red-900 font-medium"
+                >
+                  Повторить
+                </button>
+              </div>
+            )}
+
+            <div>
+              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <Radio className="w-6 h-6 text-purple-600" />
+                Управление игрой
+              </h2>
+              <h3 className="text-lg font-semibold text-gray-800 mt-4">Контроль игрового процесса</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Управляйте состоянием игры и отправляйте уведомления игрокам в реальном времени
+              </p>
+            </div>
+
+            <div ref={gameControlsRef} className="rounded-lg border border-purple-100 bg-purple-50/40 p-4 space-y-4">
+              <GameSessionAdminProvider value={sessionAdmin}>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Выберите игру
+                  </label>
+                  <select
+                    value={selectedGameId}
+                    onChange={(e) => handleManageGameSelect(e.target.value)}
+                    disabled={gamesLoading && games.length === 0}
+                    className="w-full max-w-xl px-4 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
+                  >
+                    {gamesLoading && games.length === 0 ? (
+                      <option value="">Загрузка игр…</option>
+                    ) : games.length === 0 ? (
+                      <option value="">Нет игр</option>
+                    ) : (
+                      games.map((game) => (
+                        <option key={game.id} value={game.id}>
+                          {game.title} ({game.code})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <GameControls
+                    games={games}
+                    selectedGameId={selectedGameId}
+                    onSelectedGameIdChange={handleManageGameSelect}
+                    gamesLoading={gamesLoading}
+                    gamesError={gamesError}
+                    onRefreshGames={refreshGamesList}
+                    hideGameSelector
+                  />
+                  <MessagePanel
+                    games={games}
+                    selectedGameId={selectedGameId}
+                    onSelectedGameIdChange={handleManageGameSelect}
+                    gamesLoading={gamesLoading}
+                    gamesError={gamesError}
+                    onRefreshGames={refreshGamesList}
+                    hideGameSelector
+                  />
+                </div>
+              </GameSessionAdminProvider>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-1 flex items-center gap-2">
+                <Users className="w-5 h-5 text-purple-600" />
+                Управление командами
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Удаляйте все команды или выбранные команды для очистки табло результатов
+              </p>
+              <TeamManagementManager
+                games={games}
+                gamesLoading={gamesLoading}
+                gamesError={gamesError}
+                onRefreshGames={refreshGamesList}
+              />
+            </div>
+          </div>
+        )}
+
         {activeTab === 'settings' && (
           <div className="space-y-6">
             <div className="mb-6">
@@ -717,68 +848,6 @@ export default function AdminPanel() {
             </div>
 
             {/* Раскрывающиеся секции настроек */}
-            <CollapsibleSection
-              title="Управление игрой"
-              icon={<Radio className="w-5 h-5" />}
-              onOpen={refreshGamesList}
-            >
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Контроль игрового процесса</h3>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Управляйте состоянием игры и отправляйте уведомления игрокам в реальном времени
-                  </p>
-                </div>
-                <div ref={gameControlsRef} className="rounded-lg border border-purple-100 bg-purple-50/40 p-4 space-y-4">
-                  <GameSessionAdminProvider value={sessionAdmin}>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Выберите игру
-                    </label>
-                    <select
-                      value={selectedGameId}
-                      onChange={(e) => setSelectedGameId(e.target.value)}
-                      disabled={gamesLoading && games.length === 0}
-                      className="w-full max-w-xl px-4 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
-                    >
-                      {gamesLoading && games.length === 0 ? (
-                        <option value="">Загрузка игр…</option>
-                      ) : games.length === 0 ? (
-                        <option value="">Нет игр</option>
-                      ) : (
-                        games.map((game) => (
-                          <option key={game.id} value={game.id}>
-                            {game.title} ({game.code})
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-                <div className="grid md:grid-cols-2 gap-6">
-                    <GameControls
-                      games={games}
-                      selectedGameId={selectedGameId}
-                      onSelectedGameIdChange={setSelectedGameId}
-                      gamesLoading={gamesLoading}
-                      gamesError={gamesError}
-                      onRefreshGames={refreshGamesList}
-                      hideGameSelector
-                    />
-                    <MessagePanel
-                      games={games}
-                      selectedGameId={selectedGameId}
-                      onSelectedGameIdChange={setSelectedGameId}
-                      gamesLoading={gamesLoading}
-                      gamesError={gamesError}
-                      onRefreshGames={refreshGamesList}
-                      hideGameSelector
-                    />
-                </div>
-                  </GameSessionAdminProvider>
-                </div>
-              </div>
-            </CollapsibleSection>
-
             <CollapsibleSection
               title="Время"
               icon={<Play className="w-5 h-5" />}
@@ -991,24 +1060,6 @@ export default function AdminPanel() {
                   Измените пароль администратора для повышения безопасности
                 </p>
                 <PasswordManager />
-              </div>
-            </CollapsibleSection>
-
-            <CollapsibleSection
-              title="Управление командами"
-              icon={<Users className="w-5 h-5" />}
-            >
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Удаление команд из табло</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Управляйте командами в играх: удаляйте все команды или выбранные команды для очистки табло результатов
-                </p>
-                <TeamManagementManager
-                  games={games}
-                  gamesLoading={gamesLoading}
-                  gamesError={gamesError}
-                  onRefreshGames={refreshGamesList}
-                />
               </div>
             </CollapsibleSection>
           </div>
