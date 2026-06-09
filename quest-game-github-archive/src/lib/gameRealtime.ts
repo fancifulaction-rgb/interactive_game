@@ -12,6 +12,7 @@ export function gameChannelName(gameId: string) {
 export const SCORE_BROADCAST_EVENT = 'score_update'
 export const TEAMS_BROADCAST_EVENT = 'teams_changed'
 export const SESSION_BROADCAST_EVENT = 'session_changed'
+export const MESSAGES_BROADCAST_EVENT = 'messages_changed'
 
 export type SessionBroadcastPayload = {
   current_state?: string | null
@@ -32,6 +33,7 @@ export type GameRealtimeHandlers = {
   onTeamsChanged?: () => void
   onSessionChanged?: (payload: SessionBroadcastPayload) => void
   onGameStateChanged?: (row: GameStateRow) => void
+  onMessagesChanged?: () => void
 }
 
 type HandlerSlot = symbol
@@ -42,6 +44,7 @@ type GameRealtimeHub = {
   teamsHandlers: Map<HandlerSlot, () => void>
   sessionHandlers: Map<HandlerSlot, (payload: SessionBroadcastPayload) => void>
   gameStateHandlers: Map<HandlerSlot, (row: GameStateRow) => void>
+  messagesHandlers: Map<HandlerSlot, () => void>
   refCount: number
 }
 
@@ -98,6 +101,10 @@ function dispatchGameState(hub: GameRealtimeHub, row: GameStateRow) {
   for (const fn of hub.gameStateHandlers.values()) fn(row)
 }
 
+function dispatchMessages(hub: GameRealtimeHub) {
+  for (const fn of hub.messagesHandlers.values()) fn()
+}
+
 function getOrCreateHub(gameId: string): GameRealtimeHub {
   const existing = hubs.get(gameId)
   if (existing) return existing
@@ -108,6 +115,7 @@ function getOrCreateHub(gameId: string): GameRealtimeHub {
     teamsHandlers: new Map(),
     sessionHandlers: new Map(),
     gameStateHandlers: new Map(),
+    messagesHandlers: new Map(),
     refCount: 0,
   }
 
@@ -123,6 +131,9 @@ function getOrCreateHub(gameId: string): GameRealtimeHub {
     })
     .on('broadcast', { event: SESSION_BROADCAST_EVENT }, ({ payload }) => {
       dispatchSession(hub, payload as SessionBroadcastPayload)
+    })
+    .on('broadcast', { event: MESSAGES_BROADCAST_EVENT }, () => {
+      dispatchMessages(hub)
     })
     .on(
       'postgres_changes',
@@ -205,6 +216,7 @@ export function attachGameRealtime(gameId: string, handlers: GameRealtimeHandler
   if (handlers.onTeamsChanged) hub.teamsHandlers.set(slot, handlers.onTeamsChanged)
   if (handlers.onSessionChanged) hub.sessionHandlers.set(slot, handlers.onSessionChanged)
   if (handlers.onGameStateChanged) hub.gameStateHandlers.set(slot, handlers.onGameStateChanged)
+  if (handlers.onMessagesChanged) hub.messagesHandlers.set(slot, handlers.onMessagesChanged)
   hub.refCount++
   // #region agent log
   agentDebugLog(
@@ -220,6 +232,7 @@ export function attachGameRealtime(gameId: string, handlers: GameRealtimeHandler
     hub.teamsHandlers.delete(slot)
     hub.sessionHandlers.delete(slot)
     hub.gameStateHandlers.delete(slot)
+    hub.messagesHandlers.delete(slot)
     hub.refCount--
     // #region agent log
     agentDebugLog(
@@ -347,6 +360,22 @@ export async function broadcastTeamsChanged(gameId: string): Promise<void> {
     )
     // #endregion
     console.warn('broadcastTeamsChanged failed:', err)
+  }
+}
+
+/** Новое сообщение администратора — мгновенная доставка игрокам. */
+export async function broadcastMessagesChanged(gameId: string): Promise<void> {
+  if (!gameId) return
+  try {
+    await withBroadcastChannel(gameId, (channel) =>
+      channelSendWithTimeout(channel, {
+        type: 'broadcast',
+        event: MESSAGES_BROADCAST_EVENT,
+        payload: { game_id: gameId },
+      })
+    )
+  } catch (err) {
+    console.warn('broadcastMessagesChanged failed:', err)
   }
 }
 

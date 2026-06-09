@@ -17,6 +17,8 @@ interface GameLobbyProps {
   gameCode?: string
   gameTitle: string
   myTeamName?: string | null
+  myTeamId?: string | null
+  onMyTeamRemoved?: () => void
 }
 
 function lobbyTeamsPollMs(): number {
@@ -41,18 +43,20 @@ function snapshotToLobbyTeams(
   }))
 }
 
-function mergeTeamsById(server: LobbyTeam[], seed: LobbyTeam[]): LobbyTeam[] {
-  const map = new Map<string, LobbyTeam>()
-  for (const t of seed) map.set(t.id, t)
-  for (const t of server) map.set(t.id, t)
-  return [...map.values()].sort((a, b) =>
-    displayName(a).localeCompare(displayName(b), 'ru')
-  )
+function sortLobbyTeams(list: LobbyTeam[]): LobbyTeam[] {
+  return [...list].sort((a, b) => displayName(a).localeCompare(displayName(b), 'ru'))
 }
 
 type LobbyConnectionState = 'checking' | 'ok' | 'offline'
 
-export default function GameLobby({ gameId, gameCode, gameTitle, myTeamName }: GameLobbyProps) {
+export default function GameLobby({
+  gameId,
+  gameCode,
+  gameTitle,
+  myTeamName,
+  myTeamId,
+  onMyTeamRemoved,
+}: GameLobbyProps) {
   const loadInFlightRef = useRef(false)
   const [connectionState, setConnectionState] = useState<LobbyConnectionState>('checking')
   const [teams, setTeams] = useState<LobbyTeam[]>(() => {
@@ -70,53 +74,40 @@ export default function GameLobby({ gameId, gameCode, gameTitle, myTeamName }: G
     loadInFlightRef.current = true
 
     const code = (gameCode ?? '').trim().toUpperCase()
-    const cachedSeed =
-      code && getGamePlayCache(code)?.teamsSnapshot?.length
-        ? snapshotToLobbyTeams(getGamePlayCache(code)!.teamsSnapshot!)
-        : []
 
     try {
     for (let attempt = 0; attempt < LOBBY_RETRY_DELAYS_MS.length; attempt++) {
       try {
         const data = await fetchLobbyTeams(gameId)
-        setTeams((prev) => {
-          const mergeBase = prev.length > 0 ? prev : cachedSeed
-          const merged =
-            data.length > 0
-              ? mergeTeamsById(data, mergeBase)
-              : prev.length > 0
-                ? prev
-                : cachedSeed.length > 0
-                  ? cachedSeed
-                  : prev
-          // #region agent log
-          agentDebugLog(
-            'GameLobby.tsx',
-            'loadTeams merged',
-            {
-              gameId,
-              serverCount: data.length,
-              prevCount: prev.length,
-              cachedSeedCount: cachedSeed.length,
-              mergedCount: merged.length,
-            },
-            'H6'
+        const next = sortLobbyTeams(data)
+        setTeams(next)
+        if (myTeamId && !next.some((t) => t.id === myTeamId)) {
+          onMyTeamRemoved?.()
+        }
+        // #region agent log
+        agentDebugLog(
+          'GameLobby.tsx',
+          'loadTeams ok',
+          {
+            gameId,
+            serverCount: data.length,
+            mergedCount: next.length,
+          },
+          'H6'
+        )
+        // #endregion
+        if (code) {
+          updateTeamsSnapshot(
+            code,
+            next.map((t) => ({
+              id: t.id,
+              team_name: displayName(t),
+              captain_name: t.captain_name ?? '',
+              avatar_url: null,
+              total_score: 0,
+            }))
           )
-          // #endregion
-          if (code && merged.length > 0) {
-            updateTeamsSnapshot(
-              code,
-              merged.map((t) => ({
-                id: t.id,
-                team_name: displayName(t),
-                captain_name: t.captain_name ?? '',
-                avatar_url: null,
-                total_score: 0,
-              }))
-            )
-          }
-          return merged
-        })
+        }
         setConnectionState(typeof navigator !== 'undefined' && navigator.onLine ? 'ok' : 'offline')
         return
       } catch (error) {
@@ -131,7 +122,7 @@ export default function GameLobby({ gameId, gameCode, gameTitle, myTeamName }: G
     } finally {
       loadInFlightRef.current = false
     }
-  }, [gameId, gameCode])
+  }, [gameId, gameCode, myTeamId, onMyTeamRemoved])
 
   useEffect(() => {
     const onOnline = () => {

@@ -5,8 +5,9 @@ import { uploadAnswerMediaQueued, cancelActiveStorageUpload } from '../lib/stora
 import { applyOptimisticTeamScoreBump, syncPlayerTeamScoreFromServer } from '../lib/teamScore'
 import { normalizeUserAnswers } from '../lib/answerGrading'
 import { enqueueSubmitAutoAnswer } from '../lib/submitAutoAnswer'
-import { postponeAvatarUntilAfterAnswer } from '../lib/pendingAvatar'
-import { recoverTeamSessionIfNeeded } from '../lib/teamRegister'
+import { postponeAvatarUntilAfterAnswer, flushPendingAvatarWhenIdle } from '../lib/pendingAvatar'
+import { attachGameRealtime } from '../lib/gameRealtime'
+import { recoverTeamSessionIfNeeded, isTransientNetworkError } from '../lib/teamRegister'
 import { getTeamSessionToken } from '../lib/teamSession'
 import { agentDebugLog, debugLog } from '../lib/debugLog'
 import { getGamePlayCache, isGamePlayCacheFresh, setGamePlayCache, gamePlayCacheNeedsFullQuestions } from '../lib/gamePlayCache'
@@ -37,6 +38,7 @@ import {
   getPlayAccessDenial,
   PLAY_MESSAGES,
   readStoredPlayerSession,
+  isTeamStillRegistered,
 } from '../lib/participantAccess'
 
 interface Question {
@@ -170,6 +172,12 @@ export default function GamePlay() {
     setAccessCheckNonce((n) => n + 1)
   }, [])
 
+  const handleMyTeamRemoved = useCallback(() => {
+    setAccessDenied(PLAY_MESSAGES.invalid_session)
+    setAccessDeniedRetryable(false)
+    setLoading(false)
+  }, [])
+
   useEffect(() => {
     setSessionKnown(false)
     setSessionUnknown(true)
@@ -236,6 +244,40 @@ export default function GamePlay() {
         setLoading(false)
       })
   }, [game?.id, teamId, gameCode, sessionUnknown, inLobby, accessCheckNonce])
+
+  useEffect(() => {
+    if (!game?.id || !teamId || !inLobby) return
+    const detach = attachGameRealtime(game.id as string, {
+      onTeamsChanged: () => setAccessCheckNonce((n) => n + 1),
+    })
+    return detach
+  }, [game?.id, teamId, inLobby])
+
+  /** Повторная проверка при teams_changed — playAccessPhaseRef блокирует основной effect в лобби. */
+  useEffect(() => {
+    if (!game?.id || !teamId || !inLobby || sessionUnknown || accessDenied) return
+
+    void isTeamStillRegistered(game.id as string, teamId)
+      .then((exists) => {
+        if (!exists) {
+          setAccessDenied(PLAY_MESSAGES.invalid_session)
+          setAccessDeniedRetryable(false)
+          setLoading(false)
+        }
+      })
+      .catch((err: unknown) => {
+        if (isTransientNetworkError(err)) return
+        setAccessDenied(PLAY_MESSAGES.access_check_failed)
+        setAccessDeniedRetryable(true)
+        setLoading(false)
+      })
+  }, [game?.id, teamId, inLobby, sessionUnknown, accessCheckNonce, accessDenied])
+
+  useEffect(() => {
+    if (!inLobby || !extrasReady) return
+    const timer = window.setTimeout(() => flushPendingAvatarWhenIdle(), 4000)
+    return () => window.clearTimeout(timer)
+  }, [inLobby, extrasReady])
 
   useEffect(() => {
     if (!game?.id || !teamId || getTeamSessionToken()) return
@@ -343,17 +385,21 @@ export default function GamePlay() {
     const gen = ++loadGenRef.current
     setLoading(true)
     void fetchQuestionsFullForGame(gameRow.id as string)
-      .then((q) => {
-        if (gen !== loadGenRef.current || !q.length) return
-        const mapped = mapQuestionsForPlay(q) as Question[]
-        applyPlayData(gameRow, mapped)
-        setGamePlayCache(code, {
-          game: gameRow,
-          questions: q,
-          teamsSnapshot: cached?.teamsSnapshot,
-          questionsLobbyOnly: false,
-        })
-        agentDebugLog('GamePlay.tsx', 'game start questions applied', { count: q.length }, 'H15')
+      .then(async (q) => {
+        if (gen !== loadGenRef.current) return
+        if (q.length > 0) {
+          const mapped = mapQuestionsForPlay(q) as Question[]
+          applyPlayData(gameRow, mapped)
+          setGamePlayCache(code, {
+            game: gameRow,
+            questions: q,
+            teamsSnapshot: cached?.teamsSnapshot,
+            questionsLobbyOnly: false,
+          })
+          agentDebugLog('GamePlay.tsx', 'game start questions applied', { count: q.length }, 'H15')
+          return
+        }
+        await loadGameData(gen, true)
       })
       .catch((err) => {
         agentDebugLog(
@@ -854,6 +900,8 @@ export default function GamePlay() {
         gameCode={gameCode}
         gameTitle={(game.title as string) || 'Квест'}
         myTeamName={myTeamName}
+        myTeamId={teamId}
+        onMyTeamRemoved={handleMyTeamRemoved}
       />,
       notificationOverlay
     )
