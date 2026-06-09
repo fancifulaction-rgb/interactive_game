@@ -4,6 +4,7 @@ import { enqueueCritical, enqueueBackground } from './requestQueue'
 import { buildGameScopedFileName } from './storagePaths'
 import { getTeamSessionToken } from './teamSession'
 import { assertUploadAllowed } from './uploadFileGuard'
+import { broadcastTeamsChanged } from './gameRealtime'
 
 const UPLOAD_TIMEOUT_MS = 90_000
 const UPLOAD_RETRIES = 3
@@ -150,8 +151,8 @@ export function uploadQuestionMediaQueued(file: File, gameId: string): Promise<s
   return enqueueCritical(() => uploadWithRetry('question-media', file, gameId, 'q-'))
 }
 
-export function uploadAvatarQueued(file: File, gameId: string): Promise<string> {
-  return enqueueBackground(() => uploadWithRetry('avatars', file, gameId, 'team-'))
+export function uploadAvatarQueued(file: File, gameId: string, teamId?: string): Promise<string> {
+  return enqueueBackground(() => uploadWithRetry('avatars', file, gameId, 'team-', teamId))
 }
 
 /** @deprecated Используйте uploadAnswerMediaQueued / uploadAvatarQueued */
@@ -169,25 +170,20 @@ export async function uploadToPublicBucket(
 
 /** Загрузка аватара после окончания игры; ошибки не блокируют UI. */
 export async function uploadTeamAvatarInBackground(teamId: string, file: File, gameId: string) {
-  try {
-    const avatarUrl = await uploadAvatarQueued(file, gameId)
-    const sessionToken = getTeamSessionToken()
-    if (!sessionToken) {
-      throw new Error('team session token missing')
-    }
-    await enqueueCritical(async () => {
-      const { error } = await supabase.rpc('update_team_avatar', {
-        p_team_id: teamId,
-        p_game_id: gameId,
-        p_session_token: sessionToken,
-        p_avatar_url: avatarUrl,
-      })
-      if (error) throw error
-    })
-    debugLog('storageUpload.ts', 'avatar background ok', { teamId }, 'B')
-  } catch (err) {
-    debugLog('storageUpload.ts', 'avatar background fail', {
-      err: err instanceof Error ? err.message : String(err),
-    }, 'B')
+  const avatarUrl = await uploadAvatarQueued(file, gameId, teamId)
+  const sessionToken = getTeamSessionToken()
+  if (!sessionToken) {
+    throw new Error('team session token missing')
   }
+  await enqueueCritical(async () => {
+    const { error } = await supabase.rpc('update_team_avatar', {
+      p_team_id: teamId,
+      p_game_id: gameId,
+      p_session_token: sessionToken,
+      p_avatar_url: avatarUrl,
+    })
+    if (error) throw error
+  })
+  void broadcastTeamsChanged(gameId)
+  debugLog('storageUpload.ts', 'avatar background ok', { teamId, avatarUrl }, 'B')
 }

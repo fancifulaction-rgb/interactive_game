@@ -8,7 +8,7 @@ export function hasPendingAvatar() {
   return pending !== null
 }
 
-/** Сохраняет аватар в памяти до успешной загрузки GamePlay (без параллельного Storage). */
+/** Сохраняет аватар в памяти до успешной загрузки (без параллельного Storage при регистрации). */
 export function schedulePendingAvatar(teamId: string, gameId: string, file: File) {
   pending = { teamId, gameId, file }
   debugLog('pendingAvatar.ts', 'scheduled', { teamId, size: file.size }, 'B')
@@ -26,13 +26,18 @@ export function flushPendingAvatarWhenIdle() {
 export async function runPendingAvatarUpload() {
   if (!pending || avatarFlushQueued) return
   avatarFlushQueued = true
-  const { teamId, gameId, file } = pending
+  const snapshot = pending
   pending = null
-  debugLog('pendingAvatar.ts', 'flush start', { teamId }, 'B')
+  debugLog('pendingAvatar.ts', 'flush start', { teamId: snapshot.teamId }, 'B')
   try {
-    await uploadTeamAvatarInBackground(teamId, file, gameId)
+    await uploadTeamAvatarInBackground(snapshot.teamId, snapshot.file, snapshot.gameId)
+  } catch {
+    pending = snapshot
   } finally {
     avatarFlushQueued = false
+    if (pending) {
+      window.setTimeout(() => flushPendingAvatarWhenIdle(), 8000)
+    }
   }
 }
 
@@ -40,4 +45,3 @@ export async function runPendingAvatarUpload() {
 export function postponeAvatarUntilAfterAnswer() {
   avatarFlushQueued = false
 }
-
