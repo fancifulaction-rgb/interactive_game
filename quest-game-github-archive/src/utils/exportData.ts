@@ -4,6 +4,30 @@ import { answerJsonToDisplayText } from '../lib/answerDisplay'
 // Динамические импорты для тяжелых библиотек
 let jsPDF: any, XLSX: any, saveAs: any
 
+const ROBOTO_TTF_URL =
+  'https://cdn.jsdelivr.net/gh/googlefonts/roboto@main/src/hinted/Roboto-Regular.ttf'
+let cyrillicFontReady = false
+
+async function ensureCyrillicPdfFont(doc: InstanceType<typeof jsPDF>): Promise<void> {
+  if (cyrillicFontReady) {
+    doc.setFont('Roboto', 'normal')
+    return
+  }
+  const response = await fetch(ROBOTO_TTF_URL)
+  if (!response.ok) throw new Error('Не удалось загрузить шрифт для PDF')
+  const buffer = await response.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  const base64 = btoa(binary)
+  doc.addFileToVFS('Roboto-Regular.ttf', base64)
+  doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal')
+  doc.setFont('Roboto', 'normal')
+  cyrillicFontReady = true
+}
+
 // Функция для загрузки библиотек по требованию
 async function loadExportLibraries() {
   if (!jsPDF) {
@@ -163,6 +187,7 @@ export async function exportToPDF(gameId: string, gameName: string, preloaded?: 
   const data = preloaded ?? (await loadExportData(gameId))
   
   const doc = new jsPDF()
+  await ensureCyrillicPdfFont(doc)
   let yPos = 20
 
   doc.setFontSize(18)
