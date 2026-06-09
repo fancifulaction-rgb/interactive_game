@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameSessionAdminContext } from '../contexts/GameSessionAdminContext'
+import { broadcastMessagesChanged } from '../lib/gameRealtime'
+import { priorityToMessageType, type MessagePriority } from '../lib/messageTypes'
 import { Send, AlertTriangle, Info, AlertCircle, Zap, Users, UserCheck } from 'lucide-react'
 
 interface MessagePanelGame {
@@ -25,7 +27,7 @@ interface Team {
   avatar_url: string | null
 }
 
-type Priority = 'низкий' | 'средний' | 'высокий' | 'критический'
+type Priority = MessagePriority
 type RecipientType = 'all' | 'selective'
 
 const priorityConfig = {
@@ -130,15 +132,15 @@ export default function MessagePanel({
       const adminUsername = localStorage.getItem('admin_username') || 'Администратор'
 
       // Создать сообщение
+      const messageType = priorityToMessageType(priority, hasSound)
+
       const { data: messageData, error: messageError } = await supabase
         .from('messages')
         .insert({
           game_id: selectedGameId,
           content: message.trim(),
-          message_type: hasSound ? 'alert' : 'info',
+          message_type: messageType,
           sender: adminUsername,
-          // Дополнительные поля, которые мы можем сохранять в JSON или добавить колонки, 
-          // но пока используем существующую схему messages
         })
         .select('id')
         .single()
@@ -159,7 +161,9 @@ export default function MessagePanel({
         if (recipientsError) throw recipientsError
       }
 
-      const recipientText = recipientType === 'all' 
+      void broadcastMessagesChanged(selectedGameId)
+
+      const recipientText = recipientType === 'all'
         ? 'всем игрокам' 
         : `${selectedTeamIds.length} команде(ам)`
       

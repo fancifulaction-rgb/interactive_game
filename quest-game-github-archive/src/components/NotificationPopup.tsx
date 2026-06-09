@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { attachGameRealtime } from '../lib/gameRealtime'
 import { getTeamRegistrationSince } from '../lib/playerSession'
-import { enqueueBackground } from '../lib/requestQueue'
+import { priorityFromMessageType } from '../lib/messageTypes'
 import { X, Info, AlertCircle, AlertTriangle, Zap } from 'lucide-react'
 
 type Priority = 'низкий' | 'средний' | 'высокий' | 'критический'
@@ -14,19 +15,14 @@ interface GameMessage {
   message_recipients?: { team_id: string }[]
 }
 
-const priorityFromType = (messageType: string): Priority => {
-  if (messageType === 'alert') return 'высокий'
-  if (messageType === 'warning') return 'критический'
-  if (messageType === 'info') return 'средний'
-  return 'низкий'
-}
-
 const priorityConfig = {
   низкий: { icon: Info, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-300' },
   средний: { icon: AlertCircle, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-300' },
   высокий: { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-300' },
   критический: { icon: Zap, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-300' },
 }
+
+const MESSAGE_POLL_MS = 5000
 
 interface NotificationPopupProps {
   gameId: string
@@ -37,22 +33,54 @@ export default function NotificationPopup({ gameId }: NotificationPopupProps) {
     (GameMessage & { priority: Priority; has_sound: boolean })[]
   >([])
   const teamId = localStorage.getItem('team_id')
+  const shownIdsRef = useRef<Set<string>>(new Set())
+  const loadInFlightRef = useRef(false)
 
-  useEffect(() => {
-    if (!gameId || !teamId) return
-    void enqueueBackground(() => loadUnreadMessages())
-  }, [gameId, teamId])
-
-  const isMessageForTeam = (msg: GameMessage, tid: string): boolean => {
+  const isMessageForTeam = useCallback((msg: GameMessage, tid: string): boolean => {
     const recipients = msg.message_recipients ?? []
     if (recipients.length === 0) return true
     return recipients.some((r) => r.team_id === tid)
-  }
+  }, [])
 
-  const loadUnreadMessages = async () => {
-    if (!teamId) return
-    const since = getTeamRegistrationSince()
-    if (!since) return
+  const showNotification = useCallback((message: GameMessage) => {
+    if (shownIdsRef.current.has(message.id)) return
+    shownIdsRef.current.add(message.id)
+
+    const priority = priorityFromMessageType(message.message_type)
+    setNotifications((prev) => {
+      if (prev.some((n) => n.id === message.id)) return prev
+      return [
+        ...prev,
+        {
+          ...message,
+          priority,
+          has_sound: message.message_type === 'alert' || message.message_type === 'warning',
+        },
+      ]
+    })
+
+    if (message.message_type === 'alert' || message.message_type === 'warning') {
+      try {
+        const ctx = new AudioContext()
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.frequency.value = message.message_type === 'warning' ? 880 : 660
+        gain.gain.value = 0.08
+        osc.start()
+        osc.stop(ctx.currentTime + 0.15)
+      } catch {
+        /* optional sound */
+      }
+    }
+  }, [])
+
+  const loadUnreadMessages = useCallback(async () => {
+    if (!teamId || loadInFlightRef.current) return
+    loadInFlightRef.current = true
+
+    const since = getTeamRegistrationSince() ?? new Date(0).toISOString()
 
     try {
       const [messagesResult, readsResult] = await Promise.all([
@@ -62,7 +90,7 @@ export default function NotificationPopup({ gameId }: NotificationPopupProps) {
           .eq('game_id', gameId)
           .gte('created_at', since)
           .order('created_at', { ascending: false })
-          .limit(10),
+          .limit(20),
         supabase.from('message_reads').select('message_id').eq('team_id', teamId),
       ])
 
@@ -75,27 +103,44 @@ export default function NotificationPopup({ gameId }: NotificationPopupProps) {
 
       const readIds = new Set((readsResult.data ?? []).map((r) => r.message_id))
 
-      for (const msg of messagesResult.data ?? []) {
+      for (const msg of (messagesResult.data ?? []).reverse()) {
         if (readIds.has(msg.id)) continue
         if (!isMessageForTeam(msg, teamId)) continue
         showNotification(msg)
       }
     } catch (err) {
       console.error('Ошибка загрузки сообщений:', err)
+    } finally {
+      loadInFlightRef.current = false
     }
-  }
+  }, [gameId, teamId, isMessageForTeam, showNotification])
 
-  const showNotification = (message: GameMessage) => {
-    if (notifications.some((n) => n.id === message.id)) return
-    setNotifications((prev) => [
-      ...prev,
-      {
-        ...message,
-        priority: priorityFromType(message.message_type),
-        has_sound: message.message_type === 'alert',
+  useEffect(() => {
+    if (!gameId || !teamId) return
+
+    void loadUnreadMessages()
+
+    const detachRt = attachGameRealtime(gameId, {
+      onMessagesChanged: () => {
+        void loadUnreadMessages()
       },
-    ])
-  }
+    })
+
+    const pollTimer = setInterval(() => {
+      void loadUnreadMessages()
+    }, MESSAGE_POLL_MS)
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadUnreadMessages()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      detachRt()
+      clearInterval(pollTimer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [gameId, teamId, loadUnreadMessages])
 
   const dismissNotification = async (messageId: string) => {
     if (teamId) {
