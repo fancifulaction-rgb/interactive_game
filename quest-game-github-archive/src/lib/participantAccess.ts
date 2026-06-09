@@ -1,5 +1,4 @@
 import { supabase } from './supabase'
-import { debugLog } from './debugLog'
 import { readFinishNavigateState } from './finishNavigation'
 import { fetchGameStateForGame, invalidateGameStateCache } from './fetchGameState'
 import { isTransientNetworkError } from './teamRegister'
@@ -78,6 +77,15 @@ export async function getPlayAccessDenial(
   const state = await fetchPlayAccessState(gameId)
   if (!state) return PLAY_MESSAGES.invalid_session
   if (isGameClosed(state)) return PLAY_MESSAGES.closed
+
+  try {
+    const exists = await teamExistsInGame(gameId, teamId)
+    if (!exists) return PLAY_MESSAGES.invalid_session
+  } catch (err) {
+    if (isTransientNetworkError(err)) throw err
+    return PLAY_MESSAGES.access_check_failed
+  }
+
   if (isGameInLobby(state)) return null
 
   const { data: team, error } = await supabase
@@ -110,11 +118,41 @@ export type FinishAccessOptions = {
   hasFinishNavigation?: boolean
 }
 
+export type FinishAccessResult = {
+  allowed: boolean
+  message?: string
+  /** Игра ещё идёт, но команда уже прошла свои вопросы — ждём финиша ведущего. */
+  waitingForFinish?: boolean
+  /** Показывать очки на player scoreboard (после финиша или если табло не скрыто). */
+  showScores?: boolean
+  gameId?: string
+}
+
+async function teamExistsInGame(gameId: string, teamId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('teams')
+    .select('id')
+    .eq('id', teamId)
+    .eq('game_id', gameId)
+    .maybeSingle()
+
+  if (error) {
+    if (isTransientNetworkError(error)) throw error
+    return false
+  }
+  return !!data
+}
+
+/** Команда ещё зарегистрирована в этой игре (не удалена админом). */
+export async function isTeamStillRegistered(gameId: string, teamId: string): Promise<boolean> {
+  return teamExistsInGame(gameId, teamId)
+}
+
 /** Доступ к табло / поздравлению только для участников этой сессии. */
 export async function verifyFinishPageAccess(
   gameCode: string,
   options?: FinishAccessOptions
-): Promise<{ allowed: boolean; message?: string }> {
+): Promise<FinishAccessResult> {
   const session = readStoredPlayerSession(gameCode)
   if (!session) {
     return { allowed: false, message: FINISH_MESSAGES.no_session }
@@ -133,7 +171,7 @@ export async function verifyFinishPageAccess(
 
   if (gameError || !game) {
     if (hasFinishNavigation && (gameError ? isTransientNetworkError(gameError) : persistedFinish)) {
-      return { allowed: true }
+      return { allowed: true, showScores: false, waitingForFinish: true }
     }
     return { allowed: false, message: 'Игра не найдена.' }
   }
@@ -146,7 +184,12 @@ export async function verifyFinishPageAccess(
 
   if (teamError || !team || team.game_id !== game.id) {
     if (hasFinishNavigation && teamError && isTransientNetworkError(teamError)) {
-      return { allowed: true }
+      return {
+        allowed: true,
+        showScores: false,
+        waitingForFinish: true,
+        gameId: game.id,
+      }
     }
     return { allowed: false, message: FINISH_MESSAGES.wrong_team }
   }
@@ -156,26 +199,20 @@ export async function verifyFinishPageAccess(
     state = await fetchGameStateForGame(game.id)
   } catch (err) {
     if (hasFinishNavigation && isTransientNetworkError(err)) {
-      return { allowed: true }
+      return {
+        allowed: true,
+        showScores: false,
+        waitingForFinish: true,
+        gameId: game.id,
+      }
     }
     return { allowed: false, message: 'Не удалось проверить состояние игры.' }
   }
 
   const hideUntilFinish = isScoreboardHiddenUntilFinish(game.settings)
+  const gameFinished = isGameFinished(state)
 
-  if (hasFinishNavigation && !hideUntilFinish) {
-    // #region agent log
-    debugLog(
-      'participantAccess.ts',
-      'finish access via navigation',
-      { code, teamId: session.teamId },
-      'H3'
-    )
-    // #endregion
-    return { allowed: true }
-  }
-
-  if (isGameFinished(state)) {
+  if (gameFinished) {
     const startedAt = getGameStartedAt(state)
     if (
       startedAt &&
@@ -184,19 +221,23 @@ export async function verifyFinishPageAccess(
     ) {
       return { allowed: false, message: FINISH_MESSAGES.not_participant }
     }
-    return { allowed: true }
+    return { allowed: true, showScores: true, gameId: game.id }
   }
 
   if (hideUntilFinish) {
-    // #region agent log
-    debugLog(
-      'participantAccess.ts',
-      'finish blocked hide_until_finish',
-      { code, gameFinished: false },
-      'H3'
-    )
-    // #endregion
+    if (hasFinishNavigation) {
+      return {
+        allowed: true,
+        waitingForFinish: true,
+        showScores: false,
+        gameId: game.id,
+      }
+    }
     return { allowed: false, message: FINISH_MESSAGES.not_yet }
+  }
+
+  if (hasFinishNavigation) {
+    return { allowed: true, showScores: true, gameId: game.id }
   }
 
   const sessionToken = getTeamSessionToken()
@@ -207,7 +248,7 @@ export async function verifyFinishPageAccess(
       p_session_token: sessionToken,
     })
     if (!answersError && hasAnswers === true) {
-      return { allowed: true }
+      return { allowed: true, showScores: true, gameId: game.id }
     }
   }
 

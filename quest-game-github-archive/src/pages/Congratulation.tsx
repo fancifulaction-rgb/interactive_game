@@ -7,6 +7,7 @@ import { tryUploadAvatarAfterGame } from '../lib/avatarAfterGame'
 import { Trophy, Star } from 'lucide-react'
 import AccessDeniedScreen from '../components/AccessDeniedScreen'
 import { verifyFinishPageAccess } from '../lib/participantAccess'
+import { useGameFinishedRedirect } from '../lib/useGameFinishedRedirect'
 
 const GAME_SELECT = 'id, code, title, theme, finish_page_type'
 
@@ -22,7 +23,11 @@ export default function Congratulation() {
   const [game, setGame] = useState<{ title?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [accessDenied, setAccessDenied] = useState<string | null>(null)
+  const [waitingForFinish, setWaitingForFinish] = useState(false)
+  const [accessGameId, setAccessGameId] = useState<string | undefined>()
   const [finalTexts, setFinalTexts] = useState<Record<string, string>>({})
+
+  useGameFinishedRedirect(gameCode, accessGameId, waitingForFinish)
 
   useEffect(() => {
     const code = (gameCode ?? '').trim().toUpperCase()
@@ -37,9 +42,13 @@ export default function Congratulation() {
       })
       if (!access.allowed) {
         setAccessDenied(access.message ?? 'Доступ закрыт')
+        setWaitingForFinish(false)
         setLoading(false)
         return
       }
+
+      setWaitingForFinish(!!access.waitingForFinish)
+      setAccessGameId(access.gameId)
 
       if (finishState?.game) {
         setGame({ title: finishState.game.title as string })
@@ -103,6 +112,25 @@ export default function Congratulation() {
         }}
       >
         <div className="text-white text-xl">Загрузка...</div>
+      </div>
+    )
+  }
+
+  if (waitingForFinish) {
+    return (
+      <div
+        className="min-h-screen theme-background flex items-center justify-center p-4"
+        style={{
+          background:
+            'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
+        }}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">{game?.title || 'Игра'}</h1>
+          <p className="text-gray-600">
+            Квест пройден! Итоговое табло откроется, когда ведущий завершит игру для всех команд.
+          </p>
+        </div>
       </div>
     )
   }

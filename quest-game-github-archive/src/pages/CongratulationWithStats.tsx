@@ -7,6 +7,7 @@ import { tryUploadAvatarAfterGame } from '../lib/avatarAfterGame'
 import { Trophy, Crown } from 'lucide-react'
 import AccessDeniedScreen from '../components/AccessDeniedScreen'
 import { verifyFinishPageAccess } from '../lib/participantAccess'
+import { useGameFinishedRedirect } from '../lib/useGameFinishedRedirect'
 
 interface Team {
   id: string
@@ -30,7 +31,11 @@ export default function CongratulationWithStats() {
   const [team, setTeam] = useState<Team | null>(null)
   const [loading, setLoading] = useState(true)
   const [accessDenied, setAccessDenied] = useState<string | null>(null)
+  const [waitingForFinish, setWaitingForFinish] = useState(false)
+  const [accessGameId, setAccessGameId] = useState<string | undefined>()
   const [finalTexts, setFinalTexts] = useState<Record<string, string>>({})
+
+  useGameFinishedRedirect(gameCode, accessGameId, waitingForFinish)
 
   useEffect(() => {
     const code = (gameCode ?? '').trim().toUpperCase()
@@ -45,9 +50,13 @@ export default function CongratulationWithStats() {
       })
       if (!access.allowed) {
         setAccessDenied(access.message ?? 'Доступ закрыт')
+        setWaitingForFinish(false)
         setLoading(false)
         return
       }
+
+      setWaitingForFinish(!!access.waitingForFinish)
+      setAccessGameId(access.gameId)
 
       if (finishState?.game) {
         setGame({
@@ -136,6 +145,25 @@ export default function CongratulationWithStats() {
     )
   }
 
+  if (waitingForFinish) {
+    return (
+      <div
+        className="min-h-screen theme-background flex items-center justify-center p-4"
+        style={{
+          background:
+            'linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)',
+        }}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">{game?.title || 'Игра'}</h1>
+          <p className="text-gray-600">
+            Квест пройден! Статистика и табло откроются, когда ведущий завершит игру.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       className="min-h-screen theme-background flex items-center justify-center p-4 relative overflow-hidden"
@@ -178,8 +206,9 @@ export default function CongratulationWithStats() {
                 </div>
               </div>
               <div className="text-center bg-white rounded-xl p-4 shadow-sm">
-                <div className="text-4xl font-bold text-orange-600">{team.total_score}</div>
-                <div className="text-sm text-gray-600">{getText('points_label', 'очков')}</div>
+                <p className="text-sm text-gray-600">
+                  Итоговые очки доступны организатору на admin scoreboard.
+                </p>
               </div>
             </div>
           )}
