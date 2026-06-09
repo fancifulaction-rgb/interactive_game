@@ -12,12 +12,9 @@ dist/
 
 # Logs & caches
 *.log
-diagnostic/client-logs.jsonl
-diagnostic/devices-manifest.json
-diagnostic/devices/*.jsonl
-diagnostic/exports/*.json
-!diagnostic/devices/.gitkeep
-!diagnostic/exports/.gitkeep
+# DEV diagnostics (local logs, exports, QA snapshots — not in git)
+diagnostic/**
+!diagnostic/.gitkeep
 npm-debug.log*
 .vite/
 .cache/
