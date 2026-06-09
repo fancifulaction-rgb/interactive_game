@@ -35,6 +35,21 @@ const expectFail = (msg, error) => {
   return false
 }
 
+/** RLS: PostgREST часто не отдаёт error, а просто 0 строк — это тоже отказ. */
+const expectRlsBlock = (msg, { error, data }) => {
+  if (error) {
+    ok(msg)
+    return true
+  }
+  if (Array.isArray(data) && data.length === 0) {
+    ok(`${msg} (0 rows)`)
+    return true
+  }
+  console.log('✗', msg, 'ожидали отказ RLS, получили изменение')
+  bugs.push(msg)
+  return false
+}
+
 const code = 'Z' + Date.now().toString(36).slice(-5).toUpperCase()
 let gameId, teamId, token
 
@@ -148,8 +163,12 @@ ok('register_team выдаёт session_token')
 
 // S3: anon UPDATE teams
 {
-  const { error } = await supabase.from('teams').update({ total_score: 99999 }).eq('id', teamId)
-  expectFail('S3: anon UPDATE teams.total_score → отказ RLS', error)
+  const { data, error } = await supabase
+    .from('teams')
+    .update({ total_score: 99999 })
+    .eq('id', teamId)
+    .select('id')
+  expectRlsBlock('S3: anon UPDATE teams.total_score → отказ RLS', { error, data })
 }
 
 // S3: anon INSERT answers
