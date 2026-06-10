@@ -4,6 +4,8 @@ import { getGamePlayCache, updateTeamsSnapshot } from '../lib/gamePlayCache'
 import { attachGameRealtime } from '../lib/gameRealtime'
 import { agentDebugLog } from '../lib/debugLog'
 import { fetchLobbyTeams } from '../lib/fetchLobbyTeams'
+import { fetchGameSchedule, isScheduleActive, type GameScheduleConfig } from '../lib/gameSchedule'
+import ScheduleCountdown from './ScheduleCountdown'
 
 type LobbyTeam = {
   id: string
@@ -67,6 +69,27 @@ export default function GameLobby({
       ? snapshotToLobbyTeams(cached.teamsSnapshot)
       : []
   })
+  const [schedule, setSchedule] = useState<GameScheduleConfig | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchGameSchedule(gameId)
+      .then((s) => {
+        if (!cancelled) setSchedule(s)
+      })
+      .catch(() => {
+        if (!cancelled) setSchedule(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [gameId])
+
+  const scheduledAutoStart =
+    schedule &&
+    isScheduleActive(schedule) &&
+    schedule.gameStartsAt &&
+    !schedule.gameStartedAt
 
   const loadTeams = useCallback(async () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
@@ -180,10 +203,24 @@ export default function GameLobby({
         </div>
 
         <div className="bg-purple-50 rounded-xl p-4 mb-6 text-center">
-          <p className="text-gray-700">
-            Ожидайте сигнала ведущего. Игра начнётся, когда администратор нажмёт{' '}
-            <span className="font-semibold">«Начать игру»</span>.
-          </p>
+          {scheduledAutoStart ? (
+            <>
+              <p className="text-gray-700">
+                Игра начнётся автоматически в запланированное время. Дождитесь старта — вам не
+                нужно ничего нажимать.
+              </p>
+              <ScheduleCountdown
+                targetIso={schedule!.gameStartsAt}
+                label="До начала игры"
+                className="mt-3 text-purple-800 font-medium"
+              />
+            </>
+          ) : (
+            <p className="text-gray-700">
+              Ожидайте сигнала ведущего. Игра начнётся, когда администратор нажмёт{' '}
+              <span className="font-semibold">«Начать игру»</span>.
+            </p>
+          )}
           <div
             className={`flex items-center justify-center gap-2 mt-3 text-sm font-medium ${
               connectionState === 'offline' ? 'text-amber-800' : 'text-purple-700'

@@ -2,6 +2,7 @@ import {
   type AnswerGradingConfig,
   parseAnswerGradingFromSettings,
 } from './answerGradingConfig'
+import type { GameScheduleConfig } from './gameSchedule'
 
 export type { AnswerGradingConfig } from './answerGradingConfig'
 export {
@@ -34,6 +35,8 @@ export type GameSettingsJson = {
   show_question_elapsed?: boolean
   /** Показывать игрокам обратный отсчёт на текущем вопросе */
   show_question_countdown?: boolean
+  /** Ручной / автоматический формат открытия лобби и старта игры */
+  schedule?: GameScheduleConfig
 }
 
 export function parseGameSettings(raw: unknown): GameSettingsJson {

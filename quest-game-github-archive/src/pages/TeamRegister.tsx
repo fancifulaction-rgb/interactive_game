@@ -27,7 +27,16 @@ import { markPlayerFetchBoost } from '../lib/playerFetchBoost'
 import { markRegistrationSubmitBoost } from '../lib/registrationBoost'
 import { saveTeamSession, writeStoredCurrentTeam } from '../lib/playerSession'
 import { rememberSessionSnapshot } from '../lib/gameSessionSnapshotCache'
-import { getRegistrationDenialFromState } from '../lib/participantAccess'
+import {
+  getRegistrationDenialFromState,
+  getScheduledLobbyOpensMessage,
+} from '../lib/participantAccess'
+import {
+  fetchGameSchedule,
+  isScheduleActive,
+  type GameScheduleConfig,
+} from '../lib/gameSchedule'
+import ScheduleCountdown from '../components/ScheduleCountdown'
 import {
   GAME_ACCESS_CODE_MAX,
   GAME_ACCESS_CODE_MIN,
@@ -63,6 +72,8 @@ export default function TeamRegister() {
   const [copyHint, setCopyHint] = useState('')
   const [reportHint, setReportHint] = useState('')
   const [loading, setLoading] = useState(false)
+  const [schedulePreview, setSchedulePreview] = useState<GameScheduleConfig | null>(null)
+  const [registrationClosedPreview, setRegistrationClosedPreview] = useState(false)
   const submittingRef = useRef(false)
   const submitSpinnerStartedRef = useRef(0)
 
@@ -89,22 +100,37 @@ export default function TeamRegister() {
   // Прогрев lookup игры и game_state до submit — debounce, иначе каждый символ = GET в очередь.
   useEffect(() => {
     const normalizedCode = normalizeGameAccessCode(gameCode)
-    if (normalizedCode.length < GAME_ACCESS_CODE_MIN) return
+    if (normalizedCode.length < GAME_ACCESS_CODE_MIN) {
+      setSchedulePreview(null)
+      setRegistrationClosedPreview(false)
+      return
+    }
 
-    const warmState = (gameId: string) => {
-      void fetchGameStateForGame(gameId).catch(() => {})
+    const warmGame = async (gameId: string) => {
+      try {
+        const [stateRow, schedule] = await Promise.all([
+          fetchGameStateForGame(gameId).catch(() => null),
+          fetchGameSchedule(gameId).catch(() => null),
+        ])
+        if (schedule) setSchedulePreview(schedule)
+        const denial = getRegistrationDenialFromState(stateRow, { schedule })
+        setRegistrationClosedPreview(!!denial)
+      } catch {
+        setSchedulePreview(null)
+        setRegistrationClosedPreview(false)
+      }
     }
 
     const cached = getCachedGameByCode(normalizedCode)
     if (cached) {
-      warmState(cached.id)
+      void warmGame(cached.id)
       return
     }
 
     const timer = setTimeout(() => {
       void fetchGameByCode(normalizedCode)
         .then((game) => {
-          if (game) warmState(game.id)
+          if (game) void warmGame(game.id)
         })
         .catch(() => {})
     }, 400)
@@ -203,8 +229,12 @@ export default function TeamRegister() {
         )
 
         let stateRow = null
+        let schedule: GameScheduleConfig | null = null
         try {
-          stateRow = await fetchGameStateForGame(gameData!.id, { force: true })
+          ;[stateRow, schedule] = await Promise.all([
+            fetchGameStateForGame(gameData!.id, { force: true }),
+            fetchGameSchedule(gameData!.id).catch(() => null),
+          ])
         } catch (stateErr: unknown) {
           const stateMsg = stateErr instanceof Error ? stateErr.message : String(stateErr)
           agentDebugLog(
@@ -221,7 +251,7 @@ export default function TeamRegister() {
             }
           }
         }
-        const registrationDenial = getRegistrationDenialFromState(stateRow)
+        const registrationDenial = getRegistrationDenialFromState(stateRow, { schedule })
         agentDebugLog(
           'TeamRegister.tsx',
           'state check',
@@ -463,6 +493,20 @@ export default function TeamRegister() {
                 />
               </div>
             </div>
+
+            {schedulePreview &&
+              isScheduleActive(schedulePreview) &&
+              registrationClosedPreview &&
+              getScheduledLobbyOpensMessage(schedulePreview) && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  <p>{getScheduledLobbyOpensMessage(schedulePreview)}</p>
+                  <ScheduleCountdown
+                    targetIso={schedulePreview.lobbyOpensAt}
+                    label="До открытия регистрации"
+                    className="mt-2 text-blue-800"
+                  />
+                </div>
+              )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">

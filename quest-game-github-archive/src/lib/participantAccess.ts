@@ -11,6 +11,12 @@ import {
   isGameInLobby,
   type GameStateRow,
 } from './gameSessionState'
+import {
+  formatScheduleMoment,
+  isScheduleActive,
+  msUntil,
+  type GameScheduleConfig,
+} from './gameSchedule'
 
 export const REGISTRATION_MESSAGES = {
   closed: 'Игра пока закрыта. Дождитесь объявления ведущего.',
@@ -42,15 +48,30 @@ export function readStoredPlayerSession(gameCode: string): { teamId: string } | 
   return { teamId }
 }
 
+export function getScheduledLobbyOpensMessage(
+  schedule: GameScheduleConfig | null | undefined
+): string | null {
+  if (!schedule || !isScheduleActive(schedule)) return null
+  if (!schedule.lobbyOpensAt || schedule.lobbyOpenedAt) return null
+  const ms = msUntil(schedule.lobbyOpensAt)
+  if (ms === null || ms <= 0) return null
+  return `Регистрация откроется автоматически ${formatScheduleMoment(
+    schedule.lobbyOpensAt,
+    schedule.timezone
+  )}.`
+}
+
 /** Можно ли регистрировать новую команду (только комната ожидания). */
 export function getRegistrationDenialFromState(
   state: GameStateRow | null | undefined,
-  options?: { stateFetchFailed?: boolean }
+  options?: { stateFetchFailed?: boolean; schedule?: GameScheduleConfig | null }
 ): string | null {
   if (!state) {
     return options?.stateFetchFailed ? REGISTRATION_MESSAGES.unknown : REGISTRATION_MESSAGES.closed
   }
-  if (isGameClosed(state)) return REGISTRATION_MESSAGES.closed
+  if (isGameClosed(state)) {
+    return getScheduledLobbyOpensMessage(options?.schedule) ?? REGISTRATION_MESSAGES.closed
+  }
   if (isGameFinished(state)) return REGISTRATION_MESSAGES.finished
   if (!isGameInLobby(state)) return REGISTRATION_MESSAGES.started
   return null

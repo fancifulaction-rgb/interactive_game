@@ -14,6 +14,7 @@ import {
   Lock,
   QrCode,
   ClipboardCheck,
+  CalendarClock,
 } from 'lucide-react'
 import { deleteGameCompletely } from '../lib/deleteGame'
 import { countQuestionsForGame } from '../lib/prefetchGameQuestions'
@@ -45,6 +46,7 @@ import { countFinishedTeams, teamProgressMap } from '../lib/teamProgress'
 import RegistrationQrCard from './RegistrationQrCard'
 import AnswerModerationPanel from './AnswerModerationPanel'
 import TeamProgressBadge from './TeamProgressBadge'
+import GameSchedulePanel from './GameSchedulePanel'
 import { useNavigate } from 'react-router-dom'
 
 export interface GameControlsGame {
@@ -509,6 +511,20 @@ export default function GameControls({
                 </p>
               )}
             </div>
+          </ManageSectionCard>
+
+          <ManageSectionCard
+            id="game-schedule"
+            title="Формат игры"
+            icon={CalendarClock}
+            iconClassName="text-indigo-600"
+          >
+            <GameSchedulePanel
+              gameId={selectedGameId}
+              onScheduleChanged={() => {
+                void session?.refreshGameState(true)
+              }}
+            />
           </ManageSectionCard>
 
           <ManageSectionCard
