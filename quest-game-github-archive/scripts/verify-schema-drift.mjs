@@ -5,27 +5,11 @@
 import { createClient } from '@supabase/supabase-js'
 import { loadEnv } from './lib/load-env.mjs'
 import { connectPostgres } from './lib/db-connect.mjs'
+import { ALL_MIGRATION_FILES } from './lib/migration-manifest.mjs'
 
 loadEnv()
 
-const EXPECTED_MIGRATIONS = [
-  '001_initial_schema.sql',
-  '002_add_cascade_delete_rules.sql',
-  '003_settings_and_themes.sql',
-  '004_production_schema.sql',
-  '005_seed_from_backup.sql',
-  '008_teams_app_columns.sql',
-  '009_game_state_pause.sql',
-  '010_increment_team_score.sql',
-  '011_tighten_rls.sql',
-  '012_storage_delete_authenticated.sql',
-  '013_submit_auto_answer.sql',
-  '014_event_archive.sql',
-  '015_final_page_texts_and_integrity.sql',
-  '016_game_state_closed.sql',
-  '017_admin_session_rpc.sql',
-  '018_security_s1_s5.sql',
-]
+const EXPECTED_MIGRATIONS = ALL_MIGRATION_FILES
 
 const REQUIRED_COLUMNS = [
   ['game_state', 'is_paused'],
@@ -35,6 +19,7 @@ const REQUIRED_COLUMNS = [
   ['answers', 'time_spent'],
   ['questions', 'question_number'],
   ['teams', 'session_token_hash'],
+  ['teams', 'finished_at'],
 ]
 
 const LEGACY_COLUMNS = [['answers', 'question_id'], ['answers', 'answer_text']]
@@ -48,6 +33,10 @@ const REQUIRED_RPC = [
   'admin_set_session',
   'register_team',
   'verify_team_session',
+  'resolve_answer_grading',
+  'mark_team_finished',
+  'get_team_progress',
+  'try_auto_finish_game',
 ]
 
 const REQUIRED_VIEWS = ['questions_player']

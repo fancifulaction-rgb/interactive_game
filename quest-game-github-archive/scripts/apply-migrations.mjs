@@ -10,36 +10,14 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { loadEnv } from './lib/load-env.mjs'
 import { connectPostgres } from './lib/db-connect.mjs'
+import { ALL_MIGRATION_FILES } from './lib/migration-manifest.mjs'
+import { reconcileMigrationJournal } from './lib/migration-fingerprints.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = loadEnv()
 const migrationsDir = path.join(root, 'docs', 'sql-migrations')
 
-const ALL_FILES = [
-  '001_initial_schema.sql',
-  '002_add_cascade_delete_rules.sql',
-  '003_settings_and_themes.sql',
-  '004_production_schema.sql',
-  '005_seed_from_backup.sql',
-  '008_teams_app_columns.sql',
-  '009_game_state_pause.sql',
-  '010_increment_team_score.sql',
-  '011_tighten_rls.sql',
-  '012_storage_delete_authenticated.sql',
-  '013_submit_auto_answer.sql',
-  '014_event_archive.sql',
-  '015_final_page_texts_and_integrity.sql',
-  '016_game_state_closed.sql',
-  '017_admin_session_rpc.sql',
-  '018_security_s1_s5.sql',
-  '019_game_access_code_length.sql',
-  '020_game_code_varchar10.sql',
-  '021_drop_legacy_rls_allow_all.sql',
-  '022_answer_grading.sql',
-  '023_answer_grading_phase2.sql',
-  '024_answer_grading_phase3.sql',
-  '025_answer_grading_phase4.sql',
-]
+const ALL_FILES = ALL_MIGRATION_FILES
 
 const filterArg = process.argv[2]
 let files = ALL_FILES
@@ -77,42 +55,19 @@ const { client, label } = await connectPostgres({ preferDdl: true })
 console.log(`Подключение: ${label}`)
 
 async function bootstrapLedgerIfNeeded(client) {
-  const applied = await getApplied(client)
-  if (applied.size > 0) return
-
-  const { rows: dbRows } = await client.query(`
-    SELECT EXISTS (
-      SELECT 1 FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = 'games'
-    ) AS has_games
-  `)
-  if (!dbRows[0]?.has_games) return
-
-  const filesToMark = [...ALL_FILES]
-  const { rows: fnRows } = await client.query(`
-    SELECT 1 FROM pg_proc p
-    JOIN pg_namespace n ON p.pronamespace = n.oid
-    WHERE n.nspname = 'public' AND p.proname = 'submit_auto_answer'
-    LIMIT 1
-  `)
-  if (!fnRows.length) {
-    filesToMark.splice(filesToMark.indexOf('013_submit_auto_answer.sql'), 1)
-  }
-
-  for (const file of filesToMark) {
-    await client.query(
-      `INSERT INTO public.schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING`,
-      [file]
+  const { marked } = await reconcileMigrationJournal(client)
+  if (marked.length) {
+    console.log(
+      `Журнал синхронизирован с БД: ${marked.length} миграций отмечены без SQL (${marked.join(', ')})`
     )
   }
-  console.log(
-    `Существующая БД: в журнале отмечено ${filesToMark.length} миграций (без повторного 001…012).`
-  )
 }
 
 try {
   await ensureLedger(client)
-  await bootstrapLedgerIfNeeded(client)
+  if (!filterArg) {
+    await bootstrapLedgerIfNeeded(client)
+  }
   const applied = await getApplied(client)
 
   let ran = 0

@@ -24,6 +24,7 @@
     "db:verify": "node scripts/verify-db.mjs",
     "db:verify-schema": "node scripts/verify-schema-drift.mjs",
     "db:migrate": "node scripts/apply-migrations.mjs",
+    "db:sync-journal": "node scripts/sync-migration-journal.mjs",
     "db:migrate:013": "node scripts/run-sql.mjs docs/sql-migrations/013_submit_auto_answer.sql",
     "db:migrate:014": "node scripts/run-sql.mjs docs/sql-migrations/014_event_archive.sql",
     "db:migrate:015": "node scripts/run-sql.mjs docs/sql-migrations/015_final_page_texts_and_integrity.sql",
