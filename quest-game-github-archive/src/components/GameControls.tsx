@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Pause,
   Play,
@@ -12,6 +12,8 @@ import {
   Eraser,
   DoorOpen,
   Lock,
+  QrCode,
+  ClipboardCheck,
 } from 'lucide-react'
 import { deleteGameCompletely } from '../lib/deleteGame'
 import { countQuestionsForGame } from '../lib/prefetchGameQuestions'
@@ -63,6 +65,30 @@ type LobbyTeam = {
   team_name: string | null
   name: string | null
   captain_name: string | null
+}
+
+function ManageSectionCard({
+  id,
+  title,
+  icon: Icon,
+  iconClassName = 'text-purple-600',
+  children,
+}: {
+  id?: string
+  title: string
+  icon: typeof AlertCircle
+  iconClassName?: string
+  children: ReactNode
+}) {
+  return (
+    <section id={id} className="bg-white rounded-lg shadow p-6">
+      <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+        <Icon className={`w-5 h-5 ${iconClassName}`} />
+        {title}
+      </h3>
+      {children}
+    </section>
+  )
 }
 
 export default function GameControls({
@@ -310,21 +336,18 @@ export default function GameControls({
 
   if (!session && selectedGameId) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 text-sm text-gray-500">
-        Загрузка контекста управления игрой…
+      <div className="space-y-4" id="game-controls">
+        <ManageSectionCard title="Загрузка…" icon={AlertCircle}>
+          <p className="text-sm text-gray-500">Загрузка контекста управления игрой…</p>
+        </ManageSectionCard>
       </div>
     )
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6" id="game-controls">
-      <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-        <AlertCircle className="w-5 h-5" />
-        Управление игрой
-      </h3>
-
-      <div className="space-y-4">
-        {!hideGameSelector && (
+    <div className="space-y-4" id="game-controls">
+      {!hideGameSelector && (
+        <ManageSectionCard title="Выбор игры" icon={AlertCircle}>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Выберите игру</label>
             <select
@@ -360,15 +383,24 @@ export default function GameControls({
               </p>
             )}
           </div>
-        )}
+        </ManageSectionCard>
+      )}
 
-        {selectedGame && (
-          <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+      {selectedGame && (
+        <>
+          <ManageSectionCard
+            id="game-registration"
+            title="QR для регистрации команд"
+            icon={QrCode}
+            iconClassName="text-indigo-600"
+          >
             {dataLoading && !gameState && (
               <p className="text-sm text-gray-500 text-center py-2">Загрузка данных игры…</p>
             )}
-            {selectedGame.code && status === 'waiting' && (
-              <>
+            {!selectedGame.code ? (
+              <p className="text-sm text-gray-500">У игры нет кода доступа.</p>
+            ) : status === 'waiting' ? (
+              <div className="space-y-3">
                 <RegistrationQrCard gameCode={selectedGame.code} gameTitle={selectedGame.title} />
                 <button
                   type="button"
@@ -378,11 +410,9 @@ export default function GameControls({
                   <Presentation className="w-4 h-4" />
                   Открыть экран ведущего (проектор)
                 </button>
-              </>
-            )}
-            {selectedGame.code && status !== 'waiting' && (
-              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
-                <p className="font-medium text-gray-800 mb-1">QR регистрации</p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
                 <p>
                   {status === 'closed'
                     ? 'Лобби закрыто. Откройте лобби, чтобы показать QR и принимать команды.'
@@ -400,220 +430,244 @@ export default function GameControls({
                 )}
               </div>
             )}
+          </ManageSectionCard>
 
-            <div className="flex items-center justify-between">
+          <ManageSectionCard
+            id="game-lobby"
+            title="Комната ожидания"
+            icon={DoorOpen}
+            iconClassName="text-purple-600"
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Статус</p>
+                  <p className={`text-lg font-bold ${statusColor}`}>{statusLabel}</p>
+                </div>
+                <div className="text-right flex items-center gap-2 text-gray-700">
+                  <Users className="w-4 h-4" />
+                  <span className="font-semibold">{teams.length}</span>
+                  <span className="text-sm text-gray-500">команд</span>
+                </div>
+              </div>
+
               <div>
-                <p className="text-sm text-gray-600">Статус</p>
-                <p className={`text-lg font-bold ${statusColor}`}>{statusLabel}</p>
+                <p className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  Зарегистрированные команды ({teams.length})
+                </p>
+                {teams.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-2">Пока никто не зарегистрировался</p>
+                ) : (
+                  <ul className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {teams.map((t) => (
+                      <li
+                        key={t.id}
+                        className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm"
+                      >
+                        <span className="font-medium text-gray-800">{teamDisplayName(t)}</span>
+                        {t.captain_name && (
+                          <span className="text-gray-500 text-xs ml-2 truncate">{t.captain_name}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-              <div className="text-right flex items-center gap-2 text-gray-700">
-                <Users className="w-4 h-4" />
-                <span className="font-semibold">{teams.length}</span>
-                <span className="text-sm text-gray-500">команд</span>
-              </div>
-            </div>
 
-            <div>
-              <p className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Зарегистрированные команды ({teams.length})
-              </p>
-              {teams.length === 0 ? (
-                <p className="text-sm text-gray-500 py-2">Пока никто не зарегистрировался</p>
-              ) : (
-                <ul className="space-y-1.5 max-h-40 overflow-y-auto">
-                  {teams.map((t) => (
-                    <li
-                      key={t.id}
-                      className="flex items-center justify-between px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
-                    >
-                      <span className="font-medium text-gray-800">{teamDisplayName(t)}</span>
-                      {t.captain_name && (
-                        <span className="text-gray-500 text-xs ml-2 truncate">{t.captain_name}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+              {status === 'waiting' && teams.length === 0 && (
+                <p className="text-xs text-amber-700 text-center">
+                  Команды ещё не зарегистрировались — можно начать, когда будете готовы.
+                </p>
               )}
             </div>
+          </ManageSectionCard>
 
-            {missingStartedAt && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <p className="font-medium mb-1">Совет: время старта сессии не зафиксировано</p>
-                <p className="text-amber-800">
-                  Если эта игра уже шла до обновления системы, метка{' '}
-                  <span className="font-medium">startedAt</span> могла не записаться. Один раз нажмите{' '}
-                  <span className="font-medium">«Запустить заново»</span>, затем{' '}
-                  <span className="font-medium">«Начать игру»</span>.
-                </p>
-              </div>
-            )}
+          <ManageSectionCard
+            id="game-session-control"
+            title="Управление игрой"
+            icon={AlertCircle}
+          >
+            <div className="space-y-3">
+              {missingStartedAt && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-medium mb-1">Совет: время старта сессии не зафиксировано</p>
+                  <p className="text-amber-800">
+                    Если эта игра уже шла до обновления системы, метка{' '}
+                    <span className="font-medium">startedAt</span> могла не записаться. Один раз нажмите{' '}
+                    <span className="font-medium">«Запустить заново»</span>, затем{' '}
+                    <span className="font-medium">«Начать игру»</span>.
+                  </p>
+                </div>
+              )}
 
-            <div className="space-y-2">
-              {statusKnown && status && (
-                <>
-                  {(status === 'closed' || status === 'finished') && (
-                    <button
-                      type="button"
-                      onClick={openLobby}
-                      disabled={loading || deleting}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <DoorOpen className="w-5 h-5" />
-                      Открыть лобби
-                    </button>
-                  )}
-
-                  {status === 'waiting' && questionCount === 0 && (
-                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                      <p className="font-medium mb-1">Нет сохранённых вопросов</p>
-                      <p className="mb-2">
-                        Игра не может начаться, пока в редакторе не добавлены и сохранены вопросы
-                        («Сохранить вопросы»).
-                      </p>
+              <div className="space-y-2">
+                {statusKnown && status && (
+                  <>
+                    {(status === 'closed' || status === 'finished') && (
                       <button
                         type="button"
-                        onClick={() => navigate(`/admin/game/${selectedGameId}/edit`)}
-                        className="text-purple-700 font-semibold hover:underline"
+                        onClick={openLobby}
+                        disabled={loading || deleting}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Открыть редактор →
+                        <DoorOpen className="w-5 h-5" />
+                        Открыть лобби
                       </button>
-                    </div>
-                  )}
+                    )}
 
-                  {status === 'waiting' && (
-                    <button
-                      type="button"
-                      onClick={() => void startGame()}
-                      disabled={loading || deleting || questionCount === 0}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Rocket className="w-5 h-5" />
-                      Начать игру
-                    </button>
-                  )}
+                    {status === 'waiting' && questionCount === 0 && (
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <p className="font-medium mb-1">Нет сохранённых вопросов</p>
+                        <p className="mb-2">
+                          Игра не может начаться, пока в редакторе не добавлены и сохранены вопросы
+                          («Сохранить вопросы»).
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/admin/game/${selectedGameId}/edit`)}
+                          className="text-purple-700 font-semibold hover:underline"
+                        >
+                          Открыть редактор →
+                        </button>
+                      </div>
+                    )}
 
-                  {status === 'playing' && (
-                    <button
-                      type="button"
-                      onClick={pauseGame}
-                      disabled={loading || deleting}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Pause className="w-5 h-5" />
-                      Приостановить
-                    </button>
-                  )}
+                    {status === 'waiting' && (
+                      <button
+                        type="button"
+                        onClick={() => void startGame()}
+                        disabled={loading || deleting || questionCount === 0}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Rocket className="w-5 h-5" />
+                        Начать игру
+                      </button>
+                    )}
 
-                  {status === 'paused' && (
-                    <button
-                      type="button"
-                      onClick={resumeGame}
-                      disabled={loading || deleting}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Play className="w-5 h-5" />
-                      Продолжить игру
-                    </button>
-                  )}
+                    {status === 'playing' && (
+                      <button
+                        type="button"
+                        onClick={pauseGame}
+                        disabled={loading || deleting}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Pause className="w-5 h-5" />
+                        Приостановить
+                      </button>
+                    )}
 
-                  {(status === 'playing' || status === 'paused') && (
-                    <button
-                      type="button"
-                      onClick={finishGame}
-                      disabled={loading || deleting}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Flag className="w-4 h-4" />
-                      Завершить игру
-                    </button>
-                  )}
+                    {status === 'paused' && (
+                      <button
+                        type="button"
+                        onClick={resumeGame}
+                        disabled={loading || deleting}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Play className="w-5 h-5" />
+                        Продолжить игру
+                      </button>
+                    )}
 
-                  {status !== 'waiting' && status !== 'closed' && (
-                    <button
-                      type="button"
-                      onClick={restartToLobby}
-                      disabled={loading || deleting}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      Запустить заново (сброс очков и ответов)
-                    </button>
-                  )}
+                    {(status === 'playing' || status === 'paused') && (
+                      <button
+                        type="button"
+                        onClick={finishGame}
+                        disabled={loading || deleting}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Flag className="w-4 h-4" />
+                        Завершить игру
+                      </button>
+                    )}
 
-                  {status !== 'closed' && (
-                    <button
-                      type="button"
-                      onClick={closeGame}
-                      disabled={loading || deleting}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Lock className="w-4 h-4" />
-                      Закрыть игру
-                    </button>
-                  )}
-                </>
+                    {status !== 'waiting' && status !== 'closed' && (
+                      <button
+                        type="button"
+                        onClick={restartToLobby}
+                        disabled={loading || deleting}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Запустить заново (сброс очков и ответов)
+                      </button>
+                    )}
+
+                    {status !== 'closed' && (
+                      <button
+                        type="button"
+                        onClick={closeGame}
+                        disabled={loading || deleting}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Lock className="w-4 h-4" />
+                        Закрыть игру
+                      </button>
+                    )}
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void restartFromScratch()}
+                  disabled={loading || deleting}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Eraser className="w-4 h-4" />
+                  Начать с нуля (удалить все команды)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void deleteSelectedGame()}
+                  disabled={loading || deleting}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {deleting ? 'Удаление…' : 'Удалить игру'}
+                </button>
+              </div>
+
+              {loading && loadingLabel && (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+                  {loadingLabel}
+                </p>
               )}
 
-              <button
-                type="button"
-                onClick={() => void restartFromScratch()}
-                disabled={loading || deleting}
-                className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Eraser className="w-4 h-4" />
-                Начать с нуля (удалить все команды)
-              </button>
+              {status === 'paused' && gameState?.paused_at && (
+                <p className="text-xs text-gray-500 text-center">
+                  Приостановлена {new Date(gameState.paused_at).toLocaleString('ru-RU')}
+                  {gameState.paused_by ? ` · ${gameState.paused_by}` : ''}
+                </p>
+              )}
 
-              <button
-                type="button"
-                onClick={() => void deleteSelectedGame()}
-                disabled={loading || deleting}
-                className="w-full flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-medium border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Trash2 className="w-4 h-4" />
-                {deleting ? 'Удаление…' : 'Удалить игру'}
-              </button>
+              {status === 'finished' && (
+                <p className="text-xs text-gray-500 text-center">
+                  Игроки перенаправлены на финальный экран. «Открыть лобби» — новый заезд; «Закрыть
+                  игру» — доступ по коду будет недоступен.
+                </p>
+              )}
+
+              {status === 'closed' && (
+                <p className="text-xs text-gray-500 text-center">
+                  Игра закрыта. Участники не могут войти по коду, пока вы не нажмёте «Открыть лобби».
+                </p>
+              )}
             </div>
+          </ManageSectionCard>
 
-            {selectedGameId && (
-              <AnswerModerationPanel gameId={selectedGameId} />
-            )}
-
-            {loading && loadingLabel && (
-              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-                {loadingLabel}
-              </p>
-            )}
-
-            {status === 'paused' && gameState?.paused_at && (
-              <p className="text-xs text-gray-500 text-center">
-                Приостановлена {new Date(gameState.paused_at).toLocaleString('ru-RU')}
-                {gameState.paused_by ? ` · ${gameState.paused_by}` : ''}
-              </p>
-            )}
-
-            {status === 'finished' && (
-              <p className="text-xs text-gray-500 text-center">
-                Игроки перенаправлены на финальный экран. «Открыть лобби» — новый заезд; «Закрыть игру» —
-                доступ по коду будет недоступен.
-              </p>
-            )}
-
-            {status === 'closed' && (
-              <p className="text-xs text-gray-500 text-center">
-                Игра закрыта. Участники не могут войти по коду, пока вы не нажмёте «Открыть лобби».
-              </p>
-            )}
-
-            {status === 'waiting' && teams.length === 0 && (
-              <p className="text-xs text-amber-700 text-center">
-                Команды ещё не зарегистрировались — можно начать, когда будете готовы.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+          {selectedGameId && (
+            <ManageSectionCard
+              id="game-answer-moderation"
+              title="Модерация ответов"
+              icon={ClipboardCheck}
+              iconClassName="text-indigo-600"
+            >
+              <AnswerModerationPanel gameId={selectedGameId} embedded />
+            </ManageSectionCard>
+          )}
+        </>
+      )}
     </div>
   )
 }

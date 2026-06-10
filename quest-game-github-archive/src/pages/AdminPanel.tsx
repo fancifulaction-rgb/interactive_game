@@ -979,7 +979,7 @@ export default function AdminPanel() {
 
             <div className="rounded-lg border border-purple-100 bg-purple-50/40 p-4 space-y-4">
               <GameSessionAdminProvider value={sessionAdmin}>
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid lg:grid-cols-2 gap-6 items-start">
                   <GameControls
                     games={games}
                     selectedGameId={selectedGameId}

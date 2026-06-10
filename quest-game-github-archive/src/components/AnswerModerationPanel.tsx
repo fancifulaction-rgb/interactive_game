@@ -41,9 +41,14 @@ function formatAnswerPreview(answer: unknown): string {
 
 interface AnswerModerationPanelProps {
   gameId: string
+  /** Внутри карточки GameControls — без дублирующего заголовка и внешней рамки */
+  embedded?: boolean
 }
 
-export default function AnswerModerationPanel({ gameId }: AnswerModerationPanelProps) {
+export default function AnswerModerationPanel({
+  gameId,
+  embedded = false,
+}: AnswerModerationPanelProps) {
   const [tab, setTab] = useState<ModerationTab>('pending')
   const [pendingRows, setPendingRows] = useState<PendingAnswerRow[]>([])
   const [posthocRows, setPosthocRows] = useState<PosthocAnswerRow[]>([])
@@ -123,17 +128,33 @@ export default function AnswerModerationPanel({ gameId }: AnswerModerationPanelP
     tab === 'pending' ? pendingRows.length : posthocRows.length
 
   return (
-    <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 px-4 py-3 space-y-3">
+    <div
+      className={
+        embedded
+          ? 'space-y-3'
+          : 'rounded-lg border border-indigo-200 bg-indigo-50/60 px-4 py-3 space-y-3'
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-indigo-900 flex items-center gap-2">
-          <Clock className="w-4 h-4" />
-          Модерация ответов
-          {badgeCount > 0 && (
-            <span className="text-xs font-medium bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded-full">
-              {badgeCount}
+        {embedded ? (
+          badgeCount > 0 ? (
+            <span className="text-xs font-medium text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded-full">
+              {badgeCount} в очереди
             </span>
-          )}
-        </p>
+          ) : (
+            <span className="text-xs text-gray-500">Очередь пуста</span>
+          )
+        ) : (
+          <p className="text-sm font-semibold text-indigo-900 flex items-center gap-2">
+            <Clock className="w-4 h-4" />
+            Модерация ответов
+            {badgeCount > 0 && (
+              <span className="text-xs font-medium bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded-full">
+                {badgeCount}
+              </span>
+            )}
+          </p>
+        )}
         <button
           type="button"
           onClick={() => void reload()}
