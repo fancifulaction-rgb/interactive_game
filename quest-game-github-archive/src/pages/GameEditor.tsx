@@ -3,22 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { isAdminPanelLoggedIn } from '../lib/adminAuth'
 import { uploadQuestionMediaQueued } from '../lib/storageUpload'
-import { mergeGameSettings, parseGameSettings } from '../lib/gameSettings'
 import { QUESTION_DB_SELECT } from '../lib/prefetchGameQuestions'
 import { formatErrorMessage } from '../lib/errorMessage'
 import { enqueueCritical } from '../lib/requestQueue'
 import { saveQuestionsForGame } from '../lib/saveGameQuestions'
-import {
-  assertGameAccessCodeAvailable,
-  GAME_ACCESS_CODE_MAX,
-  gameAccessCodeRangeLabel,
-  gameAccessCodeValidationMessage,
-  generateGameAccessCode,
-  normalizeGameAccessCode,
-} from '../lib/gameAccessCode'
-import { fetchGameAccessCodeDefaultLength } from '../lib/gameAccessCodeSettings'
-import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown } from 'lucide-react'
 import { generateQuestionsWithAi, type AiQuestionProvider } from '../lib/generateQuestions'
+import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown } from 'lucide-react'
 import CollapsibleSection from '../components/CollapsibleSection'
 
 interface Question {
@@ -83,10 +73,6 @@ export default function GameEditor() {
     }
     void loadGameData()
   }, [gameId])
-
-  useEffect(() => {
-    void fetchGameAccessCodeDefaultLength()
-  }, [])
 
   const normalizeQuestion = (q: Record<string, unknown>): Question => {
     let answer: string[] = []
@@ -183,25 +169,10 @@ export default function GameEditor() {
   const handleSaveGame = async () => {
     setSaving(true)
     try {
-      const code = normalizeGameAccessCode(game?.code || '')
-      const codeError = gameAccessCodeValidationMessage(code)
-      if (codeError) {
-        alert(codeError)
-        return
-      }
-
-      await assertGameAccessCodeAvailable(code, gameId)
-
       const { error } = await enqueueCritical(async () =>
         supabase
           .from('games')
           .update({
-            title: game?.title || '',
-            code,
-            theme: game?.theme || 'default',
-            finish_page_type: game?.finish_page_type || 'scoreboard',
-            mask_board: game?.mask_board || false,
-            settings: parseGameSettings(game?.settings),
             total_time_sec: game?.total_time_sec || 1200,
             per_question_time_sec: game?.per_question_time_sec || 120,
             scoring: game?.scoring || {
@@ -210,14 +181,14 @@ export default function GameEditor() {
               k_time: 0.5,
               k_skip: 0.8,
               k_fast: 1.2,
-              combo_bonus: 10
-            }
+              combo_bonus: 10,
+            },
           })
           .eq('id', gameId)
       )
 
       if (error) throw error
-      showStatus('Игра сохранена')
+      showStatus('Задания сохранены')
     } catch (err: unknown) {
       alert('Ошибка сохранения: ' + formatErrorMessage(err))
     } finally {
@@ -623,15 +594,7 @@ export default function GameEditor() {
     )
   }
 
-  // Безопасная инициализация game с значениями по умолчанию
   const safeGame = {
-    title: game?.title || '',
-    code: game?.code || '',
-    theme: game?.theme || 'default',
-    finish_page_type: game?.finish_page_type || 'scoreboard',
-    mask_board: !!game?.mask_board,
-    hide_scoreboard_until_finish: parseGameSettings(game?.settings)
-      .hide_scoreboard_until_finish,
     total_time_sec: game?.total_time_sec || 1200,
     per_question_time_sec: game?.per_question_time_sec || 120,
     scoring: game?.scoring || {
@@ -640,8 +603,8 @@ export default function GameEditor() {
       k_time: 0.5,
       k_skip: 0.8,
       k_fast: 1.2,
-      combo_bonus: 10
-    }
+      combo_bonus: 10,
+    },
   }
 
   return (
@@ -665,7 +628,7 @@ export default function GameEditor() {
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               <Save className="w-5 h-5" />
-              Сохранить игру
+              Сохранить задания
             </button>
             <button
               onClick={handleSaveQuestions}
@@ -693,106 +656,8 @@ export default function GameEditor() {
           <p className="text-sm text-green-700 sm:hidden">{statusMessage}</p>
         )}
 
-        <CollapsibleSection title="Настройки игры" defaultOpen>
+        <CollapsibleSection title="Задания" defaultOpen>
           <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium mb-2">Название игры</label>
-              <input
-                type="text"
-                value={safeGame.title}
-                onChange={(e) => setGame({ ...game, title: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Код доступа ({gameAccessCodeRangeLabel()} символов: буквы и цифры)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={safeGame.code || ''}
-                  onChange={(e) => {
-                    const value = normalizeGameAccessCode(e.target.value)
-                    setGame({ ...game, code: value })
-                  }}
-                  maxLength={GAME_ACCESS_CODE_MAX}
-                  className="flex-1 px-4 py-2 border rounded-lg text-center text-2xl font-bold"
-                  placeholder="ABC123"
-                />
-                <button
-                  type="button"
-                  onClick={() => setGame({ ...game, code: generateGameAccessCode() })}
-                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 whitespace-nowrap"
-                >
-                  Сгенерировать
-                </button>
-              </div>
-              <p className="text-sm text-gray-600 mt-1">
-                Коды от {gameAccessCodeRangeLabel()} символов; при сохранении проверяется уникальность
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Тема оформления</label>
-              <select
-                value={safeGame.theme}
-                onChange={(e) => setGame({ ...game, theme: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg"
-              >
-                <option value="default">Стандартная</option>
-                <option value="new-year">Новый год</option>
-                <option value="feb-23">23 февраля</option>
-                <option value="march-8">8 марта</option>
-                <option value="easter">Пасха</option>
-                <option value="wedding">Свадьба</option>
-                <option value="corporate">Корпоратив</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Финальная страница</label>
-              <select
-                value={safeGame.finish_page_type}
-                onChange={(e) => setGame({ ...game, finish_page_type: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg"
-              >
-                <option value="congratulation">Поздравление (только текст)</option>
-                <option value="congratulation_stats">Поздравление + статистика игрока</option>
-                <option value="scoreboard">Переход к табло результатов</option>
-              </select>
-              <p className="text-sm text-gray-600 mt-1">Выберите что увидят игроки после завершения квеста</p>
-            </div>
-            <div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={safeGame.mask_board}
-                  onChange={(e) => setGame({ ...game, mask_board: e.target.checked })}
-                  className="w-5 h-5"
-                />
-                <span className="text-sm font-medium">Маскировать табло (скрыть имена на экране)</span>
-              </label>
-            </div>
-            <div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={safeGame.hide_scoreboard_until_finish}
-                  onChange={(e) =>
-                    setGame({
-                      ...game,
-                      settings: mergeGameSettings(game?.settings, {
-                        hide_scoreboard_until_finish: e.target.checked,
-                      }),
-                    })
-                  }
-                  className="w-5 h-5"
-                />
-                <span className="text-sm font-medium">Скрыть табло до финиша</span>
-              </label>
-              <p className="text-sm text-gray-600 mt-1 ml-7">
-                Игроки не смогут открыть табло результатов, пока ведущий не завершит игру
-              </p>
-            </div>
             <div>
               <label className="block text-sm font-medium mb-2">Общее время (секунд)</label>
               <input
@@ -807,7 +672,9 @@ export default function GameEditor() {
               <input
                 type="number"
                 value={safeGame.per_question_time_sec}
-                onChange={(e) => setGame({ ...game, per_question_time_sec: parseInt(e.target.value) })}
+                onChange={(e) =>
+                  setGame({ ...game, per_question_time_sec: parseInt(e.target.value) })
+                }
                 className="w-full px-4 py-2 border rounded-lg"
               />
             </div>

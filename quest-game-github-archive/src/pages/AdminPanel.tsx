@@ -33,6 +33,7 @@ import FinalPageTextsManager from '../components/FinalPageTextsManager'
 import GameControls from '../components/GameControls'
 import MessagePanel from '../components/MessagePanel'
 import TeamManagementManager from '../components/TeamManagementManager'
+import GameManageProfileForm from '../components/GameManageProfileForm'
 import CollapsibleSection from '../components/CollapsibleSection'
 import DiagnosticLogsPanel from '../components/DiagnosticLogsPanel'
 import EventArchiveModal from '../components/EventArchiveModal'
@@ -766,7 +767,39 @@ export default function AdminPanel() {
                 <Radio className="w-6 h-6 text-purple-600" />
                 Управление игрой
               </h2>
-              <h3 className="text-lg font-semibold text-gray-800 mt-4">Контроль игрового процесса</h3>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Выберите игру
+              </label>
+              <select
+                value={selectedGameId}
+                onChange={(e) => handleManageGameSelect(e.target.value)}
+                disabled={gamesLoading && games.length === 0}
+                className="w-full max-w-xl px-4 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
+              >
+                {gamesLoading && games.length === 0 ? (
+                  <option value="">Загрузка игр…</option>
+                ) : games.length === 0 ? (
+                  <option value="">Нет игр</option>
+                ) : (
+                  games.map((game) => (
+                    <option key={game.id} value={game.id}>
+                      {game.title} ({game.code})
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            <GameManageProfileForm
+              gameId={selectedGameId}
+              onSaved={refreshGamesList}
+            />
+
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Контроль игрового процесса</h3>
               <p className="text-sm text-gray-600 mt-1">
                 Управляйте состоянием игры и отправляйте уведомления игрокам в реальном времени
               </p>
@@ -774,29 +807,6 @@ export default function AdminPanel() {
 
             <div ref={gameControlsRef} className="rounded-lg border border-purple-100 bg-purple-50/40 p-4 space-y-4">
               <GameSessionAdminProvider value={sessionAdmin}>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Выберите игру
-                  </label>
-                  <select
-                    value={selectedGameId}
-                    onChange={(e) => handleManageGameSelect(e.target.value)}
-                    disabled={gamesLoading && games.length === 0}
-                    className="w-full max-w-xl px-4 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-60"
-                  >
-                    {gamesLoading && games.length === 0 ? (
-                      <option value="">Загрузка игр…</option>
-                    ) : games.length === 0 ? (
-                      <option value="">Нет игр</option>
-                    ) : (
-                      games.map((game) => (
-                        <option key={game.id} value={game.id}>
-                          {game.title} ({game.code})
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </div>
                 <div className="grid md:grid-cols-2 gap-6">
                   <GameControls
                     games={games}
