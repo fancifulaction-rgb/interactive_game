@@ -57,7 +57,7 @@ games (1) ──< event_archive   (снимок заезда; game_id SET NULL �
 | `code` | VARCHAR(6) UNIQUE | Код для регистрации |
 | `title` | TEXT | Название квеста |
 | `password` | TEXT | Опционально |
-| `settings` | JSONB | Доп. настройки |
+| `settings` | JSONB | Доп. настройки (`hide_scoreboard_until_finish`, план: `answer_grading` — см. [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md)) |
 | `mask_board` | BOOLEAN | Маскировать табло |
 | `theme` | VARCHAR | Ключ темы |
 | `total_time_sec` | INT | Лимит времени игры |
@@ -109,6 +109,8 @@ games (1) ──< event_archive   (снимок заезда; game_id SET NULL �
 | `points_earned` | INT | |
 | `time_spent` | INT | Секунды |
 
+План (IMP-LOG-022, фаза 2+): `grading_status`, `match_tier`, `grading_meta` — см. [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md).
+
 Уникальность «один ответ на вопрос» обеспечивается логикой приложения (проверить при доработках).
 
 ### `game_state`
@@ -140,6 +142,8 @@ Legacy/доп. трекинг по `team_name` и `current_question`; основ
 ## Формула очков
 
 Реализация: `src/lib/scoring.ts` → `calculateQuestionScore`.
+
+Проверка правильности ответа (не путать с формулой очков): RPC `submit_auto_answer` → `grade_auto_answer` (миграция `013_submit_auto_answer.sql`). Настройки проверки — `games.settings.answer_grading` (IMP-LOG-022, [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md)).
 
 Использует `games.scoring`:
 

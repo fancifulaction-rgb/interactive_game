@@ -60,6 +60,17 @@
 
 См. каталог: IMP-ARC-001 (Socket.IO), IMP-PRD-003 (team chat), IMP-ST-002 (video transcode), GDPR doc.
 
+### IMP-LOG-022 — проверка ответов (answer_grading)
+
+**Спека:** [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md) (фаза 0 — done).
+
+| Фаза | Задача | Критерий готовности |
+|------|--------|---------------------|
+| 1 | Мягкий текст: normalize + fuzzy | Старые игры без изменений; пресеты в GameEditor; RPC с cfg |
+| 2 | Pending / hybrid / keywords / numeric | 0 очков + бейдж; админ принимает ответ |
+| 3 | Модерация, post-hoc, штраф пересдачи | resubmit только с фазы 3 |
+| 4 | regex, jury, override на вопрос | По запросу |
+
 ---
 
 ## Как вести прогресс

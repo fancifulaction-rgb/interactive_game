@@ -34,7 +34,7 @@ export const supabase = createClient(
 |-----|----------|------------------|---------|
 | 1 | Показ вопроса | cache / `questions` | — |
 | 2 | Upload медиа ответа | `answer-media` | critical |
-| 3 | `insert` answer | `answers` | critical |
+| 3 | RPC `submit_auto_answer` (или `insert` answer в legacy-пути) | `answers` | critical |
 | 4 | Update score | `teams` | background |
 | 5 | Revalidate cache | `questions`, `teams` | background |
 
@@ -98,6 +98,8 @@ export const supabase = createClient(
 ```
 
 `cancelActiveStorageUpload()` при новом insert — отмена устаревшего upload.
+
+Авто-вопросы (текст / MCQ): hot-path вызывает RPC **`submit_auto_answer`** — сервер читает `games.scoring` и (с IMP-LOG-022) `games.settings.answer_grading`, выставляет `is_correct` / `points_earned`. Спека режимов: [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md).
 
 ## Детальный поток: финиш и аватар
 
