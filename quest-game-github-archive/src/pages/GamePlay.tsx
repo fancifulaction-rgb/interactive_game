@@ -48,8 +48,13 @@ import {
 } from '../lib/participantAccess'
 import {
   effectiveQuestionTimeSec,
+  effectiveTotalTimeSec,
   formatCountdownMmSs,
-  showQuestionTimer,
+  isTotalTimeUnlimited,
+  shouldShowQuestionCountdown,
+  shouldShowQuestionElapsed,
+  shouldShowTotalCountdown,
+  shouldShowTotalElapsed,
 } from '../lib/gameTimeConfig'
 
 interface Question {
@@ -85,6 +90,8 @@ export default function GamePlay() {
   const [uploadingFile, setUploadingFile] = useState(false)
   const [timeLeft, setTimeLeft] = useState(0)
   const [elapsedSec, setElapsedSec] = useState(0)
+  const [totalElapsedSec, setTotalElapsedSec] = useState(0)
+  const [totalTimeLeft, setTotalTimeLeft] = useState(0)
   const [loading, setLoading] = useState(true)
   const [showHint, setShowHint] = useState(false)
   const [hintLevel, setHintLevel] = useState(0)
@@ -142,9 +149,11 @@ export default function GamePlay() {
     setIsClosed(session.isClosed)
   }, [])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const totalTimerRef = useRef<NodeJS.Timeout | null>(null)
   /** true после хотя бы одного тика от положительного timeLeft — иначе 0 не триггерит skip. */
   const timerArmedRef = useRef(false)
   const questionStartedAtRef = useRef(Date.now())
+  const gameStartedAtRef = useRef<number | null>(null)
   /** Блокирует двойной advance: таймер vs submit (IMP-LOG-018 / M2). */
   const advancingRef = useRef(false)
   const isSubmittingRef = useRef(false)
@@ -498,6 +507,63 @@ export default function GamePlay() {
   }, [extrasReady, inLobby, teamId, gameCode])
 
   useEffect(() => {
+    if (inLobby) {
+      gameStartedAtRef.current = null
+      setTotalElapsedSec(0)
+      setTotalTimeLeft(0)
+      return
+    }
+    if (isPaused || isFinished || !game) return
+    if (gameStartedAtRef.current === null) {
+      gameStartedAtRef.current = Date.now()
+      setTotalElapsedSec(0)
+      const totalLimit = effectiveTotalTimeSec(game.total_time_sec)
+      setTotalTimeLeft(totalLimit ?? 0)
+    }
+  }, [inLobby, isPaused, isFinished, game])
+
+  useEffect(() => {
+    if (totalTimerRef.current) {
+      clearTimeout(totalTimerRef.current)
+    }
+    if (inLobby || isPaused || isFinished || !game || gameStartedAtRef.current === null) {
+      return
+    }
+
+    const totalLimit = effectiveTotalTimeSec(game.total_time_sec)
+    const showElapsed = shouldShowTotalElapsed(game.settings)
+    const showCountdown =
+      shouldShowTotalCountdown(game.settings) && totalLimit !== null
+
+    if (totalLimit === null) {
+      if (!showElapsed) return
+      totalTimerRef.current = setTimeout(() => {
+        setTotalElapsedSec(
+          Math.floor((Date.now() - gameStartedAtRef.current!) / 1000)
+        )
+      }, 1000)
+    } else {
+      if (!showElapsed && !showCountdown) return
+      totalTimerRef.current = setTimeout(() => {
+        if (showElapsed) {
+          setTotalElapsedSec(
+            Math.floor((Date.now() - gameStartedAtRef.current!) / 1000)
+          )
+        }
+        if (showCountdown && totalTimeLeft > 0) {
+          setTotalTimeLeft(totalTimeLeft - 1)
+        }
+      }, 1000)
+    }
+
+    return () => {
+      if (totalTimerRef.current) {
+        clearTimeout(totalTimerRef.current)
+      }
+    }
+  }, [totalTimeLeft, totalElapsedSec, inLobby, isPaused, isFinished, game])
+
+  useEffect(() => {
     // Очистить предыдущий таймер
     if (timerRef.current) {
       clearTimeout(timerRef.current)
@@ -511,9 +577,10 @@ export default function GamePlay() {
     if (!q || !game) return
 
     const limit = effectiveQuestionTimeSec(game.per_question_time_sec, q.per_question_time_sec)
+    const showQuestionElapsed = shouldShowQuestionElapsed(game.settings)
 
     if (limit === null) {
-      if (showQuestionTimer(game.settings)) {
+      if (showQuestionElapsed) {
         timerRef.current = setTimeout(() => {
           setElapsedSec(Math.floor((Date.now() - questionStartedAtRef.current) / 1000))
         }, 1000)
@@ -529,6 +596,9 @@ export default function GamePlay() {
       timerRef.current = setTimeout(() => {
         timerArmedRef.current = true
         setTimeLeft(timeLeft - 1)
+        if (showQuestionElapsed) {
+          setElapsedSec(Math.floor((Date.now() - questionStartedAtRef.current) / 1000))
+        }
       }, 1000)
     } else if (
       timeLeft === 0 &&
@@ -1063,7 +1133,19 @@ export default function GamePlay() {
     game?.per_question_time_sec,
     currentQuestion?.per_question_time_sec
   )
-  const displayQuestionTimer = showQuestionTimer(game?.settings)
+  const showTotalElapsed = shouldShowTotalElapsed(game?.settings)
+  const showTotalCountdown =
+    shouldShowTotalCountdown(game?.settings) &&
+    !isTotalTimeUnlimited(game?.total_time_sec)
+  const showQuestionElapsed = shouldShowQuestionElapsed(game?.settings)
+  const showQuestionCountdown =
+    shouldShowQuestionCountdown(game?.settings) &&
+    questionTimeLimit !== null
+  const displayAnyTimer =
+    showTotalElapsed ||
+    showTotalCountdown ||
+    showQuestionElapsed ||
+    showQuestionCountdown
   
   // Извлечение вариантов ответов для отображения
   const extractOptions = (options: any): string[] => {
@@ -1115,17 +1197,52 @@ export default function GamePlay() {
                   Вопрос {currentQuestionIndex + 1} из {questions.length}
                 </p>
               </div>
-              {displayQuestionTimer && (
-                <div className="text-center sm:text-right flex-shrink-0">
-                  <div className="flex items-center justify-center sm:justify-end gap-2 text-2xl sm:text-3xl font-bold">
-                    <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
-                    {formatCountdownMmSs(
-                      questionTimeLimit === null ? elapsedSec : timeLeft
-                    )}
-                  </div>
-                  <p className="text-xs sm:text-sm text-white/80">
-                    {questionTimeLimit === null ? 'На вопросе' : 'Осталось времени'}
-                  </p>
+              {displayAnyTimer && (
+                <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-6 flex-shrink-0">
+                  {(showTotalElapsed || showTotalCountdown) && (
+                    <div className="text-center sm:text-right">
+                      {showTotalElapsed && (
+                        <div className="mb-1">
+                          <div className="flex items-center justify-center sm:justify-end gap-2 text-xl sm:text-2xl font-bold">
+                            <Clock className="w-5 h-5 sm:w-6 sm:h-6" />
+                            {formatCountdownMmSs(totalElapsedSec)}
+                          </div>
+                          <p className="text-xs sm:text-sm text-white/80">Время игры</p>
+                        </div>
+                      )}
+                      {showTotalCountdown && (
+                        <div>
+                          <div className="flex items-center justify-center sm:justify-end gap-2 text-xl sm:text-2xl font-bold">
+                            <Clock className="w-5 h-5 sm:w-6 sm:h-6" />
+                            {formatCountdownMmSs(totalTimeLeft)}
+                          </div>
+                          <p className="text-xs sm:text-sm text-white/80">Осталось до конца</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {(showQuestionElapsed || showQuestionCountdown) && (
+                    <div className="text-center sm:text-right">
+                      {showQuestionElapsed && (
+                        <div className="mb-1">
+                          <div className="flex items-center justify-center sm:justify-end gap-2 text-xl sm:text-2xl font-bold">
+                            <Clock className="w-5 h-5 sm:w-6 sm:h-6" />
+                            {formatCountdownMmSs(elapsedSec)}
+                          </div>
+                          <p className="text-xs sm:text-sm text-white/80">На вопросе</p>
+                        </div>
+                      )}
+                      {showQuestionCountdown && (
+                        <div>
+                          <div className="flex items-center justify-center sm:justify-end gap-2 text-xl sm:text-2xl font-bold">
+                            <Clock className="w-5 h-5 sm:w-6 sm:h-6" />
+                            {formatCountdownMmSs(timeLeft)}
+                          </div>
+                          <p className="text-xs sm:text-sm text-white/80">Осталось времени</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

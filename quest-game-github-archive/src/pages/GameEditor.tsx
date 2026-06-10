@@ -784,21 +784,54 @@ export default function GameEditor() {
                 className="w-full px-4 py-2 border rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
                 placeholder={String(DEFAULT_TOTAL_TIME_SEC)}
               />
-              <label className="flex items-center gap-2 text-sm text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={gameSettings.show_total_timer !== false}
-                  onChange={(e) =>
-                    setGame({
-                      ...game,
-                      settings: mergeGameSettings(game?.settings, {
-                        show_total_timer: e.target.checked,
-                      }),
-                    })
-                  }
-                />
-                <span>Показывать игрокам</span>
-              </label>
+              <div className="space-y-1.5 pt-1">
+                <p className="text-xs text-gray-500">Видимость для игроков</p>
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={gameSettings.show_total_elapsed !== false}
+                    onChange={(e) =>
+                      setGame({
+                        ...game,
+                        settings: mergeGameSettings(game?.settings, {
+                          show_total_elapsed: e.target.checked,
+                        }),
+                      })
+                    }
+                  />
+                  <span>Показывать прошедшее время</span>
+                </label>
+                <label
+                  className={`flex items-center gap-2 text-sm ${
+                    isTotalTimeUnlimited(game?.total_time_sec)
+                      ? 'text-gray-400'
+                      : 'text-gray-600'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={isTotalTimeUnlimited(game?.total_time_sec)}
+                    checked={
+                      !isTotalTimeUnlimited(game?.total_time_sec) &&
+                      gameSettings.show_total_countdown !== false
+                    }
+                    onChange={(e) =>
+                      setGame({
+                        ...game,
+                        settings: mergeGameSettings(game?.settings, {
+                          show_total_countdown: e.target.checked,
+                        }),
+                      })
+                    }
+                  />
+                  <span>
+                    Показывать обратный отсчёт
+                    {isTotalTimeUnlimited(game?.total_time_sec) && (
+                      <span className="text-xs"> (недоступно без лимита)</span>
+                    )}
+                  </span>
+                </label>
+              </div>
             </div>
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm">
@@ -834,21 +867,52 @@ export default function GameEditor() {
                 className="w-full px-4 py-2 border rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
                 placeholder={String(DEFAULT_QUESTION_TIME_SEC)}
               />
-              <label className="flex items-center gap-2 text-sm text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={gameSettings.show_question_timer !== false}
-                  onChange={(e) =>
-                    setGame({
-                      ...game,
-                      settings: mergeGameSettings(game?.settings, {
-                        show_question_timer: e.target.checked,
-                      }),
-                    })
-                  }
-                />
-                <span>Показывать игрокам</span>
-              </label>
+              <div className="space-y-1.5 pt-1">
+                <p className="text-xs text-gray-500">Видимость для игроков</p>
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={gameSettings.show_question_elapsed !== false}
+                    onChange={(e) =>
+                      setGame({
+                        ...game,
+                        settings: mergeGameSettings(game?.settings, {
+                          show_question_elapsed: e.target.checked,
+                        }),
+                      })
+                    }
+                  />
+                  <span>Показывать прошедшее время</span>
+                </label>
+                <label
+                  className={`flex items-center gap-2 text-sm ${
+                    game?.per_question_time_sec === 0 ? 'text-gray-400' : 'text-gray-600'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={game?.per_question_time_sec === 0}
+                    checked={
+                      game?.per_question_time_sec !== 0 &&
+                      gameSettings.show_question_countdown !== false
+                    }
+                    onChange={(e) =>
+                      setGame({
+                        ...game,
+                        settings: mergeGameSettings(game?.settings, {
+                          show_question_countdown: e.target.checked,
+                        }),
+                      })
+                    }
+                  />
+                  <span>
+                    Показывать обратный отсчёт
+                    {game?.per_question_time_sec === 0 && (
+                      <span className="text-xs"> (недоступно без лимита)</span>
+                    )}
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
         </CollapsibleSection>

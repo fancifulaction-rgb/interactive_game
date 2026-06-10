@@ -37,12 +37,42 @@ export function normalizeQuestionTimeSec(sec: number | null | undefined): number
   return sec ?? DEFAULT_QUESTION_TIME_SEC
 }
 
+export function effectiveTotalTimeSec(sec: number | null | undefined): number | null {
+  if (sec === 0) return null
+  if (sec != null && sec > 0) return sec
+  return DEFAULT_TOTAL_TIME_SEC
+}
+
+export function shouldShowTotalElapsed(rawSettings: unknown): boolean {
+  const s = parseGameSettings(rawSettings)
+  if (s.show_total_timer === false) return false
+  return s.show_total_elapsed !== false
+}
+
+export function shouldShowTotalCountdown(rawSettings: unknown): boolean {
+  const s = parseGameSettings(rawSettings)
+  if (s.show_total_timer === false) return false
+  return s.show_total_countdown !== false
+}
+
+export function shouldShowQuestionElapsed(rawSettings: unknown): boolean {
+  const s = parseGameSettings(rawSettings)
+  if (s.show_question_timer === false) return false
+  return s.show_question_elapsed !== false
+}
+
+export function shouldShowQuestionCountdown(rawSettings: unknown): boolean {
+  const s = parseGameSettings(rawSettings)
+  if (s.show_question_timer === false) return false
+  return s.show_question_countdown !== false
+}
+
 export function showTotalTimer(rawSettings: unknown): boolean {
-  return parseGameSettings(rawSettings).show_total_timer !== false
+  return shouldShowTotalElapsed(rawSettings) || shouldShowTotalCountdown(rawSettings)
 }
 
 export function showQuestionTimer(rawSettings: unknown): boolean {
-  return parseGameSettings(rawSettings).show_question_timer !== false
+  return shouldShowQuestionElapsed(rawSettings) || shouldShowQuestionCountdown(rawSettings)
 }
 
 export function formatTimeLimitLabel(sec: number | null | undefined): string {

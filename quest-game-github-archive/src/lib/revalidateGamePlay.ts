@@ -28,7 +28,9 @@ async function revalidateGamePlayFromServerInner(gameCode: string) {
     if (revalidatePaused) return null
     const { data: gameData, error: gameError } = await supabase
       .from('games')
-      .select('id, code, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec')
+      .select(
+        'id, code, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec, settings'
+      )
       .eq('code', code)
       .maybeSingle()
 
