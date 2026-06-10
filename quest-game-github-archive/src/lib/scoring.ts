@@ -37,8 +37,11 @@ export function calculateQuestionScore(params: {
   const pBase = params.basePoints || s.p_base || 100
   const kDiff = (s.k_diff ?? 1) * (DIFFICULTY_FACTOR[params.difficulty] ?? 1)
 
-  const safeMax = Math.max(1, params.maxTime)
-  const timeLeftRatio = Math.max(0, Math.min(1, (safeMax - params.timeTaken) / safeMax))
+  const safeMax = params.maxTime <= 0 ? 1 : Math.max(1, params.maxTime)
+  const timeLeftRatio =
+    params.maxTime <= 0
+      ? 1
+      : Math.max(0, Math.min(1, (safeMax - params.timeTaken) / safeMax))
   const kTime = 1 + (s.k_time ?? 0.5) * timeLeftRatio
   const kFast = timeLeftRatio >= 0.7 ? (s.k_fast ?? 1) : 1
 

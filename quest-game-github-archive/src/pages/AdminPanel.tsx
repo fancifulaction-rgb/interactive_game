@@ -26,6 +26,7 @@ import {
   saveGameAccessCodeDefaultLength,
 } from '../lib/gameAccessCodeSettings'
 import { GAME_THEME_OPTIONS } from '../lib/saveGameProfile'
+import { formatTimeLimitLabel } from '../lib/gameTimeConfig'
 import ThemeManager from '../components/ThemeManager'
 import SettingsManager from '../components/SettingsManager'
 import QuestSettingsManager from '../components/QuestSettingsManager'
@@ -789,11 +790,15 @@ export default function AdminPanel() {
                           </div>
                           <div>
                             <span className="text-gray-600">Общее время:</span>
-                            <p className="font-semibold text-sm sm:text-base">{game.total_time_sec / 60} мин</p>
+                            <p className="font-semibold text-sm sm:text-base">
+                              {formatTimeLimitLabel(game.total_time_sec)}
+                            </p>
                           </div>
                           <div>
                             <span className="text-gray-600">Время на вопрос:</span>
-                            <p className="font-semibold text-sm sm:text-base">{game.per_question_time_sec} сек</p>
+                            <p className="font-semibold text-sm sm:text-base">
+                              {formatTimeLimitLabel(game.per_question_time_sec)}
+                            </p>
                           </div>
                           <div>
                             <div className="flex items-center gap-1 mb-1">

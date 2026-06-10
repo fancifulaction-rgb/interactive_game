@@ -46,6 +46,11 @@ import {
   readStoredPlayerSession,
   isTeamStillRegistered,
 } from '../lib/participantAccess'
+import {
+  effectiveQuestionTimeSec,
+  formatCountdownMmSs,
+  showQuestionTimer,
+} from '../lib/gameTimeConfig'
 
 interface Question {
   id: string
@@ -79,6 +84,7 @@ export default function GamePlay() {
   const [answerFilePreview, setAnswerFilePreview] = useState<string | null>(null)
   const [uploadingFile, setUploadingFile] = useState(false)
   const [timeLeft, setTimeLeft] = useState(0)
+  const [elapsedSec, setElapsedSec] = useState(0)
   const [loading, setLoading] = useState(true)
   const [showHint, setShowHint] = useState(false)
   const [hintLevel, setHintLevel] = useState(0)
@@ -138,6 +144,7 @@ export default function GamePlay() {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   /** true после хотя бы одного тика от положительного timeLeft — иначе 0 не триггерит skip. */
   const timerArmedRef = useRef(false)
+  const questionStartedAtRef = useRef(Date.now())
   /** Блокирует двойной advance: таймер vs submit (IMP-LOG-018 / M2). */
   const advancingRef = useRef(false)
   const isSubmittingRef = useRef(false)
@@ -156,12 +163,21 @@ export default function GamePlay() {
   }, [gameCode])
   const extrasReady = usePlayerExtrasReady(game?.id, loading)
 
-  const questionTimeSec = useCallback(
-    (q: Question, gameData?: Record<string, unknown> | null) =>
-      q.per_question_time_sec ||
-      (gameData?.per_question_time_sec as number) ||
-      (game?.per_question_time_sec as number) ||
-      120,
+  const resetQuestionTimer = useCallback(
+    (q: Question, gameData?: Record<string, unknown> | null) => {
+      questionStartedAtRef.current = Date.now()
+      const gSec =
+        (gameData?.per_question_time_sec as number | undefined) ??
+        (game?.per_question_time_sec as number | undefined)
+      const limit = effectiveQuestionTimeSec(gSec, q.per_question_time_sec)
+      timerArmedRef.current = false
+      setElapsedSec(0)
+      if (limit === null) {
+        setTimeLeft(0)
+      } else {
+        setTimeLeft(limit)
+      }
+    },
     [game]
   )
 
@@ -170,8 +186,7 @@ export default function GamePlay() {
     if (gameData.theme) setTheme(gameData.theme as string)
     setQuestions(mappedQuestions as Question[])
     if (mappedQuestions.length > 0) {
-      timerArmedRef.current = false
-      setTimeLeft(questionTimeSec(mappedQuestions[0], gameData))
+      resetQuestionTimer(mappedQuestions[0], gameData)
     }
     setLoading(false)
   }
@@ -335,8 +350,7 @@ export default function GamePlay() {
     if (cached?.questions?.length) {
       const mapped = mapQuestionsForPlay(cached.questions) as Question[]
       setQuestions(mapped)
-      timerArmedRef.current = false
-      setTimeLeft(questionTimeSec(mapped[0], game))
+      resetQuestionTimer(mapped[0], game)
       setLoading(false)
       return
     }
@@ -346,8 +360,7 @@ export default function GamePlay() {
         if (!q.length) return
         const mapped = mapQuestionsForPlay(q) as Question[]
         setQuestions(mapped)
-        timerArmedRef.current = false
-        setTimeLeft(questionTimeSec(mapped[0], game))
+        resetQuestionTimer(mapped[0], game)
         setGamePlayCache(code, {
           game,
           questions: q,
@@ -444,18 +457,23 @@ export default function GamePlay() {
     finishedNavRef.current = false
 
     if (questions.length > 0) {
-      timerArmedRef.current = false
-      setTimeLeft(questionTimeSec(questions[0], game))
+      resetQuestionTimer(questions[0], game)
     }
-  }, [inLobby, teamId, gameCode, questions.length, game, questionTimeSec])
+  }, [inLobby, teamId, gameCode, questions.length, game, resetQuestionTimer])
 
   useEffect(() => {
     if (inLobby || isPaused || isFinished || questions.length === 0) return
     const q = questions[currentQuestionIndex]
-    if (!q) return
+    if (!q || !game) return
+    const limit = effectiveQuestionTimeSec(game.per_question_time_sec, q.per_question_time_sec)
+    if (limit === null) {
+      questionStartedAtRef.current = Date.now()
+      return
+    }
     if (timeLeft === 0 && !timerArmedRef.current) {
       timerArmedRef.current = false
-      setTimeLeft(questionTimeSec(q, game))
+      setTimeLeft(limit)
+      questionStartedAtRef.current = Date.now()
       agentDebugLog(
         'GamePlay.tsx',
         'timer init on play entry',
@@ -471,7 +489,6 @@ export default function GamePlay() {
     currentQuestionIndex,
     timeLeft,
     game,
-    questionTimeSec,
   ])
 
   // Счёт с сервера (после сброса заезда админом) — после idle, чтобы не конкурировать с входом в лобби.
@@ -488,6 +505,24 @@ export default function GamePlay() {
 
     if (inLobby || isPaused || isFinished) {
       return
+    }
+
+    const q = questions[currentQuestionIndex]
+    if (!q || !game) return
+
+    const limit = effectiveQuestionTimeSec(game.per_question_time_sec, q.per_question_time_sec)
+
+    if (limit === null) {
+      if (showQuestionTimer(game.settings)) {
+        timerRef.current = setTimeout(() => {
+          setElapsedSec(Math.floor((Date.now() - questionStartedAtRef.current) / 1000))
+        }, 1000)
+      }
+      return () => {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current)
+        }
+      }
     }
 
     if (timeLeft > 0) {
@@ -511,7 +546,7 @@ export default function GamePlay() {
         clearTimeout(timerRef.current)
       }
     }
-  }, [timeLeft, inLobby, isPaused, isFinished])
+  }, [timeLeft, elapsedSec, inLobby, isPaused, isFinished, questions, currentQuestionIndex, game])
 
   // Очистка состояния при смене вопроса
   useEffect(() => {
@@ -522,7 +557,12 @@ export default function GamePlay() {
     setShowHint(false)
     setHintLevel(0)
     setCurrentHintDisplay(0)
-  }, [currentQuestionIndex])
+    if (questions.length === 0 || inLobby || isPaused || isFinished) return
+    const q = questions[currentQuestionIndex]
+    if (q && game) {
+      resetQuestionTimer(q, game)
+    }
+  }, [currentQuestionIndex, questions, game, inLobby, isPaused, isFinished, resetQuestionTimer])
 
   const loadGameData = async (loadGen: number, staleCache: boolean) => {
     const code = (gameCode ?? '').trim().toUpperCase()
@@ -687,8 +727,18 @@ export default function GamePlay() {
         userAnswers = selectedOptions
       }
 
-      const maxTime = currentQuestion.per_question_time_sec || game.per_question_time_sec || 120
-      const timeTaken = timeoutSkip ? maxTime : maxTime - timeLeft
+      const limit = effectiveQuestionTimeSec(
+        game.per_question_time_sec,
+        currentQuestion.per_question_time_sec
+      )
+      let timeTaken: number
+      if (timeoutSkip && limit !== null) {
+        timeTaken = limit
+      } else if (limit !== null) {
+        timeTaken = limit - timeLeft
+      } else {
+        timeTaken = Math.floor((Date.now() - questionStartedAtRef.current) / 1000)
+      }
       const questionNumber = currentQuestion.order_index ?? currentQuestionIndex + 1
       const answerPayload = userAnswers.length ? userAnswers : [userAnswerText]
       normalizeUserAnswers(answerPayload)
@@ -801,9 +851,6 @@ export default function GamePlay() {
         setShowHint(false)
         setHintLevel(0)
         setCurrentHintDisplay(0)
-        const nextQuestion = questions[currentQuestionIndex + 1]
-        timerArmedRef.current = false
-        setTimeLeft(questionTimeSec(nextQuestion, game))
       } else {
         const gameId = game?.id as string | undefined
         let token = sessionToken ?? getTeamSessionToken(teamId)
@@ -1012,6 +1059,11 @@ export default function GamePlay() {
 
   const currentQuestion = questions[currentQuestionIndex]
   const hints = currentQuestion.hint_levels || []
+  const questionTimeLimit = effectiveQuestionTimeSec(
+    game?.per_question_time_sec,
+    currentQuestion?.per_question_time_sec
+  )
+  const displayQuestionTimer = showQuestionTimer(game?.settings)
   
   // Извлечение вариантов ответов для отображения
   const extractOptions = (options: any): string[] => {
@@ -1063,13 +1115,19 @@ export default function GamePlay() {
                   Вопрос {currentQuestionIndex + 1} из {questions.length}
                 </p>
               </div>
-              <div className="text-center sm:text-right flex-shrink-0">
-                <div className="flex items-center justify-center sm:justify-end gap-2 text-2xl sm:text-3xl font-bold">
-                  <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
-                  {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+              {displayQuestionTimer && (
+                <div className="text-center sm:text-right flex-shrink-0">
+                  <div className="flex items-center justify-center sm:justify-end gap-2 text-2xl sm:text-3xl font-bold">
+                    <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
+                    {formatCountdownMmSs(
+                      questionTimeLimit === null ? elapsedSec : timeLeft
+                    )}
+                  </div>
+                  <p className="text-xs sm:text-sm text-white/80">
+                    {questionTimeLimit === null ? 'На вопросе' : 'Осталось времени'}
+                  </p>
                 </div>
-                <p className="text-xs sm:text-sm text-white/80">Осталось времени</p>
-              </div>
+              )}
             </div>
           </div>
 

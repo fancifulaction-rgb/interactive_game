@@ -17,6 +17,14 @@ import {
   type QuestionGradingOverride,
   type TextMatchMode,
 } from '../lib/answerGradingConfig'
+import { mergeGameSettings, parseGameSettings } from '../lib/gameSettings'
+import {
+  DEFAULT_QUESTION_TIME_SEC,
+  DEFAULT_TOTAL_TIME_SEC,
+  isTotalTimeUnlimited,
+  normalizeQuestionTimeSec,
+  normalizeTotalTimeSec,
+} from '../lib/gameTimeConfig'
 
 interface Question {
   id?: string
@@ -193,8 +201,9 @@ export default function GameEditor() {
         supabase
           .from('games')
           .update({
-            total_time_sec: game?.total_time_sec || 1200,
-            per_question_time_sec: game?.per_question_time_sec || 120,
+            total_time_sec: normalizeTotalTimeSec(game?.total_time_sec),
+            per_question_time_sec: normalizeQuestionTimeSec(game?.per_question_time_sec),
+            settings: mergeGameSettings(game?.settings, parseGameSettings(game?.settings)),
             scoring: game?.scoring || {
               p_base: 100,
               k_diff: 1.0,
@@ -208,7 +217,7 @@ export default function GameEditor() {
       )
 
       if (error) throw error
-      showStatus('Задания сохранены')
+      showStatus('Настройки времени сохранены')
     } catch (err: unknown) {
       alert('Ошибка сохранения: ' + formatErrorMessage(err))
     } finally {
@@ -234,7 +243,10 @@ export default function GameEditor() {
       })
 
       const baseIndex = questions.length
-      const perQuestionTime = game?.per_question_time_sec ?? 120
+      const perQuestionTime =
+        game?.per_question_time_sec === 0
+          ? null
+          : (game?.per_question_time_sec ?? DEFAULT_QUESTION_TIME_SEC)
 
       const mapped: Question[] = drafts.map((d, i) => ({
         game_id: gameId,
@@ -666,9 +678,10 @@ export default function GameEditor() {
     )
   }
 
+  const gameSettings = parseGameSettings(game?.settings)
   const safeGame = {
-    total_time_sec: game?.total_time_sec || 1200,
-    per_question_time_sec: game?.per_question_time_sec || 120,
+    total_time_sec: normalizeTotalTimeSec(game?.total_time_sec),
+    per_question_time_sec: normalizeQuestionTimeSec(game?.per_question_time_sec),
     scoring: game?.scoring || {
       p_base: 100,
       k_diff: 1.0,
@@ -736,27 +749,106 @@ export default function GameEditor() {
           <p className="text-sm text-green-700 sm:hidden">{statusMessage}</p>
         )}
 
-        <CollapsibleSection title="Задания" defaultOpen>
+        <CollapsibleSection title="Время и таймеры" defaultOpen>
           <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium mb-2">Общее время (секунд)</label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isTotalTimeUnlimited(game?.total_time_sec)}
+                  onChange={(e) =>
+                    setGame({
+                      ...game,
+                      total_time_sec: e.target.checked
+                        ? 0
+                        : normalizeTotalTimeSec(
+                            game?.total_time_sec === 0 ? undefined : game?.total_time_sec
+                          ),
+                    })
+                  }
+                />
+                <span>Без ограничения (общее время)</span>
+              </label>
+              <label className="block text-sm font-medium">Общее время (секунд)</label>
               <input
                 type="number"
-                value={safeGame.total_time_sec}
-                onChange={(e) => setGame({ ...game, total_time_sec: parseInt(e.target.value) })}
-                className="w-full px-4 py-2 border rounded-lg"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Время на вопрос (секунд)</label>
-              <input
-                type="number"
-                value={safeGame.per_question_time_sec}
-                onChange={(e) =>
-                  setGame({ ...game, per_question_time_sec: parseInt(e.target.value) })
+                min={1}
+                disabled={isTotalTimeUnlimited(game?.total_time_sec)}
+                value={
+                  isTotalTimeUnlimited(game?.total_time_sec) ? '' : safeGame.total_time_sec
                 }
-                className="w-full px-4 py-2 border rounded-lg"
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10)
+                  if (!Number.isNaN(v) && v > 0) setGame({ ...game, total_time_sec: v })
+                }}
+                className="w-full px-4 py-2 border rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
+                placeholder={String(DEFAULT_TOTAL_TIME_SEC)}
               />
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={gameSettings.show_total_timer !== false}
+                  onChange={(e) =>
+                    setGame({
+                      ...game,
+                      settings: mergeGameSettings(game?.settings, {
+                        show_total_timer: e.target.checked,
+                      }),
+                    })
+                  }
+                />
+                <span>Показывать игрокам</span>
+              </label>
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={game?.per_question_time_sec === 0}
+                  onChange={(e) =>
+                    setGame({
+                      ...game,
+                      per_question_time_sec: e.target.checked
+                        ? 0
+                        : normalizeQuestionTimeSec(
+                            game?.per_question_time_sec === 0
+                              ? undefined
+                              : game?.per_question_time_sec
+                          ),
+                    })
+                  }
+                />
+                <span>Без ограничения (на вопрос)</span>
+              </label>
+              <label className="block text-sm font-medium">Время на вопрос (секунд)</label>
+              <input
+                type="number"
+                min={1}
+                disabled={game?.per_question_time_sec === 0}
+                value={game?.per_question_time_sec === 0 ? '' : safeGame.per_question_time_sec}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10)
+                  if (!Number.isNaN(v) && v > 0)
+                    setGame({ ...game, per_question_time_sec: v })
+                }}
+                className="w-full px-4 py-2 border rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
+                placeholder={String(DEFAULT_QUESTION_TIME_SEC)}
+              />
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={gameSettings.show_question_timer !== false}
+                  onChange={(e) =>
+                    setGame({
+                      ...game,
+                      settings: mergeGameSettings(game?.settings, {
+                        show_question_timer: e.target.checked,
+                      }),
+                    })
+                  }
+                />
+                <span>Показывать игрокам</span>
+              </label>
             </div>
           </div>
         </CollapsibleSection>
