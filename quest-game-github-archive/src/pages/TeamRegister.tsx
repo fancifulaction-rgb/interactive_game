@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { isTransientNetworkError, registerTeamDirect } from '../lib/teamRegister'
+import {
+  isTeamNameTakenError,
+  isTransientNetworkError,
+  registerTeamDirect,
+  teamNameTakenUserMessage,
+} from '../lib/teamRegister'
 import type { TeamSnapshot } from '../lib/gamePlayCache'
 import { compressImageForAvatar } from '../lib/compressImage'
 import {
@@ -387,15 +392,17 @@ export default function TeamRegister() {
       void reportDebugToServer({ phase: 'registration-catch', msg })
       setErrorDetail(msg)
       setError(
-        msg.includes('listener indicated an asynchronous response')
-          ? 'Сбой расширения браузера. Отключите блокировщики на этом сайте или попробуйте в режиме инкогнито.'
-          : isTransientNetworkError(err) ||
-              msg.includes('Failed to fetch') ||
-              msg.includes('Load failed') ||
-              msg.includes('aborted') ||
-              msg.includes('timeout')
-            ? `Сбой сети при сохранении. Если команда уже есть в лобби — обновите страницу или откройте игру по коду. Используйте http://${typeof window !== 'undefined' ? window.location.host : '192.168.x.x:5174'} (не localhost).`
-            : 'Ошибка регистрации: ' + msg
+        isTeamNameTakenError(err)
+          ? teamNameTakenUserMessage()
+          : msg.includes('listener indicated an asynchronous response')
+            ? 'Сбой расширения браузера. Отключите блокировщики на этом сайте или попробуйте в режиме инкогнито.'
+            : isTransientNetworkError(err) ||
+                msg.includes('Failed to fetch') ||
+                msg.includes('Load failed') ||
+                msg.includes('aborted') ||
+                msg.includes('timeout')
+              ? `Сбой сети при сохранении. Если команда уже есть в лобби — обновите страницу или откройте игру по коду. Используйте http://${typeof window !== 'undefined' ? window.location.host : '192.168.x.x:5174'} (не localhost).`
+              : 'Ошибка регистрации: ' + msg
       )
     } finally {
       submittingRef.current = false

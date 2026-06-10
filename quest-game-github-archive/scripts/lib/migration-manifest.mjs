@@ -25,4 +25,5 @@ export const ALL_MIGRATION_FILES = [
   '025_answer_grading_phase4.sql',
   '026_team_progress.sql',
   '027_question_hidden.sql',
+  '028_unique_team_name_per_game.sql',
 ]

@@ -26,6 +26,20 @@ const RECOVERY_PAUSE_MS = 400
 const RECOVERY_LOOKUP_ATTEMPTS = 4
 const RECOVERY_LOOKUP_DELAYS_MS = [200, 400, 700, 1200]
 
+/** RPC register_team / unique index: название уже занято в этой игре. */
+export function isTeamNameTakenError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
+  return (
+    msg.includes('team_name_taken') ||
+    msg.includes('teams_game_id_normalized_name') ||
+    (msg.includes('duplicate key') && msg.includes('teams'))
+  )
+}
+
+export function teamNameTakenUserMessage(): string {
+  return 'Команда с таким названием уже зарегистрирована в этой игре. Выберите другое имя.'
+}
+
 export function isTransientNetworkError(err: unknown): boolean {
   if (err instanceof DOMException && err.name === 'TimeoutError') return true
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
@@ -136,6 +150,7 @@ export async function registerTeamDirect(input: RegisterTeamInput) {
     sessionToken = result.sessionToken
     agentDebugLog('teamRegister.ts', 'register rpc ok', { teamId: team.id }, 'H11')
   } catch (err) {
+    if (isTeamNameTakenError(err)) throw err
     if (!isTransientNetworkError(err)) throw err
     const netMsg = err instanceof Error ? err.message : String(err)
     agentDebugLog('teamRegister.ts', 'register network fail', { netMsg }, 'H11')
