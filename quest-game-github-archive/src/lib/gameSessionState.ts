@@ -93,6 +93,13 @@ function gameStateProgressRank(state: GameStateRow | null | undefined): number {
 }
 
 /** Не применять устаревший poll/broadcast поверх более свежего состояния (гонка на iOS). */
+/** Скрытие/показ вопросов в редакторе — только до старта заезда. */
+export function canToggleQuestionHidden(state: GameStateRow | null | undefined): boolean {
+  if (state == null) return true
+  const s = normalizedState(state)
+  return s === GAME_STATE_CLOSED || s === GAME_STATE_WAITING || s === 'lobby'
+}
+
 export function isGameStateRowNewer(
   incoming: GameStateRow | null | undefined,
   current: GameStateRow | null | undefined

@@ -88,6 +88,7 @@ export const MIGRATION_FINGERPRINTS = {
     (await columnExists(c, 'teams', 'finished_at')) &&
     (await fnExists(c, 'mark_team_finished')) &&
     (await fnExists(c, 'get_team_progress')),
+  '027_question_hidden.sql': (c) => columnExists(c, 'questions', 'is_hidden'),
 }
 
 /** 001–010 без отдельных probe: если public.games уже есть — считаем базовый слой применённым */

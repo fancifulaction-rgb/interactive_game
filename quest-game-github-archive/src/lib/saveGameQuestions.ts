@@ -21,6 +21,22 @@ export type QuestionSaveInput = {
   hint_penalties: number[]
   per_question_time_sec: number | null
   grading_override?: QuestionGradingOverride | null
+  is_hidden?: boolean
+}
+
+type QuestionNumberMeta = { question_number: number; order_index: number }
+
+/** Видимым — 1..N; скрытым — order_index + 10000 (вне нумерации заезда). */
+function assignQuestionNumbers(questions: QuestionSaveInput[]): QuestionNumberMeta[] {
+  let visibleNum = 0
+  return questions.map((q, index) => {
+    const order_index = index + 1
+    if (q.is_hidden) {
+      return { question_number: order_index + 10000, order_index }
+    }
+    visibleNum += 1
+    return { question_number: visibleNum, order_index }
+  })
 }
 
 let lastStepAt = 0
@@ -52,7 +68,7 @@ async function deleteOrphanQuestions(gameId: string, keptIds: string[]): Promise
   }
 }
 
-function buildRow(gameId: string, question: QuestionSaveInput, index: number) {
+function buildRow(gameId: string, question: QuestionSaveInput, meta: QuestionNumberMeta) {
   let finalOptions = question.options ?? []
   let finalAnswer = question.answer ?? []
 
@@ -67,7 +83,7 @@ function buildRow(gameId: string, question: QuestionSaveInput, index: number) {
 
   return {
     game_id: gameId,
-    question_number: index + 1,
+    question_number: meta.question_number,
     question_type: question.type || 'text',
     type: question.type || 'text',
     question_text: question.prompt.trim(),
@@ -80,7 +96,8 @@ function buildRow(gameId: string, question: QuestionSaveInput, index: number) {
     hint_levels: question.hint_levels ?? [],
     hint_penalties: question.hint_penalties ?? [],
     per_question_time_sec: question.per_question_time_sec,
-    order_index: index + 1,
+    order_index: meta.order_index,
+    is_hidden: Boolean(question.is_hidden),
     ...(gradingOverride ? { grading_override: gradingOverride } : { grading_override: null }),
   }
 }
@@ -120,8 +137,17 @@ async function saveQuestionsForGameCore(
   await deleteOrphanQuestions(gameId, keptIds)
   markStep(`delete orphans (keep ${keptIds.length})`, t0)
 
+  const visibleWithPrompt = questions.filter((q) => !q.is_hidden && q.prompt?.trim())
+  if (visibleWithPrompt.length === 0) {
+    throw new Error('Должен остаться хотя бы один видимый вопрос с текстом')
+  }
+
+  const numbering = assignQuestionNumbers(questions)
+
   const upsertRows = questions
-    .map((q, index) => (q.id ? { id: q.id, ...buildRow(gameId, q, index) } : null))
+    .map((q, index) =>
+      q.id ? { id: q.id, ...buildRow(gameId, q, numbering[index]) } : null
+    )
     .filter((row): row is ReturnType<typeof buildRow> & { id: string } => row !== null)
 
   if (upsertRows.length) {
@@ -139,7 +165,7 @@ async function saveQuestionsForGameCore(
   let merged = [...questions]
 
   if (newOnes.length) {
-    const rows = newOnes.map(({ q, index }) => buildRow(gameId, q, index))
+    const rows = newOnes.map(({ q, index }) => buildRow(gameId, q, numbering[index]))
     const { data: inserted, error: insertError } = await supabase
       .from('questions')
       .insert(rows)
@@ -160,5 +186,9 @@ async function saveQuestionsForGameCore(
   markStep(`insert x${newOnes.length}`, t0)
 
   markStep('done', t0)
-  return merged.map((q, index) => ({ ...q, order_index: index + 1 }))
+  return merged.map((q, index) => ({
+    ...q,
+    order_index: index + 1,
+    is_hidden: Boolean(q.is_hidden),
+  }))
 }

@@ -8,8 +8,9 @@ import { formatErrorMessage } from '../lib/errorMessage'
 import { enqueueCritical } from '../lib/requestQueue'
 import { saveQuestionsForGame } from '../lib/saveGameQuestions'
 import { generateQuestionsWithAi, type AiQuestionProvider } from '../lib/generateQuestions'
-import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown, Eye, EyeOff } from 'lucide-react'
 import CollapsibleSection from '../components/CollapsibleSection'
+import { canToggleQuestionHidden, type GameStateRow } from '../lib/gameSessionState'
 import {
   parseQuestionGradingOverride,
   type AnswerGradingRouting,
@@ -33,6 +34,7 @@ interface Question {
   hint_penalties: number[]
   per_question_time_sec: number | null
   grading_override: QuestionGradingOverride | null
+  is_hidden: boolean
 }
 
 export default function GameEditor() {
@@ -50,6 +52,7 @@ export default function GameEditor() {
   const [aiGenerating, setAiGenerating] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [expandedQuestions, setExpandedQuestions] = useState<Record<number, boolean>>({})
+  const [gameSessionState, setGameSessionState] = useState<GameStateRow | null>(null)
 
   const showStatus = (message: string) => {
     setStatusMessage(message)
@@ -117,6 +120,7 @@ export default function GameEditor() {
       hint_penalties: Array.isArray(q.hint_penalties) ? (q.hint_penalties as number[]) : [],
       per_question_time_sec: (q.per_question_time_sec as number | null) ?? null,
       grading_override: parseQuestionGradingOverride(q.grading_override),
+      is_hidden: Boolean(q.is_hidden),
     }
   }
 
@@ -154,11 +158,19 @@ export default function GameEditor() {
       if (gen !== loadGenRef.current) return
       setGame({ ...gameData, scoring })
 
+      const { data: sessionRow } = await supabase
+        .from('game_state')
+        .select('current_state, is_paused, updated_at')
+        .eq('game_id', gameId)
+        .maybeSingle()
+      if (gen !== loadGenRef.current) return
+      setGameSessionState(sessionRow as GameStateRow | null)
+
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
         .select(QUESTION_DB_SELECT)
         .eq('game_id', gameId)
-        .order('question_number', { ascending: true })
+        .order('order_index', { ascending: true })
 
       if (questionsError) throw questionsError
       if (gen !== loadGenRef.current) return
@@ -239,6 +251,7 @@ export default function GameEditor() {
         hint_penalties: d.hint_penalties?.length ? d.hint_penalties : [10],
         per_question_time_sec: d.per_question_time_sec ?? perQuestionTime,
         grading_override: null,
+        is_hidden: false,
       }))
 
       setQuestions([...questions, ...mapped])
@@ -282,6 +295,7 @@ export default function GameEditor() {
       hint_penalties: [],
       per_question_time_sec: 60,
       grading_override: null,
+      is_hidden: false,
     }
     setQuestions([...questions, newQuestion])
   }
@@ -303,6 +317,24 @@ export default function GameEditor() {
     setQuestions(questions.filter((_, i) => i !== index))
   }
 
+  const handleToggleHidden = (index: number) => {
+    if (!canToggleQuestionHidden(gameSessionState)) {
+      alert('Скрывать и показывать вопросы можно только до старта заезда')
+      return
+    }
+    const question = questions[index]
+    if (!question.is_hidden) {
+      const visibleCount = questions.filter((q) => !q.is_hidden).length
+      if (visibleCount <= 1) {
+        alert('Нельзя скрыть последний видимый вопрос')
+        return
+      }
+    }
+    setQuestions(
+      questions.map((q, i) => (i === index ? { ...q, is_hidden: !q.is_hidden } : q))
+    )
+  }
+
   const handleSaveQuestions = async () => {
     if (!gameId) {
       alert('Игра не выбрана')
@@ -314,8 +346,19 @@ export default function GameEditor() {
       return
     }
 
+    const visibleQuestions = questions.filter((q) => !q.is_hidden)
+    if (visibleQuestions.length === 0) {
+      alert('Должен остаться хотя бы один видимый вопрос')
+      return
+    }
+    if (!visibleQuestions.some((q) => q.prompt?.trim())) {
+      alert('Должен быть хотя бы один видимый вопрос с текстом')
+      return
+    }
+
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i]
+      if (question.is_hidden) continue
 
       if (!question.prompt?.trim()) {
         alert(`Вопрос ${i + 1}: заполните текст вопроса`)
@@ -636,6 +679,14 @@ export default function GameEditor() {
     },
   }
 
+  const visibleInGameCount = questions.filter((q) => !q.is_hidden).length
+  const hiddenQuestionCount = questions.filter((q) => q.is_hidden).length
+  const toggleHiddenAllowed = canToggleQuestionHidden(gameSessionState)
+  const questionsSectionTitle =
+    hiddenQuestionCount > 0
+      ? `Вопросы (${questions.length} всего — ${visibleInGameCount} в игре, ${hiddenQuestionCount} скрытых)`
+      : `Вопросы (${questions.length})`
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
@@ -797,7 +848,7 @@ export default function GameEditor() {
         </CollapsibleSection>
 
         <CollapsibleSection
-          title={`Вопросы (${questions.length})`}
+          title={questionsSectionTitle}
           defaultOpen={questions.length > 0}
         >
           <div className="flex justify-end mb-4">
@@ -882,7 +933,7 @@ export default function GameEditor() {
             {questions.map((question, qIndex) => {
               const expanded = isQuestionExpanded(qIndex)
               return (
-              <div key={question.id ?? `draft-${qIndex}`} className="border rounded-lg bg-gray-50 overflow-hidden">
+              <div key={question.id ?? `draft-${qIndex}`} className={`border rounded-lg overflow-hidden ${question.is_hidden ? 'bg-gray-100 border-dashed opacity-90' : 'bg-gray-50'}`}>
                 <div className="flex items-stretch">
                   <button
                     type="button"
@@ -890,7 +941,14 @@ export default function GameEditor() {
                     className="flex-1 flex items-center justify-between gap-3 p-3 sm:p-4 text-left hover:bg-gray-100"
                   >
                     <div className="min-w-0">
-                      <h3 className="text-lg font-bold">Вопрос {qIndex + 1}</h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-bold">Вопрос {qIndex + 1}</h3>
+                        {question.is_hidden && (
+                          <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                            Скрыт
+                          </span>
+                        )}
+                      </div>
                       {!expanded && (
                         <p className="text-sm text-gray-600 truncate mt-1">
                           {question.prompt?.trim() || 'Текст не задан'}
@@ -900,6 +958,25 @@ export default function GameEditor() {
                     <ChevronDown
                       className={`w-5 h-5 shrink-0 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
                     />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleHidden(qIndex)}
+                    disabled={!toggleHiddenAllowed}
+                    className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 border-l disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={
+                      toggleHiddenAllowed
+                        ? question.is_hidden
+                          ? 'Показать в заезде'
+                          : 'Скрыть из заезда'
+                        : 'Только до старта заезда'
+                    }
+                  >
+                    {question.is_hidden ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
                   </button>
                   <button
                     type="button"
