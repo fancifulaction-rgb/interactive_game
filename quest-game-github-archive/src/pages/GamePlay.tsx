@@ -26,6 +26,7 @@ import {
   resumeBackgroundRevalidate,
   isBackgroundRevalidatePaused,
 } from '../lib/revalidateGamePlay'
+import { enqueueMarkTeamFinished } from '../lib/markTeamFinished'
 import { enqueueCritical } from '../lib/requestQueue'
 import { usePlayerExtrasReady } from '../lib/usePlayerExtrasReady'
 import { useTheme } from '../contexts/ThemeContext'
@@ -779,6 +780,10 @@ export default function GamePlay() {
         timerArmedRef.current = false
         setTimeLeft(questionTimeSec(nextQuestion, game))
       } else {
+        const gameId = game?.id as string | undefined
+        if (gameId && teamId) {
+          enqueueMarkTeamFinished(gameId, teamId)
+        }
         const code = (gameCode ?? '').trim().toUpperCase()
         const cached = getGamePlayCache(code)
         const finishState = buildFinishNavigateState(game, cached?.teamsSnapshot)

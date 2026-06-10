@@ -21,6 +21,7 @@ export type GameProfileDraft = {
   finish_page_type: string
   mask_board: boolean
   hide_scoreboard_until_finish: boolean
+  auto_finish_when_all_teams_done: boolean
   answer_grading_preset: AnswerGradingPresetId | 'custom'
   answer_grading: AnswerGradingConfig
 }
@@ -61,6 +62,8 @@ export function gameProfileFromRow(row: {
     mask_board: !!row.mask_board,
     hide_scoreboard_until_finish: parseGameSettings(row.settings)
       .hide_scoreboard_until_finish,
+    auto_finish_when_all_teams_done: parseGameSettings(row.settings)
+      .auto_finish_when_all_teams_done,
     answer_grading_preset: detectAnswerGradingPreset(answerGrading),
     answer_grading: answerGrading,
   }
@@ -90,6 +93,7 @@ export async function saveGameProfile(
         mask_board: draft.mask_board,
         settings: mergeGameSettings(existingSettings, {
           hide_scoreboard_until_finish: draft.hide_scoreboard_until_finish,
+          auto_finish_when_all_teams_done: draft.auto_finish_when_all_teams_done,
           answer_grading: answerGradingStorageValue(draft.answer_grading),
         }),
       })

@@ -35,6 +35,9 @@ import {
 } from '../lib/gameSessionState'
 import { buildTeamRegistrationUrl } from '../lib/registrationUrl'
 import { clearAdminFetchBoost, markAdminFetchBoost } from '../lib/adminFetchBoost'
+import { useTeamProgress } from '../hooks/useTeamProgress'
+import { countFinishedTeams, teamProgressMap } from '../lib/teamProgress'
+import TeamProgressBadge from '../components/TeamProgressBadge'
 
 type HostTeam = {
   id: string
@@ -180,6 +183,14 @@ export default function HostView() {
   const teamName = (t: HostTeam) => (t.team_name || t.name || 'Команда').trim()
   const status = getGameSessionStatus(gameState)
   const statusLabel = getGameSessionStatusLabel(status)
+  const showTeamProgress =
+    status === 'playing' || status === 'paused' || status === 'finished'
+  const { rows: progressRows } = useTeamProgress(
+    game?.id ?? '',
+    showTeamProgress && !!game?.id
+  )
+  const progressByTeam = teamProgressMap(progressRows)
+  const finishedTeamCount = countFinishedTeams(progressRows)
   const registrationUrl = game?.code ? buildTeamRegistrationUrl(game.code) : ''
 
   const statusBadgeClass =
@@ -258,11 +269,18 @@ export default function HostView() {
         </section>
 
         <section className="space-y-4">
-          <div className="flex items-center gap-3">
-            <Users className="w-6 h-6 text-indigo-300" />
-            <h2 className="text-2xl font-bold">
-              Команды <span className="text-indigo-300">({teams.length})</span>
-            </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <Users className="w-6 h-6 text-indigo-300" />
+              <h2 className="text-2xl font-bold">
+                Команды <span className="text-indigo-300">({teams.length})</span>
+              </h2>
+            </div>
+            {showTeamProgress && teams.length > 0 && (
+              <p className="text-sm text-slate-400">
+                {finishedTeamCount} / {teams.length} прошли квест
+              </p>
+            )}
           </div>
           {teams.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/20 p-12 text-center text-slate-400 text-lg">
@@ -275,15 +293,22 @@ export default function HostView() {
                   key={t.id}
                   className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/10"
                 >
-                  <span className="w-8 h-8 rounded-full bg-indigo-600/40 flex items-center justify-center text-sm font-bold">
+                  <span className="w-8 h-8 rounded-full bg-indigo-600/40 flex items-center justify-center text-sm font-bold shrink-0">
                     {i + 1}
                   </span>
-                  <div className="min-w-0 text-left">
+                  <div className="min-w-0 flex-1 text-left">
                     <p className="font-semibold truncate">{teamName(t)}</p>
                     {t.captain_name && (
                       <p className="text-xs text-slate-400 truncate">{t.captain_name}</p>
                     )}
                   </div>
+                  {showTeamProgress && (
+                    <TeamProgressBadge
+                      sessionStatus={status}
+                      progress={progressByTeam.get(t.id)}
+                      detailed
+                    />
+                  )}
                 </li>
               ))}
             </ul>

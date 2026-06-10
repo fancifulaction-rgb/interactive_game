@@ -40,8 +40,11 @@ import {
   getGameStartedAt,
 } from '../lib/gameSessionState'
 import { useGameSessionAdminContext } from '../contexts/GameSessionAdminContext'
+import { useTeamProgress } from '../hooks/useTeamProgress'
+import { countFinishedTeams, teamProgressMap } from '../lib/teamProgress'
 import RegistrationQrCard from './RegistrationQrCard'
 import AnswerModerationPanel from './AnswerModerationPanel'
+import TeamProgressBadge from './TeamProgressBadge'
 import { useNavigate } from 'react-router-dom'
 
 export interface GameControlsGame {
@@ -321,6 +324,15 @@ export default function GameControls({
 
   const teamDisplayName = (t: LobbyTeam) => (t.team_name || t.name || 'Команда').trim()
 
+  const showTeamProgress =
+    status === 'playing' || status === 'paused' || status === 'finished'
+  const { rows: progressRows } = useTeamProgress(
+    selectedGameId,
+    showTeamProgress && !!selectedGameId
+  )
+  const progressByTeam = teamProgressMap(progressRows)
+  const finishedTeamCount = countFinishedTeams(progressRows)
+
   const statusColor =
     !statusKnown || !status
       ? 'text-gray-400'
@@ -444,10 +456,17 @@ export default function GameControls({
                   <p className="text-sm text-gray-600">Статус</p>
                   <p className={`text-lg font-bold ${statusColor}`}>{statusLabel}</p>
                 </div>
-                <div className="text-right flex items-center gap-2 text-gray-700">
-                  <Users className="w-4 h-4" />
-                  <span className="font-semibold">{teams.length}</span>
-                  <span className="text-sm text-gray-500">команд</span>
+                <div className="text-right flex flex-col items-end gap-0.5 text-gray-700">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    <span className="font-semibold">{teams.length}</span>
+                    <span className="text-sm text-gray-500">команд</span>
+                  </div>
+                  {showTeamProgress && teams.length > 0 && (
+                    <span className="text-xs text-gray-500">
+                      {finishedTeamCount} / {teams.length} прошли квест
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -463,11 +482,20 @@ export default function GameControls({
                     {teams.map((t) => (
                       <li
                         key={t.id}
-                        className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm"
+                        className="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm"
                       >
-                        <span className="font-medium text-gray-800">{teamDisplayName(t)}</span>
-                        {t.captain_name && (
-                          <span className="text-gray-500 text-xs ml-2 truncate">{t.captain_name}</span>
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium text-gray-800">{teamDisplayName(t)}</span>
+                          {t.captain_name && (
+                            <span className="text-gray-500 text-xs ml-2 truncate">{t.captain_name}</span>
+                          )}
+                        </div>
+                        {showTeamProgress && (
+                          <TeamProgressBadge
+                            sessionStatus={status}
+                            progress={progressByTeam.get(t.id)}
+                            detailed
+                          />
                         )}
                       </li>
                     ))}

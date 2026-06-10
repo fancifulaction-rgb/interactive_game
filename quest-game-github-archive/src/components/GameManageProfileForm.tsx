@@ -39,6 +39,7 @@ const emptyDraft: GameProfileDraft = {
   finish_page_type: 'scoreboard',
   mask_board: false,
   hide_scoreboard_until_finish: false,
+  auto_finish_when_all_teams_done: false,
   answer_grading_preset: 'strict',
   answer_grading: ANSWER_GRADING_BASELINE,
 }
@@ -112,6 +113,7 @@ export default function GameManageProfileForm({
       setExistingSettings(
         mergeGameSettings(existingSettings, {
           hide_scoreboard_until_finish: draft.hide_scoreboard_until_finish,
+          auto_finish_when_all_teams_done: draft.auto_finish_when_all_teams_done,
           answer_grading: answerGradingStorageValue(draft.answer_grading),
         })
       )
@@ -258,6 +260,22 @@ export default function GameManageProfileForm({
           </label>
           <p className="text-sm text-gray-600 mt-1 ml-7">
             Игроки не смогут открыть табло результатов, пока ведущий не завершит игру
+          </p>
+        </div>
+        <div>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={draft.auto_finish_when_all_teams_done}
+              onChange={(e) =>
+                setDraft({ ...draft, auto_finish_when_all_teams_done: e.target.checked })
+              }
+              className="w-5 h-5"
+            />
+            <span className="text-sm font-medium">Завершить игру, когда все команды прошли квест</span>
+          </label>
+          <p className="text-sm text-gray-600 mt-1 ml-7">
+            Сессия перейдёт в «Завершена» автоматически, когда последняя команда дойдёт до финиша
           </p>
         </div>
         <div className="md:col-span-2 border-t border-gray-100 pt-4">

@@ -18,6 +18,8 @@ export {
 export type GameSettingsJson = {
   /** IMP-UX-005: игроки не видят табло до статуса finished */
   hide_scoreboard_until_finish?: boolean
+  /** Автофиниш сессии, когда все команды прошли квест */
+  auto_finish_when_all_teams_done?: boolean
   /** IMP-LOG-022: режимы проверки ответов */
   answer_grading?: AnswerGradingConfig
 }
@@ -27,6 +29,7 @@ export function parseGameSettings(raw: unknown): GameSettingsJson {
   const s = raw as Record<string, unknown>
   const result: GameSettingsJson = {
     hide_scoreboard_until_finish: s.hide_scoreboard_until_finish === true,
+    auto_finish_when_all_teams_done: s.auto_finish_when_all_teams_done === true,
   }
   if (s.answer_grading !== undefined) {
     result.answer_grading = parseAnswerGradingFromSettings(s)
@@ -36,6 +39,10 @@ export function parseGameSettings(raw: unknown): GameSettingsJson {
 
 export function isScoreboardHiddenUntilFinish(raw: unknown): boolean {
   return parseGameSettings(raw).hide_scoreboard_until_finish === true
+}
+
+export function isAutoFinishWhenAllTeamsDone(raw: unknown): boolean {
+  return parseGameSettings(raw).auto_finish_when_all_teams_done === true
 }
 
 export function mergeGameSettings(
