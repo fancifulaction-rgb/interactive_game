@@ -80,7 +80,7 @@
 | 0 | Спека `guides/ANSWER_GRADING.md`, решения владельца | done |
 | 1 | punctuation, ё/е, fuzzy + penalty; UI пресеты; SQL + `gameSettings` | done |
 | 2 | `grading_status`, hybrid/manual, badge табло; keywords, numeric; панель модерации | done |
-| 3 | Очередь модерации, post-hoc, **resubmit penalty** | pending |
+| 3 | Очередь модерации, post-hoc, **resubmit penalty** | done |
 | 4 | regex, jury, per-question override | pending |
 
 ---

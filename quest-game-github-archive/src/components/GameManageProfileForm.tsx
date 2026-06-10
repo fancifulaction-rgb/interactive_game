@@ -271,10 +271,14 @@ export default function GameManageProfileForm({
             }
             onChange={(e) => {
               const preset = e.target.value as AnswerGradingPresetId
+              const prevResubmit = draft.answer_grading.resubmit
+              const next = presetAnswerGrading(preset)
               setDraft({
                 ...draft,
                 answer_grading_preset: preset,
-                answer_grading: presetAnswerGrading(preset),
+                answer_grading: prevResubmit
+                  ? { ...next, resubmit: prevResubmit }
+                  : next,
               })
             }}
             className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -298,6 +302,36 @@ export default function GameManageProfileForm({
               : ANSWER_GRADING_PRESETS[draft.answer_grading_preset as AnswerGradingPresetId]
                   ?.description}
           </p>
+          <div className="mt-3 max-w-xs">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Штраф за пересдачу (%)
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={draft.answer_grading.resubmit?.penalty_percent ?? 0}
+              onChange={(e) => {
+                const pct = Math.max(
+                  0,
+                  Math.min(100, Number(e.target.value) || 0)
+                )
+                const { resubmit: _drop, ...rest } = draft.answer_grading
+                setDraft({
+                  ...draft,
+                  answer_grading_preset: 'custom',
+                  answer_grading:
+                    pct > 0
+                      ? { ...draft.answer_grading, resubmit: { penalty_percent: pct } }
+                      : rest,
+                })
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              0 — без штрафа. При повторном ответе на тот же вопрос очки уменьшаются.
+            </p>
+          </div>
         </div>
       </div>
     </div>

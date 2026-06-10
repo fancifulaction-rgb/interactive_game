@@ -37,6 +37,7 @@ const ALL_FILES = [
   '021_drop_legacy_rls_allow_all.sql',
   '022_answer_grading.sql',
   '023_answer_grading_phase2.sql',
+  '024_answer_grading_phase3.sql',
 ]
 
 const filterArg = process.argv[2]

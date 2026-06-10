@@ -28,6 +28,10 @@ export type TeamPendingReview = {
   pending_count: number
 }
 
+export type PosthocAnswerRow = PendingAnswerRow & {
+  grading_status: string
+}
+
 function parsePendingRow(row: Record<string, unknown>): PendingAnswerRow {
   const media = row.media_urls
   let mediaUrls: string[] = []
@@ -129,6 +133,77 @@ export async function moderateAnswer(
   }
 
   return result
+}
+
+function parsePosthocRow(row: Record<string, unknown>): PosthocAnswerRow {
+  const base = parsePendingRow(row)
+  return {
+    ...base,
+    grading_status: String(row.grading_status ?? 'auto_accepted'),
+  }
+}
+
+export async function listPosthocAnswers(
+  gameId: string
+): Promise<PosthocAnswerRow[]> {
+  const { data, error } = await supabase.rpc('list_posthoc_answers', {
+    p_game_id: gameId,
+  })
+  if (error) throw error
+  if (!Array.isArray(data)) return []
+  return data.map((row) => parsePosthocRow(row as Record<string, unknown>))
+}
+
+export function enqueueListPosthocAnswers(
+  gameId: string
+): Promise<PosthocAnswerRow[]> {
+  return enqueueCritical(() => listPosthocAnswers(gameId))
+}
+
+export async function posthocAcceptAnswer(
+  answerId: string
+): Promise<ModerateAnswerResult> {
+  const { data, error } = await supabase.rpc('posthoc_accept_answer', {
+    p_answer_id: answerId,
+  })
+  if (error) throw error
+  if (!data || typeof data !== 'object') {
+    throw new Error('posthoc_accept_answer: empty response')
+  }
+
+  const row = data as Record<string, unknown>
+  return {
+    success: row.success === true,
+    answer_id: String(row.answer_id ?? answerId),
+    grading_status: String(row.grading_status ?? ''),
+    is_correct: row.is_correct === true,
+    points_earned: Number(row.points_earned) || 0,
+    team_total_score:
+      row.team_total_score != null ? Number(row.team_total_score) : undefined,
+    match_tier: typeof row.match_tier === 'string' ? row.match_tier : undefined,
+  }
+}
+
+export function enqueuePosthocAcceptAnswer(
+  answerId: string,
+  opts?: { gameId?: string; teamId?: string }
+): Promise<ModerateAnswerResult> {
+  return enqueueCritical(async () => {
+    const result = await posthocAcceptAnswer(answerId)
+    if (
+      opts?.gameId &&
+      opts.teamId &&
+      result.points_earned > 0 &&
+      result.team_total_score != null
+    ) {
+      void broadcastScoreUpdate(opts.gameId, {
+        team_id: opts.teamId,
+        total_score: result.team_total_score,
+        delta: result.points_earned,
+      })
+    }
+    return result
+  })
 }
 
 export function enqueueModerateAnswer(

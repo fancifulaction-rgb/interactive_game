@@ -33,6 +33,9 @@ export type AnswerGradingConfig = {
   }
   routing: AnswerGradingRouting
   pending_display: 'zero_with_badge'
+  resubmit?: {
+    penalty_percent: number
+  }
 }
 
 export const ANSWER_GRADING_BASELINE: AnswerGradingConfig = {
@@ -132,7 +135,12 @@ export function parseAnswerGrading(raw: unknown): AnswerGradingConfig {
   const k = isRecord(raw.keywords) ? raw.keywords : {}
   const num = isRecord(raw.numeric) ? raw.numeric : {}
   const m = isRecord(raw.mcq) ? raw.mcq : {}
+  const r = isRecord(raw.resubmit) ? raw.resubmit : {}
   const base = ANSWER_GRADING_BASELINE
+  const resubmitPct = Math.max(
+    0,
+    Math.min(100, readNumber(r.penalty_percent, 0))
+  )
 
   return {
     version: 1,
@@ -176,6 +184,7 @@ export function parseAnswerGrading(raw: unknown): AnswerGradingConfig {
     },
     routing: readRouting(raw.routing, base.routing),
     pending_display: 'zero_with_badge',
+    ...(resubmitPct > 0 ? { resubmit: { penalty_percent: resubmitPct } } : {}),
   }
 }
 
@@ -216,6 +225,7 @@ export function presetAnswerGrading(
     numeric: src.numeric ? { ...src.numeric } : undefined,
     normalize: { ...src.normalize },
     mcq: { ...src.mcq },
+    resubmit: src.resubmit ? { ...src.resubmit } : undefined,
   }
 }
 
