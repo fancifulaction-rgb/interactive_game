@@ -87,6 +87,9 @@ export default function GamePlay() {
   const [playAccessPending, setPlayAccessPending] = useState(false)
   const [accessCheckNonce, setAccessCheckNonce] = useState(0)
   const [sessionUnknown, setSessionUnknown] = useState(true)
+  const [pendingReviewNotice, setPendingReviewNotice] = useState<string | null>(
+    null
+  )
   useEffect(() => {
     startPendingAnswerFlushLoop()
     markPlayerFetchBoost()
@@ -714,6 +717,11 @@ export default function GamePlay() {
               /* ignore */
             }
           }
+          if (result.grading_status === 'pending') {
+            setPendingReviewNotice(
+              'Ответ отправлен на проверку ведущему. Очки появятся после принятия.'
+            )
+          }
         })
         .catch((saveErr: unknown) => {
           const msg = saveErr instanceof Error ? saveErr.message : String(saveErr)
@@ -987,7 +995,22 @@ export default function GamePlay() {
       }}
     >
       <div className="max-w-4xl mx-auto">
-
+        {pendingReviewNotice && (
+          <div
+            className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 text-sm sm:text-base flex items-start justify-between gap-3"
+            role="status"
+          >
+            <span>{pendingReviewNotice}</span>
+            <button
+              type="button"
+              onClick={() => setPendingReviewNotice(null)}
+              className="shrink-0 text-amber-700 hover:text-amber-900 font-medium"
+              aria-label="Закрыть"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 sm:p-6">

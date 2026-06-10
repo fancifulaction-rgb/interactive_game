@@ -8,6 +8,7 @@ import {
 } from '../lib/gameRealtime'
 import { Trophy, Medal, Award, Settings, Download, FileText, FileSpreadsheet } from 'lucide-react'
 import { exportToExcel, exportToPDF, exportToCSV, exportAllFormats } from '../utils/exportData'
+import { fetchPendingCountByTeam } from '../lib/answerModeration'
 
 interface TeamScore {
   id: string
@@ -39,6 +40,7 @@ export default function AdminScoreboard() {
   const pollTimerRef = useRef<number | null>(null)
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loadSeqRef = useRef(0)
+  const [pendingByTeam, setPendingByTeam] = useState<Record<string, number>>({})
 
   useEffect(() => {
     const adminLoggedIn = localStorage.getItem('admin_logged_in')
@@ -55,6 +57,13 @@ export default function AdminScoreboard() {
     if (teamsError) throw teamsError
     if (seq !== loadSeqRef.current) return
     setTeams(teamsData ?? [])
+
+    try {
+      const pending = await fetchPendingCountByTeam(gameId)
+      if (seq === loadSeqRef.current) setPendingByTeam(pending)
+    } catch (pendingErr) {
+      console.warn('Не удалось загрузить очередь проверки:', pendingErr)
+    }
   }, [])
 
   useEffect(() => {
@@ -293,9 +302,16 @@ export default function AdminScoreboard() {
                         )}
 
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-lg sm:text-2xl font-bold text-gray-800 truncate">
-                            {game?.mask_board ? '***' : team.team_name}
-                          </h3>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-lg sm:text-2xl font-bold text-gray-800 truncate">
+                              {game?.mask_board ? '***' : team.team_name}
+                            </h3>
+                            {!game?.mask_board && (pendingByTeam[team.id] ?? 0) > 0 && (
+                              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 border border-amber-300">
+                                на проверке: {pendingByTeam[team.id]}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm sm:text-base text-gray-600 truncate">
                             Капитан: {game?.mask_board ? '***' : team.captain_name}
                           </p>

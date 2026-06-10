@@ -36,6 +36,7 @@ const ALL_FILES = [
   '020_game_code_varchar10.sql',
   '021_drop_legacy_rls_allow_all.sql',
   '022_answer_grading.sql',
+  '023_answer_grading_phase2.sql',
 ]
 
 const filterArg = process.argv[2]

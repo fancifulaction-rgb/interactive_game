@@ -88,6 +88,21 @@ function wordsMatch(
   return levenshteinDistance(expected, actual) <= fuzzy.max_distance_short
 }
 
+export type MatchTier = 'exact' | 'fuzzy' | 'partial_mcq' | 'none'
+
+export type GradeResult = {
+  isCorrect: boolean
+  scoreMultiplier: number
+  matchTier: MatchTier
+}
+
+function extractAnswerNumber(text: string): number | null {
+  const m = String(text ?? '').match(/[-+]?[0-9]+(?:[.,][0-9]+)?/)
+  if (!m?.[0]) return null
+  const n = Number(m[0].replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
 function gradeTextSingle(
   correct: string[],
   user: string[],
@@ -95,15 +110,54 @@ function gradeTextSingle(
 ): GradeResult {
   const text = user[0] ?? ''
   if (!text || correct.length === 0) {
-    return { isCorrect: false, scoreMultiplier: 0 }
+    return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
   }
 
   if (correct.includes(text)) {
-    return { isCorrect: true, scoreMultiplier: 1 }
+    return { isCorrect: true, scoreMultiplier: 1, matchTier: 'exact' }
+  }
+
+  if (cfg.text_match === 'keywords') {
+    const userWords = text.split(/\s+/).filter(Boolean)
+    const minMatch = Math.max(1, cfg.keywords?.min_match ?? 1)
+
+    for (const key of correct) {
+      const keyWords = key.split(/\s+/).filter(Boolean)
+      if (keyWords.length === 0) continue
+      let hits = 0
+      for (const word of keyWords) {
+        if (userWords.includes(word)) hits++
+      }
+      if (hits >= Math.min(minMatch, keyWords.length)) {
+        return { isCorrect: true, scoreMultiplier: 1, matchTier: 'exact' }
+      }
+    }
+    return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
+  }
+
+  if (cfg.text_match === 'numeric') {
+    const tol = cfg.numeric?.tolerance_percent ?? 0
+    const userNum = extractAnswerNumber(text)
+    if (userNum === null) {
+      return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
+    }
+
+    for (const key of correct) {
+      const keyNum = extractAnswerNumber(key)
+      if (keyNum === null) continue
+      if (keyNum === 0) {
+        if (userNum === 0) {
+          return { isCorrect: true, scoreMultiplier: 1, matchTier: 'exact' }
+        }
+      } else if ((Math.abs(userNum - keyNum) / Math.abs(keyNum)) * 100 <= tol) {
+        return { isCorrect: true, scoreMultiplier: 1, matchTier: 'exact' }
+      }
+    }
+    return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
   }
 
   if (cfg.text_match !== 'fuzzy') {
-    return { isCorrect: false, scoreMultiplier: 0 }
+    return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
   }
 
   const userWords = text.split(/\s+/).filter(Boolean)
@@ -122,16 +176,11 @@ function gradeTextSingle(
       }
     }
     if (allMatch) {
-      return { isCorrect: true, scoreMultiplier: fuzzyMultiplier }
+      return { isCorrect: true, scoreMultiplier: fuzzyMultiplier, matchTier: 'fuzzy' }
     }
   }
 
-  return { isCorrect: false, scoreMultiplier: 0 }
-}
-
-export type GradeResult = {
-  isCorrect: boolean
-  scoreMultiplier: number
+  return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
 }
 
 /** Та же логика, что на сервере (RPC submit_auto_answer). */
@@ -157,19 +206,19 @@ export function gradeUserAnswer(params: {
 
   if (!partialCredit) {
     if (allCorrect && correctCount === totalCorrect && totalCorrect > 0) {
-      return { isCorrect: true, scoreMultiplier: 1 }
+      return { isCorrect: true, scoreMultiplier: 1, matchTier: 'exact' }
     }
-    return { isCorrect: false, scoreMultiplier: 0 }
+    return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
   }
 
   if (allCorrect && correctCount === totalCorrect) {
-    return { isCorrect: true, scoreMultiplier: 1 }
+    return { isCorrect: true, scoreMultiplier: 1, matchTier: 'exact' }
   }
   if (correctCount > 0 && allCorrect) {
-    return { isCorrect: true, scoreMultiplier: 0.5 }
+    return { isCorrect: true, scoreMultiplier: 0.5, matchTier: 'partial_mcq' }
   }
   if (correctCount > 0) {
-    return { isCorrect: true, scoreMultiplier: 0.3 }
+    return { isCorrect: true, scoreMultiplier: 0.3, matchTier: 'partial_mcq' }
   }
-  return { isCorrect: false, scoreMultiplier: 0 }
+  return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
 }

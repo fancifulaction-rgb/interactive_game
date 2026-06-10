@@ -4,7 +4,7 @@ export type TextMatchMode = 'strict' | 'fuzzy' | 'keywords' | 'numeric' | 'regex
 
 export type AnswerGradingRouting = 'auto' | 'hybrid' | 'manual'
 
-export type AnswerGradingPresetId = 'strict' | 'soft_text'
+export type AnswerGradingPresetId = 'strict' | 'soft_text' | 'quest_photo'
 
 export type AnswerGradingConfig = {
   version: 1
@@ -20,6 +20,13 @@ export type AnswerGradingConfig = {
     short_word_max_len: number
     max_distance_short: number
     penalty_percent: number
+  }
+  keywords?: {
+    min_match: number
+  }
+  numeric?: {
+    tolerance_percent: number
+    allow_leading_zeros: boolean
   }
   mcq: {
     partial_credit: boolean
@@ -71,6 +78,15 @@ export const ANSWER_GRADING_PRESETS: Record<
       text_match: 'fuzzy',
     },
   },
+  quest_photo: {
+    label: 'Фото-квест (гибрид)',
+    description:
+      'Текст проверяется автоматически; фото/видео без текста — в очередь модерации.',
+    config: {
+      ...ANSWER_GRADING_BASELINE,
+      routing: 'hybrid',
+    },
+  },
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -113,6 +129,8 @@ export function parseAnswerGrading(raw: unknown): AnswerGradingConfig {
 
   const n = isRecord(raw.normalize) ? raw.normalize : {}
   const f = isRecord(raw.fuzzy) ? raw.fuzzy : {}
+  const k = isRecord(raw.keywords) ? raw.keywords : {}
+  const num = isRecord(raw.numeric) ? raw.numeric : {}
   const m = isRecord(raw.mcq) ? raw.mcq : {}
   const base = ANSWER_GRADING_BASELINE
 
@@ -146,6 +164,13 @@ export function parseAnswerGrading(raw: unknown): AnswerGradingConfig {
         base.fuzzy!.penalty_percent
       ),
     },
+    keywords: {
+      min_match: Math.max(1, readNumber(k.min_match, 1)),
+    },
+    numeric: {
+      tolerance_percent: Math.max(0, readNumber(num.tolerance_percent, 0)),
+      allow_leading_zeros: readBool(num.allow_leading_zeros, false),
+    },
     mcq: {
       partial_credit: readBool(m.partial_credit, base.mcq.partial_credit),
     },
@@ -176,17 +201,21 @@ export function detectAnswerGradingPreset(
 ): AnswerGradingPresetId | 'custom' {
   if (configMatchesPreset(config, 'strict')) return 'strict'
   if (configMatchesPreset(config, 'soft_text')) return 'soft_text'
+  if (configMatchesPreset(config, 'quest_photo')) return 'quest_photo'
   return 'custom'
 }
 
 export function presetAnswerGrading(
   presetId: AnswerGradingPresetId
 ): AnswerGradingConfig {
+  const src = ANSWER_GRADING_PRESETS[presetId].config
   return {
-    ...ANSWER_GRADING_PRESETS[presetId].config,
-    fuzzy: { ...ANSWER_GRADING_PRESETS[presetId].config.fuzzy! },
-    normalize: { ...ANSWER_GRADING_PRESETS[presetId].config.normalize },
-    mcq: { ...ANSWER_GRADING_PRESETS[presetId].config.mcq },
+    ...src,
+    fuzzy: src.fuzzy ? { ...src.fuzzy } : undefined,
+    keywords: src.keywords ? { ...src.keywords } : undefined,
+    numeric: src.numeric ? { ...src.numeric } : undefined,
+    normalize: { ...src.normalize },
+    mcq: { ...src.mcq },
   }
 }
 

@@ -17,11 +17,19 @@ export type SubmitAutoAnswerRequest = {
   session_token?: string
 }
 
+export type GradingStatus =
+  | 'auto_accepted'
+  | 'pending'
+  | 'rejected'
+  | 'accepted_manual'
+
 export type SubmitAutoAnswerResult = {
   is_correct: boolean
   points_earned: number
   team_total_score: number
   answer_id?: string
+  grading_status?: GradingStatus
+  match_tier?: string
   via: 'rpc'
 }
 
@@ -58,11 +66,18 @@ async function submitViaRpc(
       }
 
       const row = data as Record<string, unknown>
+      const gradingStatus = row.grading_status
       return {
         is_correct: row.is_correct === true,
         points_earned: Number(row.points_earned) || 0,
         team_total_score: Number(row.team_total_score) || 0,
         answer_id: typeof row.answer_id === 'string' ? row.answer_id : undefined,
+        grading_status:
+          typeof gradingStatus === 'string'
+            ? (gradingStatus as GradingStatus)
+            : undefined,
+        match_tier:
+          typeof row.match_tier === 'string' ? row.match_tier : undefined,
         via: 'rpc',
       }
     } catch (err) {

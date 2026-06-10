@@ -39,6 +39,7 @@ import {
 } from '../lib/gameSessionState'
 import { useGameSessionAdminContext } from '../contexts/GameSessionAdminContext'
 import RegistrationQrCard from './RegistrationQrCard'
+import AnswerModerationPanel from './AnswerModerationPanel'
 import { useNavigate } from 'react-router-dom'
 
 export interface GameControlsGame {
@@ -574,6 +575,10 @@ export default function GameControls({
                 {deleting ? 'Удаление…' : 'Удалить игру'}
               </button>
             </div>
+
+            {selectedGameId && (
+              <AnswerModerationPanel gameId={selectedGameId} />
+            )}
 
             {loading && loadingLabel && (
               <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
