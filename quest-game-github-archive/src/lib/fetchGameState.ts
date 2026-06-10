@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { GameStateRow } from './gameSessionState'
+import { gameStateUpdatedAtMs } from './gameSessionState'
 
 type InflightEntry = {
   promise: Promise<GameStateRow | null>
@@ -95,4 +96,41 @@ export function fetchGameStateForGame(
 
   inflight.set(gameId, { promise, gen: reqGen })
   return promise
+}
+
+const ADMIN_GAME_STATE_LIST_SELECT =
+  'game_id, current_state, is_paused, updated_at, player_data'
+
+/**
+ * Batch game_state для списка игр в админке (один запрос .in).
+ * При дубликатах строк берётся запись с более поздним updated_at.
+ */
+export async function fetchGameStatesForGameIds(
+  gameIds: string[]
+): Promise<Record<string, GameStateRow | null>> {
+  const unique = [...new Set(gameIds.filter(Boolean))]
+  const result: Record<string, GameStateRow | null> = {}
+  if (unique.length === 0) return result
+
+  const { data, error } = await supabase
+    .from('game_state')
+    .select(ADMIN_GAME_STATE_LIST_SELECT)
+    .in('game_id', unique)
+
+  if (error) throw error
+
+  for (const row of data ?? []) {
+    const id = row.game_id as string
+    const asRow = row as GameStateRow
+    const prev = result[id]
+    if (!prev || gameStateUpdatedAtMs(asRow) >= gameStateUpdatedAtMs(prev)) {
+      result[id] = asRow
+    }
+  }
+
+  for (const id of unique) {
+    if (!(id in result)) result[id] = null
+  }
+
+  return result
 }

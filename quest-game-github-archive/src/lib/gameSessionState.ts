@@ -126,3 +126,63 @@ export function getGameSessionStatusLabel(status: GameSessionStatus): string {
       return 'Завершена'
   }
 }
+
+/** Приоритет для списка игр в админке: live → лобби → завершена → закрыта. */
+export function getGameSessionAdminListSortRank(status: GameSessionStatus): number {
+  switch (status) {
+    case 'playing':
+    case 'paused':
+      return 4
+    case 'waiting':
+      return 3
+    case 'finished':
+      return 2
+    case 'closed':
+      return 1
+  }
+}
+
+export function sortGamesBySessionStatus<T extends { id: string; created_at: string }>(
+  games: T[],
+  stateByGameId: Readonly<Record<string, GameStateRow | null | undefined>>
+): T[] {
+  const stateFor = (id: string) => stateByGameId[id] ?? null
+
+  return [...games].sort((a, b) => {
+    const ra = getGameSessionAdminListSortRank(getGameSessionStatus(stateFor(a.id)))
+    const rb = getGameSessionAdminListSortRank(getGameSessionStatus(stateFor(b.id)))
+    if (ra !== rb) return rb - ra
+    const ua = gameStateUpdatedAtMs(stateFor(a.id))
+    const ub = gameStateUpdatedAtMs(stateFor(b.id))
+    if (ua !== ub) return ub - ua
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+}
+
+export function getGameSessionStatusBadgeClasses(status: GameSessionStatus): string {
+  switch (status) {
+    case 'playing':
+      return 'bg-green-100 text-green-800 border-green-200'
+    case 'paused':
+      return 'bg-amber-100 text-amber-800 border-amber-200'
+    case 'waiting':
+      return 'bg-blue-100 text-blue-800 border-blue-200'
+    case 'finished':
+      return 'bg-gray-100 text-gray-600 border-gray-200'
+    case 'closed':
+      return 'bg-gray-50 text-gray-500 border-gray-200'
+  }
+}
+
+export function getGameSessionStatusCardBorderClasses(status: GameSessionStatus): string {
+  switch (status) {
+    case 'playing':
+      return 'border-l-4 border-l-green-500'
+    case 'paused':
+      return 'border-l-4 border-l-amber-500'
+    case 'waiting':
+      return 'border-l-4 border-l-blue-500'
+    default:
+      return ''
+  }
+}

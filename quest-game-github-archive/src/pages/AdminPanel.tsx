@@ -41,6 +41,15 @@ import DiagnosticLogsPanel from '../components/DiagnosticLogsPanel'
 import EventArchiveModal from '../components/EventArchiveModal'
 import { useGameSessionAdmin } from '../hooks/useGameSessionAdmin'
 import { GameSessionAdminProvider } from '../contexts/GameSessionAdminContext'
+import { fetchGameStatesForGameIds } from '../lib/fetchGameState'
+import {
+  type GameStateRow,
+  getGameSessionStatus,
+  getGameSessionStatusBadgeClasses,
+  getGameSessionStatusCardBorderClasses,
+  getGameSessionStatusLabel,
+  sortGamesBySessionStatus,
+} from '../lib/gameSessionState'
 import {
   LogOut, Plus, Edit, Trash2, Play, Settings,
   Download, Users, Trophy, Palette, FileText, BarChart3, Type, Key, Radio, Calendar, Copy, X,
@@ -89,6 +98,7 @@ export default function AdminPanel() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [games, setGames] = useState<Game[]>([])
+  const [gameStateByGameId, setGameStateByGameId] = useState<Record<string, GameStateRow | null>>({})
   const [themes, setThemes] = useState<Theme[]>([])
   const [settings, setSettings] = useState<Settings[]>([])
   const [gamesLoading, setGamesLoading] = useState(true)
@@ -145,7 +155,21 @@ export default function AdminPanel() {
 
       if (error) throw error
       if (seq !== gamesLoadSeq.current) return
-      setGames(data || [])
+
+      const rows = (data || []) as Game[]
+      let stateMap: Record<string, GameStateRow | null> = {}
+      if (rows.length > 0) {
+        try {
+          stateMap = await fetchGameStatesForGameIds(rows.map((g) => g.id))
+        } catch (stateErr) {
+          console.error('Ошибка загрузки game_state для списка игр:', stateErr)
+          for (const g of rows) stateMap[g.id] = null
+        }
+      }
+      if (seq !== gamesLoadSeq.current) return
+
+      setGameStateByGameId(stateMap)
+      setGames(sortGamesBySessionStatus(rows, stateMap))
     } catch (err: unknown) {
       if (seq !== gamesLoadSeq.current) return
       if (signal?.aborted) return
@@ -166,6 +190,15 @@ export default function AdminPanel() {
   const refreshGamesList = useCallback(() => {
     void loadGames()
   }, [loadGames])
+
+  useEffect(() => {
+    if (activeTab !== 'games') return
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void loadGames()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [activeTab, loadGames])
 
   useEffect(() => {
     setSelectedGameId((current) => {
@@ -308,8 +341,8 @@ export default function AdminPanel() {
     createInFlight.current = true
     setCreatingGame(true)
     try {
-      const data = await createNewGame()
-      setGames((prev) => [data as Game, ...prev])
+      await createNewGame()
+      await loadGames()
       setShowCreateGame(false)
       setGamesError('')
     } catch (err: unknown) {
@@ -363,19 +396,7 @@ export default function AdminPanel() {
         code,
       })
 
-      const { data: fullGame, error } = await supabase
-        .from('games')
-        .select(GAME_LIST_SELECT)
-        .eq('id', newGame.id)
-        .maybeSingle()
-
-      if (error) throw error
-
-      if (fullGame) {
-        setGames([fullGame as Game, ...games])
-      } else {
-        await loadGames()
-      }
+      await loadGames()
 
       setCloneSource(null)
       alert(
@@ -482,13 +503,9 @@ export default function AdminPanel() {
     }
 
     if (toRestore.length > 0) {
-      setGames((prev) => {
-        const merged = [...toRestore, ...prev]
-        merged.sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )
-        return merged
-      })
+      setGames((prev) =>
+        sortGamesBySessionStatus([...toRestore, ...prev], gameStateByGameId)
+      )
     }
 
     setSelectedGameIds(new Set())
@@ -756,10 +773,13 @@ export default function AdminPanel() {
                 </div>
 
                 <div className="grid gap-4">
-                {games.map((game) => (
+                {games.map((game) => {
+                  const sessionStatus = getGameSessionStatus(gameStateByGameId[game.id] ?? null)
+                  const sessionLabel = getGameSessionStatusLabel(sessionStatus)
+                  return (
                   <div
                     key={game.id}
-                    className={`bg-white rounded-lg p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow ${
+                    className={`bg-white rounded-lg p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow ${getGameSessionStatusCardBorderClasses(sessionStatus)} ${
                       selectedGameIds.has(game.id) ? 'ring-2 ring-red-300' : ''
                     }`}
                   >
@@ -774,8 +794,13 @@ export default function AdminPanel() {
                           aria-label={`Выбрать игру ${game.title}`}
                         />
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-2 truncate">
-                          {game.title}
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-2 flex flex-wrap items-center gap-2">
+                          <span className="truncate">{game.title}</span>
+                          <span
+                            className={`text-xs font-medium px-2 py-0.5 rounded border shrink-0 ${getGameSessionStatusBadgeClasses(sessionStatus)}`}
+                          >
+                            {sessionLabel}
+                          </span>
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 text-sm">
                           <div>
@@ -868,7 +893,7 @@ export default function AdminPanel() {
                       </div>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
               </>
             )}
@@ -961,11 +986,16 @@ export default function AdminPanel() {
                 ) : games.length === 0 ? (
                   <option value="">Нет игр</option>
                 ) : (
-                  games.map((game) => (
+                  games.map((game) => {
+                    const label = getGameSessionStatusLabel(
+                      getGameSessionStatus(gameStateByGameId[game.id] ?? null)
+                    )
+                    return (
                     <option key={game.id} value={game.id}>
-                      {game.title} ({game.code})
+                      [{label}] {game.title} ({game.code})
                     </option>
-                  ))
+                    )
+                  })
                 )}
               </select>
             </div>
