@@ -10,6 +10,12 @@ import { saveQuestionsForGame } from '../lib/saveGameQuestions'
 import { generateQuestionsWithAi, type AiQuestionProvider } from '../lib/generateQuestions'
 import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown } from 'lucide-react'
 import CollapsibleSection from '../components/CollapsibleSection'
+import {
+  parseQuestionGradingOverride,
+  type AnswerGradingRouting,
+  type QuestionGradingOverride,
+  type TextMatchMode,
+} from '../lib/answerGradingConfig'
 
 interface Question {
   id?: string
@@ -26,6 +32,7 @@ interface Question {
   hint_levels: string[]
   hint_penalties: number[]
   per_question_time_sec: number | null
+  grading_override: QuestionGradingOverride | null
 }
 
 export default function GameEditor() {
@@ -109,6 +116,7 @@ export default function GameEditor() {
       hint_levels: Array.isArray(q.hint_levels) ? (q.hint_levels as string[]) : [],
       hint_penalties: Array.isArray(q.hint_penalties) ? (q.hint_penalties as number[]) : [],
       per_question_time_sec: (q.per_question_time_sec as number | null) ?? null,
+      grading_override: parseQuestionGradingOverride(q.grading_override),
     }
   }
 
@@ -230,6 +238,7 @@ export default function GameEditor() {
         hint_levels: d.hint_levels?.length ? d.hint_levels : ['Подсказка'],
         hint_penalties: d.hint_penalties?.length ? d.hint_penalties : [10],
         per_question_time_sec: d.per_question_time_sec ?? perQuestionTime,
+        grading_override: null,
       }))
 
       setQuestions([...questions, ...mapped])
@@ -271,7 +280,8 @@ export default function GameEditor() {
       base_points: 100,
       hint_levels: [],
       hint_penalties: [],
-      per_question_time_sec: 60
+      per_question_time_sec: 60,
+      grading_override: null,
     }
     setQuestions([...questions, newQuestion])
   }
@@ -486,6 +496,25 @@ export default function GameEditor() {
         alert('Ошибка загрузки файла: ' + err.message + '\n\nПроверьте консоль браузера (F12) для подробностей.')
       }
     }
+  }
+
+  const patchGradingOverride = (
+    index: number,
+    patch: Partial<QuestionGradingOverride> | null
+  ) => {
+    setQuestions((prev) => {
+      const next = [...prev]
+      const q = next[index]
+      if (patch === null) {
+        next[index] = { ...q, grading_override: null }
+      } else {
+        next[index] = {
+          ...q,
+          grading_override: { ...(q.grading_override ?? {}), ...patch },
+        }
+      }
+      return next
+    })
   }
 
   const updateQuestion = (index: number, field: keyof Question, value: any) => {
@@ -1067,6 +1096,138 @@ export default function GameEditor() {
                         />
                       </label>
                     )}
+                  </div>
+
+                  <div className="mb-4 p-4 border border-purple-100 rounded-lg bg-purple-50/40">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!question.grading_override}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            patchGradingOverride(qIndex, { text_match: 'strict' })
+                          } else {
+                            patchGradingOverride(qIndex, null)
+                          }
+                        }}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm font-medium text-gray-800">
+                        Свои правила проверки для этого вопроса
+                      </span>
+                    </label>
+                    {question.grading_override && (
+                      <div className="mt-3 ml-6 grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Режим текста
+                          </label>
+                          <select
+                            value={question.grading_override.text_match ?? 'strict'}
+                            onChange={(e) =>
+                              patchGradingOverride(qIndex, {
+                                text_match: e.target.value as TextMatchMode,
+                              })
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          >
+                            <option value="strict">Точное</option>
+                            <option value="fuzzy">Fuzzy</option>
+                            <option value="keywords">Ключевые слова</option>
+                            <option value="numeric">Число</option>
+                            <option value="regex">Regex</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Маршрутизация
+                          </label>
+                          <select
+                            value={question.grading_override.routing ?? 'auto'}
+                            onChange={(e) =>
+                              patchGradingOverride(qIndex, {
+                                routing: e.target.value as AnswerGradingRouting,
+                              })
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          >
+                            <option value="auto">Авто</option>
+                            <option value="hybrid">Гибрид</option>
+                            <option value="manual">Только модератор</option>
+                          </select>
+                        </div>
+                        {question.grading_override.text_match === 'regex' && (
+                          <>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Regex-паттерн
+                              </label>
+                              <input
+                                type="text"
+                                value={question.grading_override.regex?.pattern ?? ''}
+                                onChange={(e) =>
+                                  patchGradingOverride(qIndex, {
+                                    regex: {
+                                      pattern: e.target.value,
+                                      flags:
+                                        question.grading_override?.regex?.flags ?? '',
+                                    },
+                                  })
+                                }
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Флаги
+                              </label>
+                              <input
+                                type="text"
+                                value={question.grading_override.regex?.flags ?? ''}
+                                onChange={(e) =>
+                                  patchGradingOverride(qIndex, {
+                                    regex: {
+                                      pattern:
+                                        question.grading_override?.regex?.pattern ?? '',
+                                      flags: e.target.value,
+                                    },
+                                  })
+                                }
+                                placeholder="i"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                              />
+                            </div>
+                          </>
+                        )}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Штраф пересдачи (%)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={
+                              question.grading_override.resubmit?.penalty_percent ?? 0
+                            }
+                            onChange={(e) => {
+                              const pct = Math.max(
+                                0,
+                                Math.min(100, Number(e.target.value) || 0)
+                              )
+                              patchGradingOverride(
+                                qIndex,
+                                pct > 0 ? { resubmit: { penalty_percent: pct } } : { resubmit: undefined }
+                              )
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2 ml-6">
+                      Перекрывает настройки игры только для этого вопроса (жюри — только в профиле игры).
+                    </p>
                   </div>
 
                   <div>

@@ -12,6 +12,22 @@ import { formatErrorMessage } from '../lib/errorMessage'
 
 type ModerationTab = 'pending' | 'posthoc'
 
+function juryBadge(row: PendingAnswerRow): string | null {
+  if (row.grading_status !== 'jury_pending') return null
+  const meta = row.grading_meta
+  const votesObj = meta?.jury_votes
+  const votes =
+    votesObj && typeof votesObj === 'object' && !Array.isArray(votesObj)
+      ? Object.keys(votesObj as Record<string, unknown>).length
+      : 0
+  const required =
+    typeof meta?.jury_required === 'number' && meta.jury_required > 0
+      ? meta.jury_required
+      : undefined
+  if (required != null) return `Жюри ${votes}/${required}`
+  return votes > 0 ? `Жюри: ${votes} гол.` : 'Жюри: ожидание голосов'
+}
+
 function formatAnswerPreview(answer: unknown): string {
   if (Array.isArray(answer)) {
     const parts = answer
@@ -66,11 +82,17 @@ export default function AnswerModerationPanel({ gameId }: AnswerModerationPanelP
     setActingId(row.answer_id)
     setError('')
     try {
-      await enqueueModerateAnswer(row.answer_id, action, {
+      const result = await enqueueModerateAnswer(row.answer_id, action, {
         gameId,
         teamId: row.team_id,
       })
-      setPendingRows((prev) => prev.filter((r) => r.answer_id !== row.answer_id))
+      if (result.grading_status === 'jury_pending') {
+        await reload()
+      } else {
+        setPendingRows((prev) =>
+          prev.filter((r) => r.answer_id !== row.answer_id)
+        )
+      }
     } catch (err) {
       setError(formatErrorMessage(err))
     } finally {
@@ -171,6 +193,7 @@ export default function AnswerModerationPanel({ gameId }: AnswerModerationPanelP
                   ? row.media_urls.length
                   : 0
                 const busy = actingId === row.answer_id
+                const juryLabel = juryBadge(row)
                 return (
                   <li
                     key={row.answer_id}
@@ -187,6 +210,11 @@ export default function AnswerModerationPanel({ gameId }: AnswerModerationPanelP
                         {mediaCount > 0 && (
                           <p className="text-xs text-gray-500 mt-0.5">
                             Медиа: {mediaCount}
+                          </p>
+                        )}
+                        {juryLabel && (
+                          <p className="text-xs text-amber-800 mt-0.5 font-medium">
+                            {juryLabel}
                           </p>
                         )}
                       </div>

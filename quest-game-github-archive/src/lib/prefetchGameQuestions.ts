@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 
 /** Полный select для админки / таблицы questions (с эталоном answer). */
 export const QUESTION_DB_SELECT =
-  'id, game_id, question_number, order_index, question_text, question_type, type, options, answer, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url'
+  'id, game_id, question_number, order_index, question_text, question_type, type, options, answer, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url, grading_override'
 
 /** Лёгкий select для лобби — таблица questions. */
 export const QUESTION_LOBBY_SELECT =

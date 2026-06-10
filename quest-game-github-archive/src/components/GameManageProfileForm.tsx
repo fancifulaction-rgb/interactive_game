@@ -15,6 +15,7 @@ import {
   answerGradingStorageValue,
   presetAnswerGrading,
   type AnswerGradingPresetId,
+  type TextMatchMode,
 } from '../lib/answerGradingConfig'
 import { mergeGameSettings } from '../lib/gameSettings'
 import {
@@ -331,6 +332,149 @@ export default function GameManageProfileForm({
             <p className="text-xs text-gray-500 mt-1">
               0 — без штрафа. При повторном ответе на тот же вопрос очки уменьшаются.
             </p>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 max-w-2xl">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Режим текстовой проверки
+              </label>
+              <select
+                value={draft.answer_grading.text_match}
+                onChange={(e) => {
+                  const text_match = e.target.value as TextMatchMode
+                  setDraft({
+                    ...draft,
+                    answer_grading_preset: 'custom',
+                    answer_grading: { ...draft.answer_grading, text_match },
+                  })
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              >
+                <option value="strict">Точное совпадение</option>
+                <option value="fuzzy">Опечатки (fuzzy)</option>
+                <option value="keywords">Ключевые слова</option>
+                <option value="numeric">Число с допуском</option>
+                <option value="regex">Регулярное выражение</option>
+              </select>
+            </div>
+            {draft.answer_grading.text_match === 'regex' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Regex-паттерн
+                  </label>
+                  <input
+                    type="text"
+                    value={draft.answer_grading.regex?.pattern ?? ''}
+                    onChange={(e) => {
+                      const pattern = e.target.value
+                      setDraft({
+                        ...draft,
+                        answer_grading_preset: 'custom',
+                        answer_grading: {
+                          ...draft.answer_grading,
+                          regex: {
+                            pattern,
+                            flags: draft.answer_grading.regex?.flags ?? '',
+                          },
+                        },
+                      })
+                    }}
+                    placeholder="например ^москва$"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Флаги regex
+                  </label>
+                  <input
+                    type="text"
+                    value={draft.answer_grading.regex?.flags ?? ''}
+                    onChange={(e) => {
+                      const flags = e.target.value
+                      setDraft({
+                        ...draft,
+                        answer_grading_preset: 'custom',
+                        answer_grading: {
+                          ...draft.answer_grading,
+                          regex: {
+                            pattern: draft.answer_grading.regex?.pattern ?? '',
+                            flags,
+                          },
+                        },
+                      })
+                    }}
+                    placeholder="i"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    i — без учёта регистра (как ~* в Postgres).
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="mt-4 max-w-md border border-gray-200 rounded-lg p-3 bg-gray-50/80">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={draft.answer_grading.jury?.enabled ?? false}
+                onChange={(e) => {
+                  const enabled = e.target.checked
+                  const { jury: _drop, ...rest } = draft.answer_grading
+                  setDraft({
+                    ...draft,
+                    answer_grading_preset: 'custom',
+                    answer_grading: enabled
+                      ? {
+                          ...draft.answer_grading,
+                          jury: {
+                            enabled: true,
+                            required_votes:
+                              draft.answer_grading.jury?.required_votes ?? 2,
+                          },
+                        }
+                      : rest,
+                  })
+                }}
+                className="w-4 h-4"
+              />
+              <span className="text-sm font-medium text-gray-800">
+                Жюри: несколько модераторов для принятия
+              </span>
+            </label>
+            {draft.answer_grading.jury?.enabled && (
+              <div className="mt-3 ml-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Голосов для принятия
+                </label>
+                <input
+                  type="number"
+                  min={2}
+                  max={10}
+                  value={draft.answer_grading.jury.required_votes}
+                  onChange={(e) => {
+                    const required_votes = Math.max(
+                      2,
+                      Math.min(10, Number(e.target.value) || 2)
+                    )
+                    setDraft({
+                      ...draft,
+                      answer_grading_preset: 'custom',
+                      answer_grading: {
+                        ...draft.answer_grading,
+                        jury: { enabled: true, required_votes },
+                      },
+                    })
+                  }}
+                  className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Каждый модератор голосует «Принять»; до N голосов ответ в статусе jury_pending.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

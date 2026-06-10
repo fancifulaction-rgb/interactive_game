@@ -10,6 +10,7 @@ export type PendingAnswerRow = {
   answer: unknown
   media_urls: string[]
   created_at: string
+  grading_status: string
   grading_meta: Record<string, unknown>
 }
 
@@ -21,6 +22,8 @@ export type ModerateAnswerResult = {
   points_earned: number
   team_total_score?: number
   match_tier?: string
+  jury_votes?: number
+  jury_required?: number
 }
 
 export type TeamPendingReview = {
@@ -47,6 +50,7 @@ function parsePendingRow(row: Record<string, unknown>): PendingAnswerRow {
     answer: row.answer,
     media_urls: mediaUrls,
     created_at: String(row.created_at ?? ''),
+    grading_status: String(row.grading_status ?? 'pending'),
     grading_meta:
       row.grading_meta && typeof row.grading_meta === 'object'
         ? (row.grading_meta as Record<string, unknown>)
@@ -121,7 +125,7 @@ export async function moderateAnswer(
   }
 
   const row = data as Record<string, unknown>
-  const result: ModerateAnswerResult = {
+  return {
     success: row.success === true,
     answer_id: String(row.answer_id ?? answerId),
     grading_status: String(row.grading_status ?? ''),
@@ -130,9 +134,10 @@ export async function moderateAnswer(
     team_total_score:
       row.team_total_score != null ? Number(row.team_total_score) : undefined,
     match_tier: typeof row.match_tier === 'string' ? row.match_tier : undefined,
+    jury_votes: row.jury_votes != null ? Number(row.jury_votes) : undefined,
+    jury_required:
+      row.jury_required != null ? Number(row.jury_required) : undefined,
   }
-
-  return result
 }
 
 function parsePosthocRow(row: Record<string, unknown>): PosthocAnswerRow {

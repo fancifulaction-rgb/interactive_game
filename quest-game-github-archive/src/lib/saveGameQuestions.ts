@@ -2,6 +2,10 @@ import { supabase } from './supabase'
 import { ensureAuthenticatedSessionForWrite } from './adminAuth'
 import { debugLog } from './debugLog'
 import { enqueueCritical } from './requestQueue'
+import {
+  questionGradingOverrideStorageValue,
+  type QuestionGradingOverride,
+} from './answerGradingConfig'
 
 export type QuestionSaveInput = {
   id?: string
@@ -16,6 +20,7 @@ export type QuestionSaveInput = {
   hint_levels: string[]
   hint_penalties: number[]
   per_question_time_sec: number | null
+  grading_override?: QuestionGradingOverride | null
 }
 
 let lastStepAt = 0
@@ -56,6 +61,10 @@ function buildRow(gameId: string, question: QuestionSaveInput, index: number) {
     finalAnswer = finalAnswer.filter((ans) => finalOptions.includes(ans))
   }
 
+  const gradingOverride = questionGradingOverrideStorageValue(
+    question.grading_override
+  )
+
   return {
     game_id: gameId,
     question_number: index + 1,
@@ -72,6 +81,7 @@ function buildRow(gameId: string, question: QuestionSaveInput, index: number) {
     hint_penalties: question.hint_penalties ?? [],
     per_question_time_sec: question.per_question_time_sec,
     order_index: index + 1,
+    ...(gradingOverride ? { grading_override: gradingOverride } : { grading_override: null }),
   }
 }
 

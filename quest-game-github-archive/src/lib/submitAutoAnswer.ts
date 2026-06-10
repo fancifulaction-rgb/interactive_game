@@ -20,6 +20,7 @@ export type SubmitAutoAnswerRequest = {
 export type GradingStatus =
   | 'auto_accepted'
   | 'pending'
+  | 'jury_pending'
   | 'rejected'
   | 'accepted_manual'
 

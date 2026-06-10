@@ -38,6 +38,7 @@ const ALL_FILES = [
   '022_answer_grading.sql',
   '023_answer_grading_phase2.sql',
   '024_answer_grading_phase3.sql',
+  '025_answer_grading_phase4.sql',
 ]
 
 const filterArg = process.argv[2]

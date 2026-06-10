@@ -109,7 +109,28 @@ function gradeTextSingle(
   cfg: AnswerGradingConfig
 ): GradeResult {
   const text = user[0] ?? ''
-  if (!text || correct.length === 0) {
+  if (!text) {
+    return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
+  }
+
+  if (cfg.text_match === 'regex') {
+    const pattern = cfg.regex?.pattern?.trim()
+    if (!pattern) {
+      return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
+    }
+    try {
+      const flags = cfg.regex?.flags ?? ''
+      const re = new RegExp(pattern, flags)
+      if (re.test(text)) {
+        return { isCorrect: true, scoreMultiplier: 1, matchTier: 'exact' }
+      }
+    } catch {
+      return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
+    }
+    return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
+  }
+
+  if (correct.length === 0) {
     return { isCorrect: false, scoreMultiplier: 0, matchTier: 'none' }
   }
 
