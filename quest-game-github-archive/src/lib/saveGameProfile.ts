@@ -4,6 +4,13 @@ import {
   normalizeGameAccessCode,
   gameAccessCodeValidationMessage,
 } from './gameAccessCode'
+import {
+  type AnswerGradingConfig,
+  type AnswerGradingPresetId,
+  answerGradingStorageValue,
+  detectAnswerGradingPreset,
+  parseAnswerGradingFromSettings,
+} from './answerGradingConfig'
 import { mergeGameSettings, parseGameSettings } from './gameSettings'
 import { enqueueCritical } from './requestQueue'
 
@@ -14,6 +21,8 @@ export type GameProfileDraft = {
   finish_page_type: string
   mask_board: boolean
   hide_scoreboard_until_finish: boolean
+  answer_grading_preset: AnswerGradingPresetId | 'custom'
+  answer_grading: AnswerGradingConfig
 }
 
 export const GAME_PROFILE_SELECT =
@@ -43,6 +52,7 @@ export function gameProfileFromRow(row: {
   mask_board?: boolean | null
   settings?: unknown
 }): GameProfileDraft {
+  const answerGrading = parseAnswerGradingFromSettings(row.settings)
   return {
     title: row.title || '',
     code: row.code || '',
@@ -51,6 +61,8 @@ export function gameProfileFromRow(row: {
     mask_board: !!row.mask_board,
     hide_scoreboard_until_finish: parseGameSettings(row.settings)
       .hide_scoreboard_until_finish,
+    answer_grading_preset: detectAnswerGradingPreset(answerGrading),
+    answer_grading: answerGrading,
   }
 }
 
@@ -78,6 +90,7 @@ export async function saveGameProfile(
         mask_board: draft.mask_board,
         settings: mergeGameSettings(existingSettings, {
           hide_scoreboard_until_finish: draft.hide_scoreboard_until_finish,
+          answer_grading: answerGradingStorageValue(draft.answer_grading),
         }),
       })
       .eq('id', gameId)

@@ -10,6 +10,14 @@ import {
 } from '../lib/gameAccessCode'
 import { fetchGameAccessCodeDefaultLength } from '../lib/gameAccessCodeSettings'
 import {
+  ANSWER_GRADING_BASELINE,
+  ANSWER_GRADING_PRESETS,
+  answerGradingStorageValue,
+  presetAnswerGrading,
+  type AnswerGradingPresetId,
+} from '../lib/answerGradingConfig'
+import { mergeGameSettings } from '../lib/gameSettings'
+import {
   GAME_FINISH_PAGE_OPTIONS,
   GAME_PROFILE_SELECT,
   GAME_THEME_OPTIONS,
@@ -30,6 +38,8 @@ const emptyDraft: GameProfileDraft = {
   finish_page_type: 'scoreboard',
   mask_board: false,
   hide_scoreboard_until_finish: false,
+  answer_grading_preset: 'strict',
+  answer_grading: ANSWER_GRADING_BASELINE,
 }
 
 export default function GameManageProfileForm({
@@ -99,13 +109,10 @@ export default function GameManageProfileForm({
     try {
       await saveGameProfile(gameId, draft, existingSettings)
       setExistingSettings(
-        (prev) =>
-          ({
-            ...(typeof prev === 'object' && prev !== null && !Array.isArray(prev)
-              ? prev
-              : {}),
-            hide_scoreboard_until_finish: draft.hide_scoreboard_until_finish,
-          }) as Record<string, unknown>
+        mergeGameSettings(existingSettings, {
+          hide_scoreboard_until_finish: draft.hide_scoreboard_until_finish,
+          answer_grading: answerGradingStorageValue(draft.answer_grading),
+        })
       )
       showStatus('Настройки игры сохранены')
       onSaved?.()
@@ -250,6 +257,46 @@ export default function GameManageProfileForm({
           </label>
           <p className="text-sm text-gray-600 mt-1 ml-7">
             Игроки не смогут открыть табло результатов, пока ведущий не завершит игру
+          </p>
+        </div>
+        <div className="md:col-span-2 border-t border-gray-100 pt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Проверка ответов
+          </label>
+          <select
+            value={
+              draft.answer_grading_preset === 'custom'
+                ? ''
+                : draft.answer_grading_preset
+            }
+            onChange={(e) => {
+              const preset = e.target.value as AnswerGradingPresetId
+              setDraft({
+                ...draft,
+                answer_grading_preset: preset,
+                answer_grading: presetAnswerGrading(preset),
+              })
+            }}
+            className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          >
+            {draft.answer_grading_preset === 'custom' && (
+              <option value="" disabled>
+                Нестандартные настройки (выберите пресет)
+              </option>
+            )}
+            {(Object.keys(ANSWER_GRADING_PRESETS) as AnswerGradingPresetId[]).map(
+              (id) => (
+                <option key={id} value={id}>
+                  {ANSWER_GRADING_PRESETS[id].label}
+                </option>
+              )
+            )}
+          </select>
+          <p className="text-sm text-gray-600 mt-2 max-w-2xl">
+            {draft.answer_grading_preset === 'custom'
+              ? 'В базе сохранён нестандартный профиль. Выберите пресет, чтобы перезаписать.'
+              : ANSWER_GRADING_PRESETS[draft.answer_grading_preset as AnswerGradingPresetId]
+                  ?.description}
           </p>
         </div>
       </div>
