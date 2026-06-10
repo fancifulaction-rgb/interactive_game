@@ -193,9 +193,6 @@ export default function GameManageProfileForm({
               Сгенерировать
             </button>
           </div>
-          <p className="text-sm text-gray-600 mt-1">
-            Коды от {gameAccessCodeRangeLabel()} символов; при сохранении проверяется уникальность
-          </p>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Тема оформления</label>

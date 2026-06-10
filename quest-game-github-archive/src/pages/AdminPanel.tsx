@@ -104,7 +104,6 @@ export default function AdminPanel() {
         ? 'settings'
         : 'games'
   const [selectedGameId, setSelectedGameId] = useState('')
-  const gameControlsRef = useRef<HTMLDivElement>(null)
   const gamesLoadSeq = useRef(0)
   const createInFlight = useRef(false)
   const [showCreateGame, setShowCreateGame] = useState(false)
@@ -187,9 +186,6 @@ export default function AdminPanel() {
   const openGameControls = useCallback((gameId: string) => {
     setSelectedGameId(gameId)
     setSearchParams({ tab: 'manage', gameId })
-    window.setTimeout(() => {
-      gameControlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 150)
   }, [setSearchParams])
 
   const handleManageGameSelect = useCallback((gameId: string) => {
@@ -805,7 +801,7 @@ export default function AdminPanel() {
               </p>
             </div>
 
-            <div ref={gameControlsRef} className="rounded-lg border border-purple-100 bg-purple-50/40 p-4 space-y-4">
+            <div className="rounded-lg border border-purple-100 bg-purple-50/40 p-4 space-y-4">
               <GameSessionAdminProvider value={sessionAdmin}>
                 <div className="grid md:grid-cols-2 gap-6">
                   <GameControls
