@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 import { debugLog } from './debugLog'
 import { cancelActiveStorageUpload } from './storageUpload'
 import { setAnswerSaveInFlight } from './networkMutex'
-import { broadcastScoreUpdate } from './gameRealtime'
+import { broadcastScoreUpdate, broadcastTeamsChanged } from './gameRealtime'
 import { isTransientNetworkError } from './teamRegister'
 import { getTeamSessionToken } from './teamSession'
 
@@ -40,7 +40,7 @@ const RPC_RETRY_PAUSE_MS = [400, 900, 1800]
 async function submitViaRpc(
   req: SubmitAutoAnswerRequest
 ): Promise<SubmitAutoAnswerResult> {
-  const sessionToken = req.session_token ?? getTeamSessionToken()
+  const sessionToken = req.session_token ?? getTeamSessionToken(req.team_id)
   if (!sessionToken) {
     throw new Error('team session token missing — перерегистрируйтесь в лобби')
   }
@@ -115,6 +115,7 @@ export async function submitAutoAnswerToServer(
         delta: result.points_earned,
       })
     }
+    void broadcastTeamsChanged(req.game_id)
 
     return result
   } finally {

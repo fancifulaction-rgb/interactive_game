@@ -1,20 +1,45 @@
-const TOKEN_KEY = 'team_session_token'
+const LEGACY_TOKEN_KEY = 'team_session_token'
 
-export function getTeamSessionToken(): string | null {
+function perTeamKey(teamId: string): string {
+  return `team_session_token:${teamId}`
+}
+
+/** Токен сессии команды. С teamId — только ключ этой команды (без общего legacy). */
+export function getTeamSessionToken(teamId?: string | null): string | null {
   try {
-    const raw = localStorage.getItem(TOKEN_KEY)
-    return raw && raw.length > 0 ? raw : null
+    if (teamId) {
+      const scoped = localStorage.getItem(perTeamKey(teamId))
+      return scoped && scoped.length > 0 ? scoped : null
+    }
+    const legacy = localStorage.getItem(LEGACY_TOKEN_KEY)
+    return legacy && legacy.length > 0 ? legacy : null
   } catch {
     return null
   }
 }
 
-export function setTeamSessionToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token)
+export function setTeamSessionToken(token: string, teamId?: string | null): void {
+  try {
+    if (teamId) {
+      localStorage.setItem(perTeamKey(teamId), token)
+    } else {
+      localStorage.setItem(LEGACY_TOKEN_KEY, token)
+    }
+  } catch {
+    /* quota / private mode */
+  }
 }
 
-export function clearTeamSessionToken(): void {
-  localStorage.removeItem(TOKEN_KEY)
+export function clearTeamSessionToken(teamId?: string | null): void {
+  try {
+    if (teamId) {
+      localStorage.removeItem(perTeamKey(teamId))
+    } else {
+      localStorage.removeItem(LEGACY_TOKEN_KEY)
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export type RegisterTeamRpcRow = {

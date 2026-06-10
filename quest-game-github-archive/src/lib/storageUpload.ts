@@ -35,7 +35,7 @@ async function uploadViaEdgeFunction(
   }
   const base64 = btoa(binary)
 
-  const sessionToken = getTeamSessionToken()
+  const sessionToken = getTeamSessionToken(teamId ?? localStorage.getItem('team_id'))
   const { data, error } = await supabase.functions.invoke('player-upload', {
     body: {
       file: base64,
@@ -171,7 +171,7 @@ export async function uploadToPublicBucket(
 /** Загрузка аватара после окончания игры; ошибки не блокируют UI. */
 export async function uploadTeamAvatarInBackground(teamId: string, file: File, gameId: string) {
   const avatarUrl = await uploadAvatarQueued(file, gameId, teamId)
-  const sessionToken = getTeamSessionToken()
+  const sessionToken = getTeamSessionToken(teamId)
   if (!sessionToken) {
     throw new Error('team session token missing')
   }

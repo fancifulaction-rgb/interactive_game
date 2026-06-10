@@ -1,9 +1,12 @@
+import { currentTeamKeyForTeam } from './playerSession'
 import { supabase } from './supabase'
 import { getGamePlayCache, mergeTeamScoreInCache, updateTeamsSnapshot } from './gamePlayCache'
 
 function readLocalTotalScore(teamId: string): number {
   try {
-    const raw = localStorage.getItem('current_team')
+    const raw =
+      localStorage.getItem(currentTeamKeyForTeam(teamId)) ??
+      localStorage.getItem('current_team')
     if (!raw) return 0
     const team = JSON.parse(raw)
     if (team?.id !== teamId) return 0
@@ -15,12 +18,14 @@ function readLocalTotalScore(teamId: string): number {
 
 function writeLocalTotalScore(teamId: string, next: number) {
   try {
-    const raw = localStorage.getItem('current_team')
-    if (!raw) return
-    const team = JSON.parse(raw)
-    if (team?.id === teamId) {
-      team.total_score = next
-      localStorage.setItem('current_team', JSON.stringify(team))
+    for (const key of [currentTeamKeyForTeam(teamId), 'current_team']) {
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      const team = JSON.parse(raw)
+      if (team?.id === teamId) {
+        team.total_score = next
+        localStorage.setItem(key, JSON.stringify(team))
+      }
     }
   } catch {
     /* ignore */

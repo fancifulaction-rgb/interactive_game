@@ -5,9 +5,11 @@ import { agentDebugLog, debugLog } from './debugLog'
 import { enqueueCritical } from './requestQueue'
 import {
   parseRegisterTeamRpc,
+  getTeamSessionToken,
   setTeamSessionToken,
   type RegisterTeamRpcRow,
 } from './teamSession'
+import { readStoredCurrentTeam } from './playerSession'
 
 export type RegisterTeamInput = {
   gameId: string
@@ -162,7 +164,7 @@ export async function registerTeamDirect(input: RegisterTeamInput) {
     }
   }
 
-  setTeamSessionToken(sessionToken)
+  setTeamSessionToken(sessionToken, team.id)
   debugLog('teamRegister.ts', 'team register ok', { teamId: team.id }, 'C')
 
   if (input.avatarFile) {
@@ -182,13 +184,36 @@ export function registerTeam(input: RegisterTeamInput) {
 export async function recoverTeamSessionIfNeeded(
   gameId: string,
   teamName: string,
-  captainName: string
+  captainName: string,
+  expectedTeamId?: string
 ): Promise<string | null> {
   try {
-    const { sessionToken } = await recoverTeamSessionViaRpc(gameId, teamName, captainName)
-    setTeamSessionToken(sessionToken)
+    const { team, sessionToken } = await recoverTeamSessionViaRpc(gameId, teamName, captainName)
+    if (expectedTeamId && team.id !== expectedTeamId) {
+      debugLog('recoverTeamSession', 'team id mismatch', {
+        expectedTeamId,
+        actual: team.id,
+      })
+      return null
+    }
+    setTeamSessionToken(sessionToken, team.id)
     return sessionToken
   } catch {
     return null
   }
+}
+
+/** Токен этой команды: из storage или recover по scoped current_team (не чужой вкладки). */
+export async function ensureTeamSessionToken(
+  gameId: string,
+  teamId: string
+): Promise<string | null> {
+  const existing = getTeamSessionToken(teamId)
+  if (existing) return existing
+  const team = readStoredCurrentTeam(teamId)
+  if (!team) return null
+  const name = (team.name ?? team.team_name ?? '').trim()
+  const captain = (team.captain_name ?? '').trim()
+  if (!name || !captain) return null
+  return recoverTeamSessionIfNeeded(gameId, name, captain, teamId)
 }

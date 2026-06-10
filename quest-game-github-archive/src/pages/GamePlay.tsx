@@ -7,8 +7,13 @@ import { normalizeUserAnswers } from '../lib/answerGrading'
 import { enqueueSubmitAutoAnswer } from '../lib/submitAutoAnswer'
 import { postponeAvatarUntilAfterAnswer, flushPendingAvatarWhenIdle } from '../lib/pendingAvatar'
 import { attachGameRealtime } from '../lib/gameRealtime'
-import { recoverTeamSessionIfNeeded, isTransientNetworkError } from '../lib/teamRegister'
+import { recoverTeamSessionIfNeeded, ensureTeamSessionToken, isTransientNetworkError } from '../lib/teamRegister'
 import { getTeamSessionToken } from '../lib/teamSession'
+import {
+  readStoredTeamIdForGame,
+  readStoredCurrentTeam,
+  writeStoredCurrentTeam,
+} from '../lib/playerSession'
 import { agentDebugLog, debugLog } from '../lib/debugLog'
 import { getGamePlayCache, isGamePlayCacheFresh, setGamePlayCache, gamePlayCacheNeedsFullQuestions } from '../lib/gamePlayCache'
 import {
@@ -26,7 +31,7 @@ import {
   resumeBackgroundRevalidate,
   isBackgroundRevalidatePaused,
 } from '../lib/revalidateGamePlay'
-import { enqueueMarkTeamFinished } from '../lib/markTeamFinished'
+import { markTeamFinished } from '../lib/markTeamFinished'
 import { enqueueCritical } from '../lib/requestQueue'
 import { usePlayerExtrasReady } from '../lib/usePlayerExtrasReady'
 import { useTheme } from '../contexts/ThemeContext'
@@ -140,12 +145,14 @@ export default function GamePlay() {
   const finishedNavRef = useRef(false)
   /** Последняя успешная проверка: лобби и отдельно вход в игру (playing). */
   const playAccessPhaseRef = useRef<'none' | 'lobby' | 'playing'>('none')
-  const [teamId, setTeamId] = useState<string | null>(() =>
-    typeof window !== 'undefined' ? localStorage.getItem('team_id') : null
-  )
+  const [teamId, setTeamId] = useState<string | null>(() => {
+    if (typeof window === 'undefined' || !gameCode) return null
+    return readStoredTeamIdForGame(gameCode)
+  })
 
   useEffect(() => {
-    setTeamId(localStorage.getItem('team_id'))
+    if (!gameCode) return
+    setTeamId(readStoredTeamIdForGame(gameCode))
   }, [gameCode])
   const extrasReady = usePlayerExtrasReady(game?.id, loading)
 
@@ -284,18 +291,13 @@ export default function GamePlay() {
   }, [inLobby, extrasReady])
 
   useEffect(() => {
-    if (!game?.id || !teamId || getTeamSessionToken()) return
-    const raw = localStorage.getItem('current_team')
-    if (!raw) return
-    try {
-      const team = JSON.parse(raw) as { name?: string; team_name?: string; captain_name?: string }
-      const name = (team.name ?? team.team_name ?? '').trim()
-      const captain = (team.captain_name ?? '').trim()
-      if (!name || !captain) return
-      void recoverTeamSessionIfNeeded(game.id as string, name, captain)
-    } catch {
-      /* ignore */
-    }
+    if (!game?.id || !teamId || getTeamSessionToken(teamId)) return
+    const team = readStoredCurrentTeam(teamId)
+    if (!team) return
+    const name = (team.name ?? team.team_name ?? '').trim()
+    const captain = (team.captain_name ?? '').trim()
+    if (!name || !captain) return
+    void recoverTeamSessionIfNeeded(game.id as string, name, captain, teamId)
   }, [game?.id, teamId])
 
   useEffect(() => {
@@ -501,7 +503,7 @@ export default function GamePlay() {
       !advancingRef.current
     ) {
       timerArmedRef.current = false
-      handleNextQuestion()
+      void handleTimeExpired()
     }
 
     return () => {
@@ -622,14 +624,23 @@ export default function GamePlay() {
     return total
   }
 
-  const handleSubmitAnswer = async () => {
+  const updateStoredTeamScore = (total: number) => {
+    const stored = readStoredCurrentTeam(teamId!)
+    if (stored) {
+      writeStoredCurrentTeam({ ...stored, total_score: total })
+    }
+  }
+
+  const handleSubmitAnswer = async (options?: { timeoutSkip?: boolean }) => {
     if (isSubmittingRef.current || advancingRef.current) return
 
     const currentQuestion = questions[currentQuestionIndex]
     const hasTextAnswer = currentQuestion.answer_count === 1 && answer.trim()
     const hasSelectedOptions = currentQuestion.answer_count > 1 && selectedOptions.length > 0
-    
-    if ((!hasTextAnswer && !hasSelectedOptions && !answerFile) || !teamId) return
+    const timeoutSkip = options?.timeoutSkip === true
+
+    if (!timeoutSkip && !hasTextAnswer && !hasSelectedOptions && !answerFile) return
+    if (!teamId) return
     if (!game?.id) {
       alert('Игра ещё загружается. Подождите секунду и попробуйте снова.')
       return
@@ -641,12 +652,14 @@ export default function GamePlay() {
     timerArmedRef.current = false
     setUploadingFile(true)
     const submitStarted = Date.now()
-    debugLog('GamePlay.tsx:submit', 'start', { hasFile: !!answerFile, q: currentQuestionIndex }, 'H')
+    debugLog('GamePlay.tsx:submit', 'start', { hasFile: !!answerFile, q: currentQuestionIndex, timeoutSkip }, 'H')
+
+    let advanceAfterSave = false
 
     try {
       let mediaUrl: string | null = null
 
-      if (answerFile) {
+      if (answerFile && !timeoutSkip) {
         try {
           mediaUrl = await uploadAnswerMediaQueued(answerFile, game.id)
           debugLog('GamePlay.tsx:submit', 'media ok', { ms: Date.now() - submitStarted }, 'H')
@@ -660,11 +673,13 @@ export default function GamePlay() {
         }
       }
 
-      // Определяем ответ пользователя в зависимости от типа вопроса
       let userAnswerText = ''
       let userAnswers: string[] = []
-      
-      if (currentQuestion.answer_count === 1) {
+
+      if (timeoutSkip) {
+        userAnswerText = '—'
+        userAnswers = ['—']
+      } else if (currentQuestion.answer_count === 1) {
         userAnswerText = answer.toLowerCase().trim()
         userAnswers = [answer.trim()]
       } else {
@@ -673,19 +688,21 @@ export default function GamePlay() {
       }
 
       const maxTime = currentQuestion.per_question_time_sec || game.per_question_time_sec || 120
-      const timeTaken = maxTime - timeLeft
+      const timeTaken = timeoutSkip ? maxTime : maxTime - timeLeft
       const questionNumber = currentQuestion.order_index ?? currentQuestionIndex + 1
       const answerPayload = userAnswers.length ? userAnswers : [userAnswerText]
       normalizeUserAnswers(answerPayload)
 
-      debugLog('GamePlay.tsx:submit', 'advance ui', {
-        ms: Date.now() - submitStarted,
-      }, 'H')
+      let sessionToken = getTeamSessionToken(teamId)
+      if (!sessionToken) {
+        sessionToken = await ensureTeamSessionToken(game.id, teamId)
+      }
+      if (!sessionToken) {
+        alert('Сессия команды не найдена. Обновите страницу или зарегистрируйтесь заново в лобби.')
+        return
+      }
 
-      handleNextQuestion()
-      setUploadingFile(false)
-
-      void enqueueSubmitAutoAnswer({
+      const submitReq = {
         game_id: game.id,
         team_id: teamId,
         question_number: questionNumber,
@@ -693,69 +710,65 @@ export default function GamePlay() {
         media_urls: mediaUrl ? [mediaUrl] : [],
         time_spent: timeTaken,
         hints_used: hintLevel,
-      })
-        .then((result) => {
-          debugLog('GamePlay.tsx:submit', 'saved', {
-            totalMs: Date.now() - submitStarted,
-            via: result.via,
-            isCorrect: result.is_correct,
-            score: result.points_earned,
-          }, 'H')
-          if (result.points_earned > 0) {
-            applyOptimisticTeamScoreBump(teamId, result.points_earned, gameCode ?? '')
-          }
-          if (result.team_total_score >= 0) {
-            try {
-              const raw = localStorage.getItem('current_team')
-              if (raw) {
-                const team = JSON.parse(raw)
-                if (team?.id === teamId) {
-                  team.total_score = result.team_total_score
-                  localStorage.setItem('current_team', JSON.stringify(team))
-                }
-              }
-            } catch {
-              /* ignore */
-            }
-          }
-          if (result.grading_status === 'pending') {
-            setPendingReviewNotice(
-              'Ответ отправлен на проверку ведущему. Очки появятся после принятия.'
-            )
-          }
-        })
-        .catch((saveErr: unknown) => {
-          const msg = saveErr instanceof Error ? saveErr.message : String(saveErr)
-          debugLog('GamePlay.tsx:submit', 'save failed, queue', {
-            totalMs: Date.now() - submitStarted,
-            msg,
-          }, 'H7')
-          enqueuePendingAnswer(
-            {
-              game_id: game.id,
-              team_id: teamId,
-              question_number: questionNumber,
-              answer: answerPayload,
-              media_urls: mediaUrl ? [mediaUrl] : [],
-              time_spent: timeTaken,
-              hints_used: hintLevel,
-            },
-            gameCode ?? ''
+        session_token: sessionToken,
+      }
+
+      try {
+        const result = await enqueueSubmitAutoAnswer(submitReq)
+        debugLog('GamePlay.tsx:submit', 'saved', {
+          totalMs: Date.now() - submitStarted,
+          via: result.via,
+          isCorrect: result.is_correct,
+          score: result.points_earned,
+        }, 'H')
+        if (result.points_earned > 0) {
+          applyOptimisticTeamScoreBump(teamId, result.points_earned, gameCode ?? '')
+        }
+        if (result.team_total_score >= 0) {
+          updateStoredTeamScore(result.team_total_score)
+        }
+        if (result.grading_status === 'pending') {
+          setPendingReviewNotice(
+            'Ответ отправлен на проверку ведущему. Очки появятся после принятия.'
           )
-        })
-    } catch (err: any) {
+        }
+        advanceAfterSave = true
+      } catch (saveErr: unknown) {
+        const msg = saveErr instanceof Error ? saveErr.message : String(saveErr)
+        debugLog('GamePlay.tsx:submit', 'save failed', {
+          totalMs: Date.now() - submitStarted,
+          msg,
+        }, 'H7')
+        if (isTransientNetworkError(saveErr)) {
+          enqueuePendingAnswer(submitReq, gameCode ?? '')
+          advanceAfterSave = true
+        } else {
+          alert(
+            'Не удалось сохранить ответ на сервере. Проверьте сеть и попробуйте ещё раз.\n\n' + msg
+          )
+        }
+      }
+
+      if (advanceAfterSave) {
+        debugLog('GamePlay.tsx:submit', 'advance ui', {
+          ms: Date.now() - submitStarted,
+        }, 'H')
+        await handleNextQuestion(sessionToken)
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
       debugLog('GamePlay.tsx:submit', 'error', {
         totalMs: Date.now() - submitStarted,
-        msg: err?.message,
+        msg: message,
       }, 'H')
       console.error('Ошибка отправки ответа:', err)
-      
-      if (err.message?.includes('answers')) {
+
+      if (message.includes('answers')) {
         alert('Ошибка сохранения ответа в базу данных. Попробуйте еще раз или обратитесь к администратору.')
-      } else if (err.message?.includes('teams') || err.message?.includes('total_score')) {
+      } else if (message.includes('teams') || message.includes('total_score')) {
         alert('Ошибка обновления счета команды. Ваш ответ сохранен, но очки могут быть обновлены с задержкой.')
       } else {
-        alert('Ошибка отправки ответа: ' + err.message + '\n\nПопробуйте еще раз.')
+        alert('Ошибка отправки ответа: ' + message + '\n\nПопробуйте еще раз.')
       }
     } finally {
       setUploadingFile(false)
@@ -763,7 +776,19 @@ export default function GamePlay() {
     }
   }
 
-  const handleNextQuestion = () => {
+  const handleTimeExpired = () => {
+    if (isSubmittingRef.current || advancingRef.current) return
+    const currentQuestion = questions[currentQuestionIndex]
+    const hasTextAnswer = currentQuestion.answer_count === 1 && answer.trim()
+    const hasSelectedOptions = currentQuestion.answer_count > 1 && selectedOptions.length > 0
+    if (hasTextAnswer || hasSelectedOptions || answerFile) {
+      void handleSubmitAnswer()
+      return
+    }
+    void handleSubmitAnswer({ timeoutSkip: true })
+  }
+
+  const handleNextQuestion = async (sessionToken?: string | null) => {
     if (advancingRef.current) return
     advancingRef.current = true
     try {
@@ -781,8 +806,20 @@ export default function GamePlay() {
         setTimeLeft(questionTimeSec(nextQuestion, game))
       } else {
         const gameId = game?.id as string | undefined
-        if (gameId && teamId) {
-          enqueueMarkTeamFinished(gameId, teamId)
+        let token = sessionToken ?? getTeamSessionToken(teamId)
+        if (gameId && teamId && !token) {
+          token = await ensureTeamSessionToken(gameId, teamId)
+        }
+        if (!gameId || !teamId || !token) {
+          alert('Не удалось завершить игру: сессия команды не найдена. Обновите страницу или перерегистрируйтесь.')
+          return
+        }
+        const finishResult = await enqueueCritical(() => markTeamFinished(gameId, teamId, token))
+        if (!finishResult?.success) {
+          alert(
+            'Не удалось отметить завершение игры на сервере. Проверьте сеть и попробуйте снова — без этого админка не увидит результат.'
+          )
+          return
         }
         const code = (gameCode ?? '').trim().toUpperCase()
         const cached = getGamePlayCache(code)
@@ -835,7 +872,7 @@ export default function GamePlay() {
   ) : null
 
   const notificationOverlay =
-    extrasReady && game?.id ? <NotificationPopup gameId={game.id} /> : null
+    extrasReady && game?.id ? <NotificationPopup gameId={game.id} teamId={teamId} /> : null
 
   const playShell = (body: React.ReactNode, notifications: React.ReactNode = null) => (
     <>
@@ -1279,7 +1316,7 @@ export default function GamePlay() {
                   </button>
                 )}
                 <button
-                  onClick={handleSubmitAnswer}
+                  onClick={() => void handleSubmitAnswer()}
                   disabled={
                     (currentQuestion.answer_count === 1 && !answer.trim() && !answerFile) ||
                     (currentQuestion.answer_count > 1 && selectedOptions.length === 0 && !answerFile) ||

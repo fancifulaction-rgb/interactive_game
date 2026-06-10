@@ -26,13 +26,14 @@ const MESSAGE_POLL_MS = 5000
 
 interface NotificationPopupProps {
   gameId: string
+  teamId?: string | null
 }
 
-export default function NotificationPopup({ gameId }: NotificationPopupProps) {
+export default function NotificationPopup({ gameId, teamId: teamIdProp }: NotificationPopupProps) {
   const [notifications, setNotifications] = useState<
     (GameMessage & { priority: Priority; has_sound: boolean })[]
   >([])
-  const teamId = localStorage.getItem('team_id')
+  const teamId = teamIdProp ?? localStorage.getItem('team_id')
   const shownIdsRef = useRef<Set<string>>(new Set())
   const loadInFlightRef = useRef(false)
 
@@ -80,7 +81,7 @@ export default function NotificationPopup({ gameId }: NotificationPopupProps) {
     if (!teamId || loadInFlightRef.current) return
     loadInFlightRef.current = true
 
-    const since = getTeamRegistrationSince() ?? new Date(0).toISOString()
+    const since = getTeamRegistrationSince(teamId) ?? new Date(0).toISOString()
 
     try {
       const [messagesResult, readsResult] = await Promise.all([

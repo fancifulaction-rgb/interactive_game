@@ -34,11 +34,11 @@ export const PLAY_MESSAGES = {
   access_check_failed: 'Не удалось проверить доступ. Проверьте сеть и повторите попытку.',
 } as const
 
+import { readStoredTeamIdForGame } from './playerSession'
+
 export function readStoredPlayerSession(gameCode: string): { teamId: string } | null {
-  const teamId = localStorage.getItem('team_id')
-  const storedCode = (localStorage.getItem('game_code') ?? '').trim().toUpperCase()
-  const code = gameCode.trim().toUpperCase()
-  if (!teamId || storedCode !== code) return null
+  const teamId = readStoredTeamIdForGame(gameCode)
+  if (!teamId) return null
   return { teamId }
 }
 
@@ -240,7 +240,7 @@ export async function verifyFinishPageAccess(
     return { allowed: true, showScores: true, gameId: game.id }
   }
 
-  const sessionToken = getTeamSessionToken()
+  const sessionToken = getTeamSessionToken(session.teamId)
   if (sessionToken && game?.id) {
     const { data: hasAnswers, error: answersError } = await supabase.rpc('team_has_answers', {
       p_team_id: session.teamId,

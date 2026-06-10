@@ -20,7 +20,7 @@ import { fetchLobbyTeams } from '../lib/fetchLobbyTeams'
 import { fetchGameByCode, getCachedGameByCode } from '../lib/gameLookupCache'
 import { markPlayerFetchBoost } from '../lib/playerFetchBoost'
 import { markRegistrationSubmitBoost } from '../lib/registrationBoost'
-import { saveTeamSession } from '../lib/playerSession'
+import { saveTeamSession, writeStoredCurrentTeam } from '../lib/playerSession'
 import { rememberSessionSnapshot } from '../lib/gameSessionSnapshotCache'
 import { getRegistrationDenialFromState } from '../lib/participantAccess'
 import {
@@ -323,19 +323,16 @@ export default function TeamRegister() {
         })
 
       try {
-        saveTeamSession(team)
+        saveTeamSession(team, normalizedCode)
         localStorage.setItem('game_code', normalizedCode)
-        localStorage.setItem(
-          'current_team',
-          JSON.stringify({
-            id: team.id,
-            name: team.team_name || team.name,
-            captain_name: team.captain_name,
-            players: [team.captain_name || captainName],
-            avatar_url: team.avatar_url || team.avatar,
-            total_score: 0,
-          })
-        )
+        writeStoredCurrentTeam({
+          id: team.id,
+          name: team.team_name || team.name,
+          captain_name: team.captain_name,
+          players: [team.captain_name || captainName],
+          avatar_url: team.avatar_url || team.avatar,
+          total_score: 0,
+        })
       } catch (storageErr: unknown) {
         const storageMsg =
           storageErr instanceof Error ? storageErr.message : String(storageErr)
