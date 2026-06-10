@@ -71,7 +71,7 @@
 | IMP-LOG-019 | Спиннер «Обновить» без вопросов | `reloadQuestions` → `finally { setLoading(false) }` | BUG_AUDIT_HANDOFF M4 | 1 | done |
 | IMP-LOG-020 | Realtime после delete команд | `broadcastTeamsChanged` в TeamManagement; `enqueueCritical` delete game | BUG_AUDIT_HANDOFF M5 | 1 | done |
 | IMP-LOG-021 | Двойные очки при fallback | Закрыто после IMP-SEC: только RPC, без client bump fallback | BUG_AUDIT_HANDOFF M3 | — | rejected |
-| IMP-LOG-022 | Настраиваемая проверка ответов (`answer_grading`) | Пресеты + группы в `games.settings`; пайплайн normalize → text_match / MCQ → routing; fuzzy только для `answer_count=1`; спека: [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md) | Продукт / Kahoot-LMS | post | accepted |
+| IMP-LOG-022 | Настраиваемая проверка ответов (`answer_grading`) | Пресеты + группы в `games.settings`; пайплайн normalize → text_match / MCQ → routing; fuzzy только для `answer_count=1`; спека: [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md) | Продукт / Kahoot-LMS | post | done |
 
 ### IMP-LOG-022 — детализация (фазы)
 
@@ -232,4 +232,4 @@
 
 ---
 
-*Версия каталога: 2026-06-10. Всего предложений: 50+ (без DONE). IMP-LOG-022: accepted, фазы 0–4 done.*
+*Версия каталога: 2026-06-10. Всего предложений: 50+ (без DONE). IMP-LOG-022: done (точечные доработки — §14 ANSWER_GRADING.md).*

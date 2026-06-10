@@ -3,7 +3,7 @@ description: Quest Game — фокус проекта, Спринт 1, сеть 
 alwaysApply: true
 ---
 
-# Quest Game (v1.2.13)
+# Quest Game (v1.2.16)
 
 Командные квесты на мероприятиях (2–100 команд). Стек: React + Vite + TypeScript + Supabase only. Не Kahoot, не отдельный Socket/API-сервер без IMP-ARC-001.
 

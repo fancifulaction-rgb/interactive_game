@@ -20,7 +20,7 @@ Project Rules в `.cursor/rules/` и gstack в `quest-game-gstack.mdc` уже з
 ## Репозиторий и контекст
 
 - Рабочая папка: `quest-game-github-archive/` (внутри `g:\Code\quest-game\`).
-- Версия: 1.2.13.
+- Версия: 1.2.16.
 - Стек: React 18, TypeScript, Vite 6, Tailwind, React Router; бэкенд — Supabase (PostgreSQL, PostgREST, Realtime, Storage, Auth, Edge Functions на Deno).
 - Язык общения с владельцем проекта: русский. Коммиты и PR-описания — русский или английский (Conventional Commits), единообразно в рамках сессии.
 - Не коммить: `.env`, секреты, `dist/`, `node_modules/`.

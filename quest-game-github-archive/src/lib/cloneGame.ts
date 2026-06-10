@@ -10,7 +10,6 @@ export type CloneGameInput = {
   sourceGameId: string
   title: string
   code: string
-  theme: string
 }
 
 export type ClonedGame = {
@@ -50,7 +49,6 @@ function stripQuestionForClone(q: Record<string, unknown>, newGameId: string) {
 export async function cloneGame(input: CloneGameInput): Promise<ClonedGame> {
   const title = input.title.trim()
   const code = normalizeGameAccessCode(input.code)
-  const theme = input.theme.trim() || 'new-year'
 
   if (!title) {
     throw new Error('Укажите название игры')
@@ -76,6 +74,7 @@ export async function cloneGame(input: CloneGameInput): Promise<ClonedGame> {
   }
 
   const src = source as SourceGameRow
+  const theme = src.theme?.trim() || 'default'
 
   const { data: newGame, error: insertErr } = await supabase
     .from('games')

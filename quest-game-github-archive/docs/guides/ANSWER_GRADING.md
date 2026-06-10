@@ -310,7 +310,9 @@ type AnswerGradingConfig = {
 | **1** | `answer_grading` в settings; SQL: punctuation, yo_to_e; fuzzy §5; UI пресеты; `gameSettings` + сохранение | e2e текстовый вопрос; старые игры без изменений |
 | **2** | `grading_status`, hybrid/manual, badge на табло; keywords, numeric | Pending = 0 + бейдж; админ принимает/отклоняет |
 | **3** | Очередь модерации в админке; post-hoc accept; **resubmit penalty** | Пересдача со штрафом |
-| **4** | regex; jury; per-question override (если понадобится) | Power-user |
+| **4** | regex; jury; per-question override | Power-user |
+
+**Статус внедрения (2026-06-10):** фазы **0–4 shipped** — SQL `022`–`025`, клиент (`answerGradingConfig`, `GameManageProfileForm`, `GameEditor` override, `AnswerModerationPanel`). Старые игры без `answer_grading` ведут себя как до IMP-LOG-022.
 
 ---
 
@@ -342,6 +344,16 @@ type AnswerGradingConfig = {
 
 См. также `docs/TEST_BACKLOG.md` — добавить секцию IMP-LOG-022 при старте фазы 1.
 
+### 12.1. Фаза 4 (дополнить при QA)
+
+| Кейс | Ожидание |
+|------|----------|
+| `text_match: regex`, pattern совпадает | auto accept, tier exact |
+| Невалидный regex в настройках | Отказ / fallback (проверить UX) |
+| `grading_override` на вопросе | merge с игровым cfg; jury **не** в override |
+| `jury.enabled`, `required_votes: 2` | `grading_status: jury_pending` до N голосов; бейдж «Жюри N/M» |
+| Второй модератор подтверждает | Финальный accept/reject + очки |
+
 ---
 
 ## 13. Связанные IMP
@@ -352,4 +364,21 @@ type AnswerGradingConfig = {
 
 ---
 
-*Версия документа: 2026-06-10. IMP-LOG-022.*
+## 14. Точечные доработки (бэклог после ship)
+
+IMP-LOG-022 закрыт по фазам; ниже — очередь на возврат **точечно**, без расширения scope.
+
+| ID | Область | Что сделать |
+|----|---------|-------------|
+| G1 | QA | Прогнать G1–G4 из [ROADMAP.md](../ROADMAP.md) § IMP-LOG-022; зафиксировать в `MANUAL_QA_CHECKLIST.md` |
+| G2 | UI профиля | Подсказки/валидация для regex (`pattern`, `flags`) |
+| G3 | UI редактора | Override: превью эффективного cfg; сброс override |
+| G4 | Модерация | Крайние случаи jury (разные голоса, смена модератора) |
+| G5 | Табло | Визуал `jury_pending` vs `pending` (если нужно различать) |
+| G6 | Доки | Кейсы §12.1 → постоянные строки чеклиста после QA |
+
+Ключевые файлы: `docs/sql-migrations/022`–`025`, `src/lib/answerGrading*.ts`, `submitAutoAnswer.ts`, `AnswerModerationPanel.tsx`, `GameManageProfileForm.tsx`, `GameEditor.tsx` (блок override).
+
+---
+
+*Версия документа: 2026-06-10. IMP-LOG-022 (фазы 0–4 done).*

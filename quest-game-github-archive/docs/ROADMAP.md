@@ -60,16 +60,27 @@
 
 См. каталог: IMP-ARC-001 (Socket.IO), IMP-PRD-003 (team chat), IMP-ST-002 (video transcode), GDPR doc.
 
-### IMP-LOG-022 — проверка ответов (answer_grading)
+### IMP-LOG-022 — проверка ответов (answer_grading) ✅
 
-**Спека:** [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md) (фаза 0 — done).
+**Статус:** `done` (фазы 0–4, миграции 022–025, коммит `453b1dc`).  
+**Спека:** [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md).
 
-| Фаза | Задача | Критерий готовности |
-|------|--------|---------------------|
-| 1 | Мягкий текст: normalize + fuzzy | Старые игры без изменений; пресеты в GameEditor; RPC с cfg |
-| 2 | Pending / hybrid / keywords / numeric | 0 очков + бейдж; админ принимает ответ |
-| 3 | Модерация, post-hoc, штраф пересдачи | resubmit только с фазы 3 |
-| 4 | regex, jury, override на вопрос | По запросу |
+| Фаза | Задача | Статус |
+|------|--------|--------|
+| 0 | Спека + каталог | done |
+| 1 | normalize + fuzzy, пресеты в профиле игры | done |
+| 2 | pending / hybrid / keywords / numeric, модерация | done |
+| 3 | post-hoc accept, штраф пересдачи | done |
+| 4 | regex, jury, `questions.grading_override` | done |
+
+**Точечные доработки (бэклог, без нового IMP):** вернуться по запросу — см. §14 в [ANSWER_GRADING.md](guides/ANSWER_GRADING.md).
+
+| # | Тема | Заметка |
+|---|------|---------|
+| G1 | Ручной QA фазы 4 | regex pattern/flags; override в редакторе (перед «Подсказки»); jury `required_votes: 2` |
+| G2 | `MANUAL_QA_CHECKLIST.md` | Добавить секцию IMP-LOG-022 (сейчас нет) |
+| G3 | UX профиля / редактора | Валидация regex, подсказки jury, отличие `pending` vs `jury_pending` на табло |
+| G4 | Тест-кейсы §12 спеки | Дописать кейсы regex / override / jury после QA |
 
 ---
 

@@ -25,6 +25,7 @@ import {
   fetchGameAccessCodeDefaultLength,
   saveGameAccessCodeDefaultLength,
 } from '../lib/gameAccessCodeSettings'
+import { GAME_THEME_OPTIONS } from '../lib/saveGameProfile'
 import ThemeManager from '../components/ThemeManager'
 import SettingsManager from '../components/SettingsManager'
 import QuestSettingsManager from '../components/QuestSettingsManager'
@@ -42,7 +43,7 @@ import { GameSessionAdminProvider } from '../contexts/GameSessionAdminContext'
 import {
   LogOut, Plus, Edit, Trash2, Play, Settings,
   Download, Users, Trophy, Palette, FileText, BarChart3, Type, Key, Radio, Calendar, Copy, X,
-  Presentation, History,
+  Presentation, History, Check, AlertCircle,
 } from 'lucide-react'
 
 interface Game {
@@ -93,6 +94,10 @@ export default function AdminPanel() {
   const [gamesError, setGamesError] = useState('')
   const [creatingGame, setCreatingGame] = useState(false)
   const [deletingGameIds, setDeletingGameIds] = useState<Set<string>>(new Set())
+  const [selectedGameIds, setSelectedGameIds] = useState<Set<string>>(new Set())
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkDeleteMessage, setBulkDeleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [adminSessionOk, setAdminSessionOk] = useState<boolean | null>(null)
   type AdminTab = 'games' | 'manage' | 'settings'
   const tabParam = searchParams.get('tab')
@@ -112,7 +117,6 @@ export default function AdminPanel() {
   const [cloneSource, setCloneSource] = useState<Game | null>(null)
   const [cloneTitle, setCloneTitle] = useState('')
   const [cloneCode, setCloneCode] = useState('')
-  const [cloneTheme, setCloneTheme] = useState('')
   const [cloneBusy, setCloneBusy] = useState(false)
   const [autoCodeLength, setAutoCodeLength] = useState(6)
   const [autoCodeLengthSaving, setAutoCodeLengthSaving] = useState(false)
@@ -321,10 +325,6 @@ export default function AdminPanel() {
     setCloneSource(game)
     setCloneTitle(`Копия: ${game.title}`)
     setCloneCode(generateGameAccessCode(autoCodeLength))
-    setCloneTheme(game.theme || 'new-year')
-    if (themes.length === 0) {
-      void loadThemes()
-    }
   }
 
   const closeCloneModal = () => {
@@ -360,7 +360,6 @@ export default function AdminPanel() {
         sourceGameId: cloneSource.id,
         title,
         code,
-        theme: cloneTheme,
       })
 
       const { data: fullGame, error } = await supabase
@@ -390,41 +389,125 @@ export default function AdminPanel() {
     }
   }
 
-  const deleteGame = async (gameId: string) => {
-    if (deletingGameIds.has(gameId)) return
-
-    if (!(await hasSupabaseAdminSession())) {
-      alert(ADMIN_SESSION_HINT)
-      setAdminSessionOk(false)
-      return
-    }
-
-    if (!confirm('Вы уверены, что хотите удалить эту игру? Все связанные данные (вопросы, команды, ответы, медиа файлы) будут удалены безвозвратно.')) {
-      return
-    }
-
-    setDeletingGameIds((prev) => new Set(prev).add(gameId))
-    const snapshot = games.find((g) => g.id === gameId)
-
-    setGames((prev) => prev.filter((g) => g.id !== gameId))
-
+  const deleteGameById = async (gameId: string): Promise<{ ok: true } | { ok: false; error: string }> => {
     try {
       const result = await enqueueCritical(() => deleteGameCompletely(gameId))
       if (!result.success) {
         throw new Error(result.error || 'Неизвестная ошибка')
       }
+      return { ok: true }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('Ошибка удаления игры:', err)
-      if (snapshot) {
-        setGames((prev) => [snapshot, ...prev])
+      return { ok: false, error: msg }
+    }
+  }
+
+  const toggleGameSelection = (gameId: string) => {
+    if (bulkDeleting || deletingGameIds.has(gameId)) return
+    setSelectedGameIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(gameId)) next.delete(gameId)
+      else next.add(gameId)
+      return next
+    })
+  }
+
+  const selectAllGames = () => {
+    if (bulkDeleting) return
+    if (selectedGameIds.size === games.length) {
+      setSelectedGameIds(new Set())
+    } else {
+      setSelectedGameIds(new Set(games.map((g) => g.id)))
+    }
+  }
+
+  const openBulkDeleteModal = () => {
+    if (selectedGameIds.size === 0) {
+      setBulkDeleteMessage({ type: 'error', text: 'Выберите игры для удаления' })
+      return
+    }
+    setShowBulkDeleteModal(true)
+  }
+
+  const confirmBulkDeleteGames = async () => {
+    const ids = Array.from(selectedGameIds)
+    if (ids.length === 0) {
+      setShowBulkDeleteModal(false)
+      return
+    }
+
+    if (!(await hasSupabaseAdminSession())) {
+      alert(ADMIN_SESSION_HINT)
+      setAdminSessionOk(false)
+      setShowBulkDeleteModal(false)
+      return
+    }
+
+    setBulkDeleting(true)
+    setBulkDeleteMessage(null)
+
+    const snapshots = games.filter((g) => ids.includes(g.id))
+    const idSet = new Set(ids)
+
+    setGames((prev) => prev.filter((g) => !idSet.has(g.id)))
+    setDeletingGameIds((prev) => {
+      const next = new Set(prev)
+      ids.forEach((id) => next.add(id))
+      return next
+    })
+
+    let deleted = 0
+    const failed: { title: string; error: string }[] = []
+    const toRestore: Game[] = []
+
+    for (const gameId of ids) {
+      const snapshot = snapshots.find((g) => g.id === gameId)
+      const result = await deleteGameById(gameId)
+      if (result.ok === true) {
+        deleted += 1
+      } else {
+        failed.push({
+          title: snapshot?.title ?? gameId,
+          error: result.error,
+        })
+        if (snapshot) toRestore.push(snapshot)
       }
-      alert('Ошибка удаления игры: ' + msg)
-    } finally {
       setDeletingGameIds((prev) => {
         const next = new Set(prev)
         next.delete(gameId)
         return next
+      })
+    }
+
+    if (toRestore.length > 0) {
+      setGames((prev) => {
+        const merged = [...toRestore, ...prev]
+        merged.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+        return merged
+      })
+    }
+
+    setSelectedGameIds(new Set())
+    setBulkDeleting(false)
+    setShowBulkDeleteModal(false)
+
+    if (failed.length === 0) {
+      setBulkDeleteMessage({
+        type: 'success',
+        text: `Удалено игр: ${deleted}`,
+      })
+    } else if (deleted === 0) {
+      setBulkDeleteMessage({
+        type: 'error',
+        text: `Не удалось удалить игры: ${failed.map((f) => f.title).join(', ')}`,
+      })
+    } else {
+      setBulkDeleteMessage({
+        type: 'error',
+        text: `Удалено ${deleted} из ${ids.length}. Ошибки: ${failed.map((f) => `${f.title} (${f.error})`).join('; ')}`,
       })
     }
   }
@@ -588,6 +671,31 @@ export default function AdminPanel() {
               </div>
             )}
 
+            {bulkDeleteMessage && (
+              <div
+                className={`mb-4 rounded-lg border px-4 py-3 text-sm flex items-center ${
+                  bulkDeleteMessage.type === 'success'
+                    ? 'border-green-400 bg-green-100 text-green-800'
+                    : 'border-red-400 bg-red-100 text-red-800'
+                }`}
+              >
+                {bulkDeleteMessage.type === 'success' ? (
+                  <Check className="w-5 h-5 mr-2 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                )}
+                <span className="flex-1">{bulkDeleteMessage.text}</span>
+                <button
+                  type="button"
+                  onClick={() => setBulkDeleteMessage(null)}
+                  className="ml-2 opacity-70 hover:opacity-100"
+                  aria-label="Закрыть"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-gray-800">Управление играми</h2>
               <div className="flex gap-2">
@@ -625,13 +733,45 @@ export default function AdminPanel() {
                 </button>
               </div>
             ) : (
-              <div className="grid gap-4">
+              <>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button
+                    type="button"
+                    onClick={selectAllGames}
+                    disabled={bulkDeleting || games.length === 0}
+                    className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    {selectedGameIds.size === games.length ? 'Снять все' : 'Выбрать все'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openBulkDeleteModal}
+                    disabled={selectedGameIds.size === 0 || bulkDeleting}
+                    className="px-3 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 inline-flex items-center gap-1"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Удалить выбранные ({selectedGameIds.size})
+                  </button>
+                </div>
+
+                <div className="grid gap-4">
                 {games.map((game) => (
                   <div
                     key={game.id}
-                    className="bg-white rounded-lg p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow"
+                    className={`bg-white rounded-lg p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow ${
+                      selectedGameIds.has(game.id) ? 'ring-2 ring-red-300' : ''
+                    }`}
                   >
                     <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                      <div className="flex gap-3 flex-1 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={selectedGameIds.has(game.id)}
+                          onChange={() => toggleGameSelection(game.id)}
+                          disabled={bulkDeleting || deletingGameIds.has(game.id)}
+                          className="mt-1 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500 flex-shrink-0 disabled:opacity-40"
+                          aria-label={`Выбрать игру ${game.title}`}
+                        />
                       <div className="flex-1 min-w-0">
                         <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-2 truncate">
                           {game.title}
@@ -665,6 +805,7 @@ export default function AdminPanel() {
                             </p>
                           </div>
                         </div>
+                      </div>
                       </div>
                       <div className="flex gap-1 sm:gap-2 ml-2 sm:ml-4 flex-shrink-0">
                         <button
@@ -719,19 +860,54 @@ export default function AdminPanel() {
                         >
                           <History className="w-5 h-5 sm:w-6 sm:h-6" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => void deleteGame(game.id)}
-                          disabled={deletingGameIds.has(game.id)}
-                          className="p-3 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center disabled:opacity-40"
-                          title="Удалить"
-                        >
-                          <Trash2 className="w-5 h-5 sm:w-6 sm:h-6" />
-                        </button>
                       </div>
                     </div>
                   </div>
                 ))}
+              </div>
+              </>
+            )}
+
+            {showBulkDeleteModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+                  <div className="flex items-center mb-4">
+                    <AlertCircle className="w-6 h-6 text-red-600 mr-2 flex-shrink-0" />
+                    <h3 className="text-lg font-semibold">Подтверждение удаления</h3>
+                  </div>
+
+                  <p className="text-gray-700 mb-2">
+                    Вы уверены, что хотите удалить {selectedGameIds.size}{' '}
+                    {selectedGameIds.size === 1 ? 'игру' : selectedGameIds.size < 5 ? 'игры' : 'игр'}?
+                    Все связанные данные (вопросы, команды, ответы, медиа) будут удалены безвозвратно.
+                  </p>
+                  <ul className="text-sm text-gray-600 mb-6 list-disc pl-5 max-h-32 overflow-y-auto">
+                    {games
+                      .filter((g) => selectedGameIds.has(g.id))
+                      .map((g) => (
+                        <li key={g.id}>{g.title}{g.code ? ` (${g.code})` : ''}</li>
+                      ))}
+                  </ul>
+
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkDeleteModal(false)}
+                      disabled={bulkDeleting}
+                      className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void confirmBulkDeleteGames()}
+                      disabled={bulkDeleting}
+                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {bulkDeleting ? 'Удаление…' : 'Удалить'}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1140,31 +1316,14 @@ export default function AdminPanel() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Тема оформления</label>
-                {themes.length > 0 ? (
-                  <select
-                    value={cloneTheme}
-                    onChange={(e) => setCloneTheme(e.target.value)}
-                    disabled={cloneBusy}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    {themes.map((t) => (
-                      <option key={t.id} value={t.name}>
-                        {t.display_name || t.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={cloneTheme}
-                    onChange={(e) => setCloneTheme(e.target.value)}
-                    disabled={cloneBusy}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                )}
-              </div>
+              <p className="text-sm text-gray-600">
+                Тема оформления:{' '}
+                <span className="font-medium text-gray-800">
+                  {GAME_THEME_OPTIONS.find((o) => o.value === (cloneSource.theme || 'default'))
+                    ?.label ?? cloneSource.theme ?? 'Стандартная'}
+                </span>
+                {' '}(копируется из источника)
+              </p>
             </div>
 
             <div className="flex gap-3 mt-6">

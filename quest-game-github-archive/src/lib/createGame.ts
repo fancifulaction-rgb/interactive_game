@@ -27,7 +27,7 @@ export type CreatedGameRow = {
 export async function createNewGame(title = 'Новая игра'): Promise<CreatedGameRow> {
   const base = {
     title,
-    theme: 'new-year',
+    theme: 'default',
     mask_board: false,
     total_time_sec: 1800,
     per_question_time_sec: 120,

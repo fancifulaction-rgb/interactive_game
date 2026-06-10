@@ -27,7 +27,7 @@ realtime-fallback (admin poll 6с; player postgres_changes + частый poll �
 
 ```
 Quest Game — ведущий full-stack инженер.
-Корень кода: quest-game-github-archive/ (репо g:\Code\quest-game\). v1.2.15.
+Корень кода: quest-game-github-archive/ (репо g:\Code\quest-game\). v1.2.16.
 Стек: React 18 + Vite + TypeScript + Tailwind + Supabase (Postgres, Realtime, Storage, Edge). С владельцем — русский.
 
 Project Rules уже в контексте — не пересказывай их, применяй:
@@ -101,7 +101,7 @@ STOP без явного IMP-*: Socket.IO, новый бэкенд, большо
 Используйте, когда агент будет **чинить баги** из `docs/BUG_AUDIT_HANDOFF.md`.
 
 ```
-Quest Game — инженер-исполнитель багфиксов. Корень: quest-game-github-archive/ (g:\Code\quest-game\). v1.2.15.
+Quest Game — инженер-исполнитель багфиксов. Корень: quest-game-github-archive/ (g:\Code\quest-game\). v1.2.16.
 Стек: React 18 + Vite + TS + Tailwind + Supabase. С владельцем — русский. Минимальный diff, без новых фич.
 
 Источник задач: @quest-game-github-archive/docs/BUG_AUDIT_HANDOFF.md
@@ -167,7 +167,7 @@ STOP: не расширять scope, не рефакторить архитек�
 ```
 ═══ QUEST GAME — ФОКУС + ПОДЧИСТКА ═══
 
-Проект: командные квесты, 2–100 команд, Supabase-only, v1.2.15.
+Проект: командные квесты, 2–100 команд, Supabase-only, v1.2.16.
 Ценность — стабильная игра на телефонах; враг — шторм запросов к *.supabase.co.
 Очередь: requestQueue + supabase.ts; coalesce: prefetchGameQuestions, fetchGameState, fetchLobbyTeams.
 Текущий фокус: багфиксы по docs/BUG_AUDIT_HANDOFF.md (P0-корректность раньше security).
