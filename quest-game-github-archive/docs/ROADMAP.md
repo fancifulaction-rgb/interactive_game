@@ -85,6 +85,43 @@
 
 ---
 
+## Фаза 4 — post-sprint (черновик, 2026-06-10)
+
+Спринты 1–3 закрыты. Ниже — **приоритетный план** без жёстких дат; детали в [IMPROVEMENTS_CATALOG.md](IMPROVEMENTS_CATALOG.md).
+
+### Уже в main (документация синхронизирована)
+
+| ID | Что | Миграции / код |
+|----|-----|----------------|
+| IMP-UX-009 | Уникальные QR/ссылки `?join=` | `032_game_join_token.sql`, `joinToken.ts`, `registrationUrl.ts` |
+| IMP-ADM-004 | Скрытие вопросов `is_hidden` | `027_question_hidden.sql`, GameEditor |
+| IMP-PRD-009 (этап 1) | Мульти-медиа carousel + editor | `030`–`031`, `questionMediaTypes.ts` |
+
+### Приоритет 1 — дожим и QA
+
+| # | Задача | ID | Критерий готовности |
+|---|--------|-----|---------------------|
+| 4.1 | Ручной QA `join_token` / QR / клон | IMP-UX-009 | `MANUAL_QA_CHECKLIST` QA-C02b, QA-B05b — ✅ |
+| 4.2 | Ручной QA скрытых вопросов | IMP-ADM-004 | QA-B07 — редактор, игрок не видит скрытые |
+| 4.3 | Grading QA фазы 4 | IMP-LOG-022 G1–G4 | Секция I в чеклисте; regex/jury/override |
+| 4.4 | `db:migrate` на prod/test + schema reload | — | 027, 030–032 в журнале; `verify-schema-drift` OK |
+
+### Приоритет 2 — продукт
+
+| # | Задача | ID | Заметка |
+|---|--------|-----|---------|
+| 4.5 | Мульти-медиа этап 2 | IMP-PRD-010 | layout, timeline, live-cue — отдельный блок |
+| 4.6 | RLS ужесточение | IMP-SEC-002, 004–006 | После `gstack-cso` |
+| 4.7 | CDN / load test | IMP-INF-006, 007 | Перед крупным мероприятием |
+
+### Приоритет 3 — бэклог
+
+UX-006..008, PRD-003..008, ADM-001..003, TD-002..005, RT-003..004, ST-002, DATA-002.
+
+**Не брать без явного ID:** IMP-ARC-001/002 (Socket.IO, offline LAN).
+
+---
+
 ## Как вести прогресс
 
 1. Перед взятием задачи — пометить ID в IMPROVEMENTS_CATALOG как `accepted` → `in_progress`.

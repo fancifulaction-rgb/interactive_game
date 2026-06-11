@@ -20,13 +20,24 @@ export const supabase = createClient(
 
 ### Регистрация команды
 
+Два входа на одну игру (оба ведут на `/team/register`):
+
+| Вход | URL / QR | Lookup |
+|------|----------|--------|
+| Код | `?code=XXXX` или ручной ввод | `games.code` |
+| Join token | `?join=<uuid>` (QR и «Скопировать ссылку» в админке / host) | `games.join_token` |
+
+Модуль: `src/lib/joinToken.ts`, `registrationUrl.ts`, кэш `gameLookupCache.ts`.
+
 | Шаг | Операция | Таблица / Bucket | Очередь |
 |-----|----------|------------------|---------|
-| 1 | `select` game by code | `games` | critical |
+| 1 | `select` game by `code` или `join_token` | `games` | critical |
 | 2 | `insert` team | `teams` | critical |
 | 3 | navigate → `/game/:code` | — | — |
-| 4 | prefetch questions | `questions` | background |
+| 4 | prefetch questions | `questions_player` / view | background |
 | 5 | optional avatar file | memory `pendingAvatar` | после игры |
+
+При клонировании игры (`cloneGame`) генерируется **новый** `join_token`; код игры тоже новый.
 
 ### Прохождение вопроса
 

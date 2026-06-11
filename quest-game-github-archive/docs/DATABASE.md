@@ -19,7 +19,10 @@ PostgreSQL в Supabase. Миграции: `docs/sql-migrations/`.
 | `011_…` … `012_…` | По мере спринтов (см. `docs/sql-migrations/`) |
 | `013_submit_auto_answer.sql` | RPC `submit_auto_answer` — серверная проверка авто-ответов (IMP-LOG-001) |
 | `014_event_archive.sql` | Таблица `event_archive` — снимок заезда и CSV (IMP-DATA-001) |
+| `027_question_hidden.sql` | `questions.is_hidden`; view `questions_player` без скрытых (IMP-ADM-004) |
 | `030_question_media_items.sql` | `questions.media_items`, `questions.hints` JSONB; view `questions_player` (IMP-PRD-009) |
+| `031_storage_limits_100mb.sql` | Лимит buckets `answer-media`, `question-media`: 100 MB (IMP-PRD-009) |
+| `032_game_join_token.sql` | `games.join_token` UUID UNIQUE; QR/ссылка регистрации (IMP-UX-009) |
 
 **Скрипты:**
 - `npm run db:migrate` — новые миграции; перед прогоном журнал сверяется со схемой (дрейф 011+ залечивается автоматически)
@@ -56,7 +59,8 @@ games (1) ──< event_archive   (снимок заезда; game_id SET NULL �
 | Колонка | Тип | Описание |
 |---------|-----|----------|
 | `id` | UUID PK | |
-| `code` | VARCHAR(6) UNIQUE | Код для регистрации |
+| `code` | VARCHAR(6) UNIQUE | Код для регистрации (ручной ввод, deep link `?code=`) |
+| `join_token` | UUID UNIQUE NOT NULL | Стабильный токен для QR и ссылки `?join=` (migrate 032, IMP-UX-009) |
 | `title` | TEXT | Название квеста |
 | `password` | TEXT | Опционально |
 | `settings` | JSONB | Доп. настройки (`hide_scoreboard_until_finish`, план: `answer_grading` — см. [guides/ANSWER_GRADING.md](guides/ANSWER_GRADING.md)) |
@@ -99,6 +103,7 @@ games (1) ──< event_archive   (снимок заезда; game_id SET NULL �
 | `points` | INT | Базовые очки |
 | `difficulty` | TEXT | Легкий / Средний / Сложный |
 | `per_question_time_sec` | INT | Переопределение таймера |
+| `is_hidden` | BOOLEAN NOT NULL DEFAULT false | Исключить из заезда без удаления (IMP-ADM-004, migrate 027) |
 
 ### View `questions_player`
 

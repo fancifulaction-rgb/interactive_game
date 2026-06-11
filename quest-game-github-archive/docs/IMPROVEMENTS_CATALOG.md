@@ -97,6 +97,7 @@
 | IMP-UX-006 | Финиш: только поздравление vs табло | `finish_page_type` расширить | BACKLOG | proposed | proposed |
 | IMP-UX-007 | Улучшить табло (фото команд) | Крупные аватары, анимации | BACKLOG | proposed | proposed |
 | IMP-UX-008 | Темы: фон без налезания на вопрос | Снег/анимации | BACKLOG | proposed | proposed |
+| IMP-UX-009 | Уникальная ссылка регистрации (`join_token`) | QR и «Скопировать ссылку» → `/team/register?join=<uuid>`; lookup по `games.join_token`; новый токен при клоне | Чат 2026-06-10 | post | done |
 
 ---
 
@@ -113,7 +114,8 @@
 | IMP-PRD-006 | Упростить типы вопросов в редакторе | UX GameEditor | BACKLOG | proposed | proposed |
 | IMP-PRD-007 | Логотип на приветственной | Home + settings | BACKLOG | proposed | proposed |
 | IMP-PRD-008 | Расширить оповещения админа | Broadcast всем игрокам | BACKLOG | proposed | proposed |
-| IMP-PRD-009 | Мульти-медиа вопросов и подсказок | `media_items` / `hints` JSONB; carousel в GamePlay; multi-upload в редакторе; клиентское сжатие (этап 1). Этап 2: layout/timeline/live-cue | Plan multi-media | 1 | done |
+| IMP-PRD-009 | Мульти-медиа вопросов и подсказок (этап 1) | `media_items` / `hints` JSONB; carousel в GamePlay; multi-upload + сжатие в редакторе; migrate 030–031 | Plan multi-media | 1 | done |
+| IMP-PRD-010 | Мульти-медиа (этап 2): layout / timeline / live-cue | Композитор раскладки, таймлайн подсказок, пульт ведущего | Plan multi-media | post | proposed |
 
 ---
 
@@ -202,7 +204,7 @@
 | IMP-ADM-001 | Редактирование категории «Время» | settings UI | BACKLOG | proposed | proposed |
 | IMP-ADM-002 | Общая пауза UI в GameControls | Уже частично есть | BACKLOG | proposed | proposed |
 | IMP-ADM-003 | Kick игрока/команды | Как Buzzr presenter | Buzzr | proposed | proposed |
-| IMP-ADM-004 | Скрытие вопросов без удаления | `is_hidden` на `questions`; только до старта игры, в редакторе; клон — полная копия | Чат 2026-06-10 | post | accepted |
+| IMP-ADM-004 | Скрытие вопросов без удаления | `is_hidden` на `questions`; только до старта игры, в редакторе; клон — полная копия | Чат 2026-06-10 | post | done |
 
 ### IMP-ADM-004 — скрытие вопросов (детализация)
 
@@ -260,4 +262,4 @@
 
 ---
 
-*Версия каталога: 2026-06-10. Всего предложений: 50+ (без DONE). IMP-LOG-022: done. IMP-ADM-004: accepted (скрытие вопросов).*
+*Версия каталога: 2026-06-10. IMP-LOG-022, IMP-ADM-004, IMP-UX-009, IMP-PRD-009 (этап 1): done. Следующий крупный блок: IMP-PRD-010 (этап 2 медиа) + QA IMP-LOG-022 G1–G4 — см. [ROADMAP.md](ROADMAP.md) §«Фаза 4».*

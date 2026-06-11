@@ -5,6 +5,20 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 и этот проект следует [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Добавлено
+- IMP-UX-009: уникальные ссылки регистрации `games.join_token` — QR и «Скопировать ссылку» ведут на `/team/register?join=<uuid>`; lookup по токену; новый токен при клоне игры (migrate `032`)
+- IMP-ADM-004: скрытие вопросов без удаления — `questions.is_hidden`, view `questions_player` (migrate `027`)
+- IMP-PRD-009 (этап 1): мульти-медиа вопросов и подсказок — `media_items` / `hints` JSONB, carousel в GamePlay, multi-upload и сжатие в редакторе (migrate `030`–`031`)
+
+### Изменено
+- Документация: `ROADMAP.md` §«Фаза 4» (post-sprint план), `IMPROVEMENTS_CATALOG` (IMP-UX-009, IMP-PRD-010, статусы), `MANUAL_QA_CHECKLIST` (QA-B07, QA-C02b, секция I grading)
+
+### Исправлено
+- Возврат в активную игру после «Назад» из регистрации в браузере
+- Манифест миграций: `031_storage_limits_100mb` в apply manifest
+
 ## [1.2.16] — 2026-06-08
 
 ### Добавлено
