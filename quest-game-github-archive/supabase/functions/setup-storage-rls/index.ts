@@ -31,30 +31,20 @@ Deno.serve(async (req) => {
 
     // Выполняем SQL напрямую через fetch к PostgREST
     const sqlQuery = `
--- Включаем RLS для storage.objects
+-- IMP-SEC-015: не открывать anon INSERT (см. docs/sql-migrations/039_secure_storage_upload.sql)
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
--- Удаляем старые политики
-DROP POLICY IF EXISTS "Public Access question-media" ON storage.objects;
+DROP POLICY IF EXISTS "Public upload avatars" ON storage.objects;
+DROP POLICY IF EXISTS "Public upload answer-media" ON storage.objects;
+DROP POLICY IF EXISTS "Public upload question-media" ON storage.objects;
+DROP POLICY IF EXISTS "Public upload quest-logos" ON storage.objects;
 DROP POLICY IF EXISTS "Public Upload question-media" ON storage.objects;
-DROP POLICY IF EXISTS "Public Update question-media" ON storage.objects;
-DROP POLICY IF EXISTS "Public Delete question-media" ON storage.objects;
-DROP POLICY IF EXISTS "Public Access answer-media" ON storage.objects;
 DROP POLICY IF EXISTS "Public Upload answer-media" ON storage.objects;
-DROP POLICY IF EXISTS "Public Update answer-media" ON storage.objects;
-DROP POLICY IF EXISTS "Public Delete answer-media" ON storage.objects;
 
--- Политики для question-media
-CREATE POLICY "Public Access question-media" ON storage.objects FOR SELECT TO public USING (bucket_id = 'question-media');
-CREATE POLICY "Public Upload question-media" ON storage.objects FOR INSERT TO public WITH CHECK (bucket_id = 'question-media');
-CREATE POLICY "Public Update question-media" ON storage.objects FOR UPDATE TO public USING (bucket_id = 'question-media') WITH CHECK (bucket_id = 'question-media');
-CREATE POLICY "Public Delete question-media" ON storage.objects FOR DELETE TO public USING (bucket_id = 'question-media');
-
--- Политики для answer-media
-CREATE POLICY "Public Access answer-media" ON storage.objects FOR SELECT TO public USING (bucket_id = 'answer-media');
-CREATE POLICY "Public Upload answer-media" ON storage.objects FOR INSERT TO public WITH CHECK (bucket_id = 'answer-media');
-CREATE POLICY "Public Update answer-media" ON storage.objects FOR UPDATE TO public USING (bucket_id = 'answer-media') WITH CHECK (bucket_id = 'answer-media');
-CREATE POLICY "Public Delete answer-media" ON storage.objects FOR DELETE TO public USING (bucket_id = 'answer-media');
+DROP POLICY IF EXISTS "Authenticated upload admin media" ON storage.objects;
+CREATE POLICY "Authenticated upload admin media" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id IN ('question-media', 'quest-logos'));
 `
 
     // Пытаемся выполнить через разные методы

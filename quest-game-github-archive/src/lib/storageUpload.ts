@@ -9,7 +9,6 @@ import { compressQuestionMedia, type CompressProgressFn } from './compressQuesti
 import { isAdminRoute } from './adminFetchBoost'
 
 const UPLOAD_TIMEOUT_MS = 90_000
-const EDGE_FALLBACK_MAX_BYTES = 8 * 1024 * 1024
 const UPLOAD_RETRIES = 3
 
 let activeUpload: AbortController | null = null
@@ -70,6 +69,16 @@ async function uploadViaEdgeFunction(
   return data.url as string
 }
 
+async function storageAuthHeaders(): Promise<{ Authorization: string; apikey: string }> {
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+  if (!anonKey) throw new Error('Supabase не настроен')
+  const { data } = await supabase.auth.getSession()
+  return {
+    Authorization: `Bearer ${data.session?.access_token ?? anonKey}`,
+    apikey: anonKey,
+  }
+}
+
 async function uploadOnce(
   bucket: string,
   file: File,
@@ -84,6 +93,11 @@ async function uploadOnce(
   }
 
   const fileName = buildGameScopedFileName(gameId, prefix, file)
+
+  if (bucket === 'avatars' || bucket === 'answer-media') {
+    return uploadViaEdgeFunction(bucket, file, fileName, gameId, teamId)
+  }
+
   const url = `${supabaseUrl}/storage/v1/object/${bucket}/${fileName}`
 
   cancelActiveStorageUpload()
@@ -94,11 +108,11 @@ async function uploadOnce(
   debugLog('storageUpload.ts', 'upload start', { bucket, fileName, size: file.size }, 'B')
 
   try {
+    const authHeaders = await storageAuthHeaders()
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${anonKey}`,
-        apikey: anonKey,
+        ...authHeaders,
         'Content-Type': file.type || 'application/octet-stream',
         'x-upsert': 'false',
       },
@@ -109,13 +123,10 @@ async function uploadOnce(
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       debugLog('storageUpload.ts', 'upload http error', { status: res.status, text: text.slice(0, 200) }, 'B')
-      if (res.status === 401 || res.status === 403 || res.status === 400) {
-        if (bucket === 'question-media' && file.size > EDGE_FALLBACK_MAX_BYTES) {
-          throw new Error(
-            `Загрузка отклонена (${res.status}). Файл ${Math.round(file.size / 1024 / 1024)} МБ — проверьте политики Storage для question-media.`
-          )
-        }
-        return uploadViaEdgeFunction(bucket, file, fileName, gameId, teamId)
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          `Загрузка отклонена (${res.status}). Войдите в админку заново — для ${bucket} нужна Supabase-сессия.`
+        )
       }
       throw new Error(`Storage ${res.status}: ${text || res.statusText}`)
     }

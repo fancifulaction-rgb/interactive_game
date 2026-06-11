@@ -8,6 +8,8 @@
 ## [Unreleased]
 
 ### Исправлено
+- IMP-SEC-017: migrate `040` — `process_game_schedule` только authenticated/service_role
+- IMP-SEC-015: migrate `039` — закрыт anon INSERT в Storage; игрок через `player-upload`; админ-медиа с JWT
 - IMP-SEC-014: migrate `038` — grading/scoreboard RPC только для authenticated/service_role; anon без EXECUTE
 - IMP-SEC-013: migrate `035` — anon не читает `questions`/`players` напрямую; только view `questions_player`
 - IMP-SEC-016: migrate `036` — `games.owner_id`, RLS update/delete по владельцу; Edge `delete-game` проверяет ownership

@@ -178,6 +178,27 @@ ok('register_team выдаёт session_token')
   }
 }
 
+// SEC-015: anon Storage INSERT
+{
+  const path = `${gameId}/sec015-smoke.png`
+  const { error } = await supabase.storage.from('answer-media').upload(path, new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+    contentType: 'image/png',
+    upsert: false,
+  })
+  expectFail('SEC-015: anon upload answer-media → отказ', error)
+}
+
+// SEC-017: anon process_game_schedule
+{
+  const { data, error } = await supabase.rpc('process_game_schedule', { p_game_id: gameId })
+  if (error) {
+    ok('SEC-017: anon process_game_schedule → отказ')
+  } else {
+    console.log('✗', 'SEC-017: anon вызвал process_game_schedule', data)
+    bugs.push('SEC-017 schedule rpc')
+  }
+}
+
 // S4: increment_team_score anon
 {
   const { error } = await supabase.rpc('increment_team_score', {

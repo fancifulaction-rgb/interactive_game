@@ -261,9 +261,9 @@
 |----|----------|----------|----------|--------|--------|
 | IMP-SEC-013 | anon SELECT утекает `answer` | migrate `035`: REVOKE questions/players для anon; только `questions_player` | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-014 | Утечка ответов через scoreboard/grading RPC | migrate `038`: auth guard + REVOKE anon на get_scoreboard_answers, list_pending_answers, get_teams_pending_review, list_posthoc_answers | AUDIT 2026-06-11 | 5 | done |
-| IMP-SEC-015 | Публичная загрузка в Storage | запись по anon-пути без team session/whitelist | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-015 | Публичная загрузка в Storage | migrate `039`: убрать anon INSERT; игрок — Edge `player-upload`; админ — authenticated | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-016 | IDOR удаление/правка чужих игр | migrate `036` owner_id + RLS; Edge delete-game ownership | AUDIT 2026-06-11 | 5 | done |
-| IMP-SEC-017 | `process_game_schedule` доступен anon | убрать grant anon, только доверенный контекст | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-017 | `process_game_schedule` доступен anon | migrate `040`: auth guard + REVOKE anon | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-018 | Перехват сессии команды | `recover_team_session` по угадываемым данным | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-019 | `join_token` не enforced | регистрация без валидного токена | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-020 | Edge `generate-questions` без auth/rate-limit | жжёт токены LLM | AUDIT 2026-06-11 | 5 | accepted |

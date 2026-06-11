@@ -48,20 +48,20 @@
 - **Суть:** функция отдаёт правильные ответы/чужие ответы без проверки роли (anon может вызвать).
 - **Фикс:** migrate `038_secure_grading_scoreboard_rpc.sql` — `auth.role()` только `authenticated`/`service_role`, `REVOKE EXECUTE FROM anon`. Админка уже с Supabase-сессией (`hasSupabaseAdminSession`). Проверка: `security-smoke.mjs` SEC-014.
 
-### IMP-SEC-015 — публичная загрузка в Storage 🔎
+### IMP-SEC-015 — публичная загрузка в Storage ✅
 - **Где:** политики Storage / `player-upload`.
 - **Суть:** запись в бакеты доступна по anon-пути без team session / без whitelisting бакета.
-- **Фикс:** загрузка только через Edge `player-upload` с проверкой team session token (`IMP-SEC-011` уже это начал — проверить, что прод-политики совпадают с кодом); приватные бакеты + signed URL (см. `IMP-SEC-002`).
+- **Фикс:** migrate `039_secure_storage_upload.sql` — DROP public INSERT на все buckets; INSERT только `authenticated` для `question-media`/`quest-logos`; `avatars`/`answer-media` — клиент через Edge `player-upload` (team session). `storageUpload.ts`: player buckets → edge first; admin media → JWT сессии. Проверка: `security-smoke.mjs` SEC-015.
 
 ### IMP-SEC-016 — IDOR на удаление/редактирование чужих игр 🔎
 - **Где:** `delete-game` Edge / RPC правки игр/вопросов.
 - **Суть:** нет проверки, что текущий админ — владелец игры. Зная `game_id`, можно удалить/изменить чужую игру.
 - **Фикс:** модель владения (`games.owner_id` или admin-session scope) + проверка во всех мутациях; `verify_jwt` + `requireAuthenticatedUser` уже есть на delete (`IMP-SEC-012`) — добавить именно ownership-чек.
 
-### IMP-SEC-017 — `process_game_schedule` доступен anon 🔎
+### IMP-SEC-017 — `process_game_schedule` доступен anon ✅
 - **Где:** RPC планировщика (`029_game_schedule.sql`).
 - **Суть:** аноним может триггерить смену состояния игры по расписанию.
-- **Фикс:** убрать grant anon; вызывать только из доверенного контекста (Edge cron/service_role).
+- **Фикс:** migrate `040_lock_process_game_schedule_grants.sql` — auth guard + `REVOKE EXECUTE FROM anon`. Админ-панель (`GameSchedulePanel`) вызывает под authenticated. Проверка: `security-smoke.mjs` SEC-017.
 
 ### IMP-SEC-018 — перехват сессии команды (`recover_team_session`) 🔎
 - **Суть:** восстановление сессии команды по слабому признаку (имя/код) позволяет угнать чужую команду и отправлять ответы за неё.

@@ -38,4 +38,6 @@ export const ALL_MIGRATION_FILES = [
   '036_games_owner_id.sql',
   '037_realtime_game_state.sql',
   '038_secure_grading_scoreboard_rpc.sql',
+  '039_secure_storage_upload.sql',
+  '040_lock_process_game_schedule_grants.sql',
 ]
