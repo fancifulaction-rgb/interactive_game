@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useNavigationType, useSearchParams } from 'react-router-dom'
 import {
   isTeamNameTakenError,
   isTransientNetworkError,
@@ -25,7 +25,11 @@ import { fetchLobbyTeams } from '../lib/fetchLobbyTeams'
 import { fetchGameByCode, getCachedGameByCode } from '../lib/gameLookupCache'
 import { markPlayerFetchBoost } from '../lib/playerFetchBoost'
 import { markRegistrationSubmitBoost } from '../lib/registrationBoost'
-import { saveTeamSession, writeStoredCurrentTeam } from '../lib/playerSession'
+import {
+  readStoredTeamIdForGame,
+  saveTeamSession,
+  writeStoredCurrentTeam,
+} from '../lib/playerSession'
 import { rememberSessionSnapshot } from '../lib/gameSessionSnapshotCache'
 import {
   getRegistrationDenialFromState,
@@ -57,10 +61,12 @@ type GameRow = {
   scoring: unknown
   mask_board: boolean | null
   total_time_sec: number | null
+  settings: unknown
 }
 
 export default function TeamRegister() {
   const navigate = useNavigate()
+  const navigationType = useNavigationType()
   const [searchParams] = useSearchParams()
   const [gameCode, setGameCode] = useState('')
   const [teamName, setTeamName] = useState('')
@@ -96,6 +102,32 @@ export default function TeamRegister() {
       setGameCode(fromUrl)
     }
   }, [searchParams])
+
+  // Уже зарегистрирован: ссылка с кодом, тот же код в форме, или «Назад» из игры (POP).
+  useEffect(() => {
+    if (loading || submittingRef.current) return
+
+    const urlCode = readRegistrationCodeFromSearch(searchParams.toString())
+    const typedCode = normalizeGameAccessCode(gameCode)
+    let code = ''
+    if (urlCode.length >= GAME_ACCESS_CODE_MIN) {
+      code = urlCode
+    } else if (typedCode.length >= GAME_ACCESS_CODE_MIN) {
+      code = typedCode
+    } else if (navigationType === 'POP') {
+      try {
+        const stored = (localStorage.getItem('game_code') ?? '').trim().toUpperCase()
+        if (stored.length >= GAME_ACCESS_CODE_MIN) code = stored
+      } catch {
+        /* private mode */
+      }
+    }
+
+    if (code.length < GAME_ACCESS_CODE_MIN) return
+    if (!readStoredTeamIdForGame(code)) return
+
+    navigate(`/game/${code}`, { replace: true })
+  }, [searchParams, gameCode, navigate, navigationType, loading])
 
   // Прогрев lookup игры и game_state до submit — debounce, иначе каждый символ = GET в очередь.
   useEffect(() => {
@@ -382,7 +414,7 @@ export default function TeamRegister() {
       agentDebugLog('TeamRegister.tsx', 'navigate', { gameId: game.id, teamId: team.id }, 'H8')
       // #endregion
       setLoading(false)
-      navigate(`/game/${normalizedCode}`)
+      navigate(`/game/${normalizedCode}`, { replace: true })
 
       void fetchLobbyTeams(game.id, { force: true })
         .then((lobbyRows) => {
