@@ -260,7 +260,7 @@
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
 | IMP-SEC-013 | anon SELECT утекает `answer` | migrate `035`: REVOKE questions/players для anon; только `questions_player` | AUDIT 2026-06-11 | 5 | done |
-| IMP-SEC-014 | Утечка ответов через scoreboard/grading RPC | RPC отдаёт `answer`/`is_correct` без проверки роли | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-014 | Утечка ответов через scoreboard/grading RPC | migrate `038`: auth guard + REVOKE anon на get_scoreboard_answers, list_pending_answers, get_teams_pending_review, list_posthoc_answers | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-015 | Публичная загрузка в Storage | запись по anon-пути без team session/whitelist | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-016 | IDOR удаление/правка чужих игр | migrate `036` owner_id + RLS; Edge delete-game ownership | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-017 | `process_game_schedule` доступен anon | убрать grant anon, только доверенный контекст | AUDIT 2026-06-11 | 5 | accepted |

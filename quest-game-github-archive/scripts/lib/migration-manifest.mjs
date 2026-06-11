@@ -37,4 +37,5 @@ export const ALL_MIGRATION_FILES = [
   '035_fix_anon_questions_rls.sql',
   '036_games_owner_id.sql',
   '037_realtime_game_state.sql',
+  '038_secure_grading_scoreboard_rpc.sql',
 ]

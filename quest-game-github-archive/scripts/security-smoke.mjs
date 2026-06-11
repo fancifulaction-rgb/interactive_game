@@ -165,6 +165,19 @@ ok('register_team выдаёт session_token')
   }
 }
 
+// SEC-014: anon grading/scoreboard RPC
+{
+  const { data, error } = await supabase.rpc('get_scoreboard_answers', { p_game_id: gameId })
+  if (error) {
+    ok('SEC-014: anon get_scoreboard_answers → отказ')
+  } else if (!data?.length) {
+    ok('SEC-014: anon get_scoreboard_answers → пусто')
+  } else {
+    console.log('✗', 'SEC-014: anon читает get_scoreboard_answers')
+    bugs.push('SEC-014 scoreboard rpc')
+  }
+}
+
 // S4: increment_team_score anon
 {
   const { error } = await supabase.rpc('increment_team_score', {

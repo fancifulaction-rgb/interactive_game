@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### Исправлено
+- IMP-SEC-014: migrate `038` — grading/scoreboard RPC только для authenticated/service_role; anon без EXECUTE
 - IMP-SEC-013: migrate `035` — anon не читает `questions`/`players` напрямую; только view `questions_player`
 - IMP-SEC-016: migrate `036` — `games.owner_id`, RLS update/delete по владельцу; Edge `delete-game` проверяет ownership
 - IMP-SEC-022: удалены root debug-скрипты с захардкоженными JWT (старый Supabase-проект, не текущий prod)

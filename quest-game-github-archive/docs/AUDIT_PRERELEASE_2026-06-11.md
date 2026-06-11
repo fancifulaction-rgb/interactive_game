@@ -43,10 +43,10 @@
 - **Также:** `players_anon_select USING(true)` (строки 58-59) — утечка ПДн участников.
 - **Фикс:** не давать anon прямой SELECT на `questions`/`players`. Для игрока — только view `questions_player` (без `answer`, только видимые). Новая миграция `035_fix_anon_questions_rls.sql`: `DROP POLICY questions_anon_select`, выдать `SELECT` на view, ограничить `players` (или убрать anon select полностью, читать через RPC). Проверить, что клиент игрока уже ходит в `questions_player`/RPC, а не в `questions`.
 
-### IMP-SEC-014 — утечка ответов через scoreboard/grading RPC 🔎
-- **Где:** RPC/функции выдачи ответов на табло/проверку (`get_scoreboard_answers` и аналоги).
+### IMP-SEC-014 — утечка ответов через scoreboard/grading RPC ✅
+- **Где:** RPC/функции выдачи ответов на табло/проверку (`get_scoreboard_answers`, `list_pending_answers`, `get_teams_pending_review`, `list_posthoc_answers`).
 - **Суть:** функция отдаёт правильные ответы/чужие ответы без проверки роли (anon может вызвать).
-- **Фикс:** `SECURITY DEFINER` + явная проверка admin-сессии внутри функции; убрать grant `anon`. Перепроверить все RPC, возвращающие `answer`/`is_correct` до финиша.
+- **Фикс:** migrate `038_secure_grading_scoreboard_rpc.sql` — `auth.role()` только `authenticated`/`service_role`, `REVOKE EXECUTE FROM anon`. Админка уже с Supabase-сессией (`hasSupabaseAdminSession`). Проверка: `security-smoke.mjs` SEC-014.
 
 ### IMP-SEC-015 — публичная загрузка в Storage 🔎
 - **Где:** политики Storage / `player-upload`.
