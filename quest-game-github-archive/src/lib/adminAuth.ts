@@ -52,7 +52,25 @@ export function resetAuthSessionCache(): void {
 export const ADMIN_SESSION_HINT =
   'Для создания и удаления игр нужен вход через email (Supabase Auth). Если сессия истекла — выйдите и войдите снова.'
 
-/** Флаг из AdminLogin (email или legacy credentials). */
+export function clearAdminLocalStorage(): void {
+  localStorage.removeItem('admin_logged_in')
+  localStorage.removeItem('admin_email')
+  localStorage.removeItem('admin_username')
+  localStorage.removeItem('admin_user_id')
+}
+
+/** Источник правды для админ-роутов: Supabase Auth session, не localStorage. */
+export async function verifyAdminPanelAccess(): Promise<boolean> {
+  const hasSession = await hasSupabaseAdminSession()
+  if (!hasSession) {
+    clearAdminLocalStorage()
+    resetAuthSessionCache()
+    return false
+  }
+  return true
+}
+
+/** Только подсказка UI; для gate используйте verifyAdminPanelAccess(). */
 export function isAdminPanelLoggedIn(): boolean {
   if (localStorage.getItem('admin_logged_in') !== 'true') return false
   return !!(localStorage.getItem('admin_username') || localStorage.getItem('admin_email'))

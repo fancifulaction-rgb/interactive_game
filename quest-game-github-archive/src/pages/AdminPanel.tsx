@@ -8,9 +8,11 @@ import { formatErrorMessage } from '../lib/errorMessage'
 import { debugLog } from '../lib/debugLog'
 import {
   ADMIN_SESSION_HINT,
+  clearAdminLocalStorage,
   getAdminDisplayName,
   hasSupabaseAdminSession,
   resetAuthSessionCache,
+  verifyAdminPanelAccess,
 } from '../lib/adminAuth'
 import { enqueueBackground, enqueueCritical } from '../lib/requestQueue'
 import {
@@ -231,22 +233,11 @@ export default function AdminPanel() {
   }, [setSearchParams])
 
   useEffect(() => {
-    const isLoggedIn = localStorage.getItem('admin_logged_in')
-    if (!isLoggedIn) {
-      navigate('/admin/login')
-      return
-    }
-
     const abort = new AbortController()
     void (async () => {
-      const hasSession = await hasSupabaseAdminSession()
+      const hasSession = await verifyAdminPanelAccess()
       if (abort.signal.aborted) return
       if (!hasSession) {
-        localStorage.removeItem('admin_logged_in')
-        localStorage.removeItem('admin_email')
-        localStorage.removeItem('admin_username')
-        localStorage.removeItem('admin_user_id')
-        resetAuthSessionCache()
         navigate('/admin/login')
         return
       }
@@ -309,9 +300,7 @@ export default function AdminPanel() {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('admin_logged_in')
-    localStorage.removeItem('admin_username')
-    localStorage.removeItem('admin_email')
+    clearAdminLocalStorage()
     resetAuthSessionCache()
     void supabase.auth.signOut()
     navigate('/admin/login')

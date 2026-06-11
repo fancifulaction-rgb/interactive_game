@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { verifyAdminPanelAccess } from '../lib/adminAuth'
 import { supabase } from '../lib/supabase'
 import {
   applyScoreBroadcastToTeams,
@@ -43,8 +44,7 @@ export default function AdminScoreboard() {
   const [pendingByTeam, setPendingByTeam] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    const adminLoggedIn = localStorage.getItem('admin_logged_in')
-    setIsAdmin(!!adminLoggedIn)
+    void verifyAdminPanelAccess().then(setIsAdmin)
   }, [])
 
   const loadTeamsForGame = useCallback(async (gameId: string, seq: number) => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { verifyAdminPanelAccess } from '../lib/adminAuth'
 import { supabase } from '../lib/supabase'
 import { Trophy, Medal, Award, Settings, Download, FileText, FileSpreadsheet } from 'lucide-react'
 import { exportToExcel, exportToPDF, exportToCSV, exportAllFormats } from '../utils/exportData'
@@ -27,8 +28,7 @@ export default function Scoreboard() {
 
   // Проверяем статус администратора
   useEffect(() => {
-    const adminLoggedIn = localStorage.getItem('admin_logged_in')
-    setIsAdmin(!!adminLoggedIn)
+    void verifyAdminPanelAccess().then(setIsAdmin)
   }, [])
 
   useEffect(() => {

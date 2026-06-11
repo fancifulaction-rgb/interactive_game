@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { isAdminPanelLoggedIn } from '../lib/adminAuth'
+import { isAdminPanelLoggedIn, verifyAdminPanelAccess } from '../lib/adminAuth'
 import { uploadQuestionMediaQueued } from '../lib/storageUpload'
 import { confirmLargeVideoUpload } from '../lib/compressQuestionMedia'
 import { QUESTION_DB_SELECT } from '../lib/prefetchGameQuestions'
@@ -119,18 +119,20 @@ export default function GameEditor() {
   }
 
   useEffect(() => {
-    const isLoggedIn = localStorage.getItem('admin_logged_in')
-    if (!isLoggedIn) {
-      setLoading(false)
-      navigate('/admin/login')
-      return
-    }
     if (!gameId) {
       setLoading(false)
       navigate('/admin/panel')
       return
     }
-    void loadGameData()
+    void (async () => {
+      const allowed = await verifyAdminPanelAccess()
+      if (!allowed) {
+        setLoading(false)
+        navigate('/admin/login')
+        return
+      }
+      await loadGameData()
+    })()
   }, [gameId])
 
   const syncQuestionLegacy = (q: Question): Question => {
