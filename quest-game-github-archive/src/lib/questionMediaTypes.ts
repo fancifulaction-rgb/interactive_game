@@ -1,3 +1,5 @@
+import { randomUuid } from './randomUuid'
+
 export type MediaKind = 'image' | 'video' | 'audio'
 
 export type QuestionMediaItem = {
@@ -54,7 +56,7 @@ function parseMediaItem(raw: unknown, fallbackOrder: number): QuestionMediaItem 
       ? o.kind
       : inferKindFromUrl(url)
   return {
-    id: typeof o.id === 'string' && o.id ? o.id : crypto.randomUUID(),
+    id: typeof o.id === 'string' && o.id ? o.id : randomUuid(),
     kind,
     url,
     order: typeof o.order === 'number' ? o.order : fallbackOrder,
@@ -98,7 +100,7 @@ export function normalizeMediaItemsFromRow(row: Record<string, unknown>): Questi
     } else {
       kind = inferKindFromUrl(url)
     }
-    return [{ id: crypto.randomUUID(), kind, url, order: 0 }]
+    return [{ id: randomUuid(), kind, url, order: 0 }]
   }
   return []
 }
@@ -158,7 +160,7 @@ export function reindexMediaItems(items: QuestionMediaItem[]): QuestionMediaItem
 
 export function createMediaItem(kind: MediaKind, url: string, order: number, bytes?: number): QuestionMediaItem {
   return {
-    id: crypto.randomUUID(),
+    id: randomUuid(),
     kind,
     url,
     order,

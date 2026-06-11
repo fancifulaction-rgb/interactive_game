@@ -1,3 +1,4 @@
+import { ensureAuthenticatedSessionForWrite } from './adminAuth'
 import { supabase } from './supabase'
 import { debugLog } from './debugLog'
 import { enqueueCritical, enqueueBackground } from './requestQueue'
@@ -69,14 +70,41 @@ async function uploadViaEdgeFunction(
   return data.url as string
 }
 
-async function storageAuthHeaders(): Promise<{ Authorization: string; apikey: string }> {
+const ADMIN_UPLOAD_BUCKETS = new Set(['question-media', 'quest-logos'])
+
+async function storageAuthHeaders(requireUserJwt = false): Promise<{ Authorization: string; apikey: string }> {
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
   if (!anonKey) throw new Error('Supabase не настроен')
   const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (requireUserJwt && !token) {
+    throw new Error(
+      'Сессия Supabase истекла. Выйдите из админки и войдите снова через email — иначе загрузка медиа отклоняется.'
+    )
+  }
   return {
-    Authorization: `Bearer ${data.session?.access_token ?? anonKey}`,
+    Authorization: `Bearer ${token ?? anonKey}`,
     apikey: anonKey,
   }
+}
+
+async function uploadAdminMediaViaClient(
+  bucket: string,
+  file: File,
+  fileName: string
+): Promise<string> {
+  await ensureAuthenticatedSessionForWrite()
+  const { data, error } = await supabase.storage.from(bucket).upload(fileName, file, {
+    contentType: file.type || 'application/octet-stream',
+    upsert: false,
+  })
+  if (error) throw error
+  const path = data?.path ?? fileName
+  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path)
+  if (!publicData?.publicUrl) {
+    throw new Error('Storage: не удалось получить публичный URL')
+  }
+  return publicData.publicUrl
 }
 
 async function uploadOnce(
@@ -98,6 +126,10 @@ async function uploadOnce(
     return uploadViaEdgeFunction(bucket, file, fileName, gameId, teamId)
   }
 
+  if (ADMIN_UPLOAD_BUCKETS.has(bucket)) {
+    return uploadAdminMediaViaClient(bucket, file, fileName)
+  }
+
   const url = `${supabaseUrl}/storage/v1/object/${bucket}/${fileName}`
 
   cancelActiveStorageUpload()
@@ -108,7 +140,7 @@ async function uploadOnce(
   debugLog('storageUpload.ts', 'upload start', { bucket, fileName, size: file.size }, 'B')
 
   try {
-    const authHeaders = await storageAuthHeaders()
+    const authHeaders = await storageAuthHeaders(ADMIN_UPLOAD_BUCKETS.has(bucket))
     const res = await fetch(url, {
       method: 'POST',
       headers: {

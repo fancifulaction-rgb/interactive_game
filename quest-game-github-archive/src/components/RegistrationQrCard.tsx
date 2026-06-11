@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import QRCode from 'react-qr-code'
 import { Copy, Check, QrCode } from 'lucide-react'
+import { copyTextToClipboard } from '../lib/copyToClipboard'
 import { buildTeamRegistrationJoinUrl } from '../lib/registrationUrl'
 
 interface RegistrationQrCardProps {
@@ -11,16 +12,21 @@ interface RegistrationQrCardProps {
 
 export default function RegistrationQrCard({ joinToken, gameCode, gameTitle }: RegistrationQrCardProps) {
   const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState('')
+  const urlInputRef = useRef<HTMLInputElement>(null)
   const registrationUrl = useMemo(() => buildTeamRegistrationJoinUrl(joinToken), [joinToken])
 
   const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(registrationUrl)
+    setCopyError('')
+    const ok = await copyTextToClipboard(registrationUrl, urlInputRef.current)
+    if (ok) {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
-    } catch {
-      window.prompt('Скопируйте ссылку:', registrationUrl)
+      return
     }
+    urlInputRef.current?.focus()
+    urlInputRef.current?.select()
+    setCopyError('Не удалось скопировать автоматически — выделите ссылку и нажмите Ctrl+C')
   }
 
   return (
@@ -36,7 +42,8 @@ export default function RegistrationQrCard({ joinToken, gameCode, gameTitle }: R
         </div>
         <div className="flex-1 w-full space-y-2 min-w-0">
           <p className="text-sm text-gray-600">
-            Участники сканируют QR или переходят по ссылке — игра откроется без ввода кода.
+            Участники сканируют QR или переходят по ссылке с параметром{' '}
+            <span className="font-mono text-xs">join</span> — без него регистрация не откроется.
           </p>
           {gameCode && (
             <p className="text-xs text-gray-500">
@@ -46,6 +53,7 @@ export default function RegistrationQrCard({ joinToken, gameCode, gameTitle }: R
           )}
           <div className="flex gap-2">
             <input
+              ref={urlInputRef}
               type="text"
               readOnly
               value={registrationUrl}
@@ -61,6 +69,7 @@ export default function RegistrationQrCard({ joinToken, gameCode, gameTitle }: R
               {copied ? 'Скопировано' : 'Копировать'}
             </button>
           </div>
+          {copyError && <p className="text-xs text-amber-700">{copyError}</p>}
         </div>
       </div>
     </div>

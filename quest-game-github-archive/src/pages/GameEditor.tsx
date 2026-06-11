@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { isAdminPanelLoggedIn, verifyAdminPanelAccess } from '../lib/adminAuth'
+import {
+  ensureAuthenticatedSessionForWrite,
+  isAdminPanelLoggedIn,
+  verifyAdminPanelAccess,
+} from '../lib/adminAuth'
 import { uploadQuestionMediaQueued } from '../lib/storageUpload'
 import { confirmLargeVideoUpload } from '../lib/compressQuestionMedia'
 import { QUESTION_DB_SELECT } from '../lib/prefetchGameQuestions'
@@ -600,8 +604,17 @@ export default function GameEditor() {
     target: 'question' | 'hint',
     hIndex?: number
   ) => {
-    if (!isAdminPanelLoggedIn()) {
-      alert('Ошибка доступа: сессия администратора не найдена. Войдите снова.')
+    const allowed = await verifyAdminPanelAccess()
+    if (!allowed) {
+      alert('Ошибка доступа: сессия администратора не найдена. Войдите снова через email.')
+      navigate('/admin/login')
+      return
+    }
+
+    try {
+      await ensureAuthenticatedSessionForWrite()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Сессия Supabase истекла. Войдите снова.')
       navigate('/admin/login')
       return
     }
