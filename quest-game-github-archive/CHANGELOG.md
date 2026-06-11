@@ -7,6 +7,9 @@
 
 ## [Unreleased]
 
+### Операции
+- Edge Functions redeploy на Supabase (`player-upload`, `delete-game`, `delete-teams`, `confirm-admin-email` v11)
+
 ### Исправлено
 - IMP-SEC-017: migrate `040` — `process_game_schedule` только authenticated/service_role
 - IMP-SEC-015: migrate `039` — закрыт anon INSERT в Storage; игрок через `player-upload`; админ-медиа с JWT
