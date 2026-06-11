@@ -11,6 +11,10 @@
 - Edge Functions redeploy на Supabase (`player-upload`, `delete-game`, `delete-teams`, `confirm-admin-email` v11)
 
 ### Исправлено
+- IMP-PERF-004: медиа ответа игрока — upload через `enqueueBackground`, не `enqueueCritical`
+- IMP-SEC-024: ревизия anon-grants и CORS задокументирована в `SECURITY.md`
+- IMP-SEC-023: админ-роуты проверяют Supabase session (`verifyAdminPanelAccess`), не localStorage
+- IMP-SEC-021: удалены `alternative-upload` и test-upload Edge из git
 - IMP-SEC-020: Edge `generate-questions` — JWT admin auth, rate-limit, лимит тела запроса; deploy с `verify_jwt`
 - IMP-SEC-018/019: migrate `041` — `register_team` требует `join_token`; `recover_team_session` только с валидным session token
 - IMP-SEC-017: migrate `040` — `process_game_schedule` только authenticated/service_role
