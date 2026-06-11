@@ -28,4 +28,5 @@ export const ALL_MIGRATION_FILES = [
   '028_unique_team_name_per_game.sql',
   '029_game_schedule.sql',
   '030_question_media_items.sql',
+  '031_storage_limits_100mb.sql',
 ]
