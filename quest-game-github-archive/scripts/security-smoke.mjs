@@ -152,6 +152,19 @@ ok('register_team выдаёт session_token')
   } else ok('S9: questions_player без поля answer')
 }
 
+// SEC-013: anon прямой SELECT questions (утечка answer)
+{
+  const { data, error } = await supabase.from('questions').select('answer').eq('game_id', gameId).limit(1)
+  if (error) {
+    ok('SEC-013: anon /questions → отказ')
+  } else if (!data?.length) {
+    ok('SEC-013: anon /questions → нет строк')
+  } else {
+    console.log('✗', 'SEC-013: anon читает questions.answer')
+    bugs.push('SEC-013 questions leak')
+  }
+}
+
 // S4: increment_team_score anon
 {
   const { error } = await supabase.rpc('increment_team_score', {

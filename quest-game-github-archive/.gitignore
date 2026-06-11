@@ -34,5 +34,15 @@ Thumbs.db
 _backup_inspect/
 scripts/backup-extract/
 
+# Legacy root debug scripts (секреты не коммитить)
+/debug_*.js
+/test_with_*.mjs
+/test_database_structure.*
+/final_delete_test.mjs
+/diagnose_deletion.mjs
+/comprehensive_test_*.mjs
+/detailed_*.mjs
+/test_delete_*.js
+
 # Archives (stored at repo root)
 ../archive/

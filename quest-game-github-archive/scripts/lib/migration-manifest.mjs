@@ -5,6 +5,8 @@ export const ALL_MIGRATION_FILES = [
   '003_settings_and_themes.sql',
   '004_production_schema.sql',
   '005_seed_from_backup.sql',
+  '006_storage_buckets.sql',
+  '007_fix_mojibake.sql',
   '008_teams_app_columns.sql',
   '009_game_state_pause.sql',
   '010_increment_team_score.sql',
@@ -32,4 +34,7 @@ export const ALL_MIGRATION_FILES = [
   '032_game_join_token.sql',
   '033_product_events.sql',
   '034_lock_increment_team_score_grants.sql',
+  '035_fix_anon_questions_rls.sql',
+  '036_games_owner_id.sql',
+  '037_realtime_game_state.sql',
 ]

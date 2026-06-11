@@ -30,6 +30,24 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+    const gameOwnerRes = await fetch(
+      `${supabaseUrl}/rest/v1/games?id=eq.${gameId}&select=id,owner_id`,
+      {
+        headers: {
+          Authorization: `Bearer ${supabaseServiceKey}`,
+          apikey: supabaseServiceKey,
+        },
+      }
+    )
+    const gameRows = await gameOwnerRes.json()
+    const gameRow = Array.isArray(gameRows) ? gameRows[0] : null
+    if (!gameRow?.id) {
+      return jsonResponse({ error: 'Game not found' }, 404)
+    }
+    if (gameRow.owner_id && gameRow.owner_id !== auth.userId) {
+      return jsonResponse({ error: 'Forbidden: not game owner' }, 403)
+    }
+
     console.log(`Starting comprehensive game deletion for game: ${gameId}`);
 
     // 1. Получаем все связанные данные

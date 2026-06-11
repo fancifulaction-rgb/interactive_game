@@ -259,16 +259,16 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-SEC-013 | anon SELECT утекает `answer` | 021 вернула `questions_anon_select USING(true)`; `players` тоже; новая миграция-фикс + view `questions_player` | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-013 | anon SELECT утекает `answer` | migrate `035`: REVOKE questions/players для anon; только `questions_player` | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-014 | Утечка ответов через scoreboard/grading RPC | RPC отдаёт `answer`/`is_correct` без проверки роли | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-015 | Публичная загрузка в Storage | запись по anon-пути без team session/whitelist | AUDIT 2026-06-11 | 5 | accepted |
-| IMP-SEC-016 | IDOR удаление/правка чужих игр | нет проверки владельца (`owner_id`) | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-016 | IDOR удаление/правка чужих игр | migrate `036` owner_id + RLS; Edge delete-game ownership | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-017 | `process_game_schedule` доступен anon | убрать grant anon, только доверенный контекст | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-018 | Перехват сессии команды | `recover_team_session` по угадываемым данным | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-019 | `join_token` не enforced | регистрация без валидного токена | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-020 | Edge `generate-questions` без auth/rate-limit | жжёт токены LLM | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-021 | git-tracked `alternative-upload` | незащищённый upload-путь, удалить | AUDIT 2026-06-11 | 5 | accepted |
-| IMP-SEC-022 | Захардкоженные JWT в репо | `debug_questions.js`, `test_with_data.mjs` и др.; ротация | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-022 | Захардкоженные JWT в репо | удалены root debug-скрипты; ключи старого проекта, не текущего prod | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-023 | Обход админ-доступа через localStorage | серверная валидация сессии | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-024 | Лишние anon-grants и CORS `*` | ревизия GRANT/CORS, в SECURITY.md | AUDIT 2026-06-11 | 5 | accepted |
 
@@ -276,15 +276,15 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-INF-011 | `013_realtime_game_state.sql` не в манифесте | коллизия номера 013; нет realtime на свежей БД | AUDIT 2026-06-11 | 5 | accepted |
-| IMP-INF-012 | `006_storage_buckets` / `007_fix_mojibake` не в манифесте | нет бакетов на свежей БД | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-INF-011 | `013_realtime_game_state.sql` не в манифесте | `037_realtime_game_state.sql` в manifest + облако | AUDIT 2026-06-11 | 5 | done |
+| IMP-INF-012 | `006_storage_buckets` / `007_fix_mojibake` не в манифесте | 006/007 в manifest; 006 на облако | AUDIT 2026-06-11 | 5 | done |
 
 ### Hot-path / realtime (P0)
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-LOG-023 | Ответ мимо `enqueueCritical` | `enqueueSubmitAutoAnswer` зовёт сервер напрямую | AUDIT 2026-06-11 | 5 | accepted |
-| IMP-RT-007 | broadcast-шторм `teams_changed` | шлётся на каждый ответ; throttle/убрать | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-LOG-023 | Ответ мимо `enqueueCritical` | `enqueueSubmitAutoAnswer` → `enqueueCritical` | AUDIT 2026-06-11 | 5 | done |
+| IMP-RT-007 | broadcast-шторм `teams_changed` | убран `broadcastTeamsChanged` на каждый ответ | AUDIT 2026-06-11 | 5 | done |
 | IMP-PERF-004 | Storage upload параллелит с REST | провести через очередь/мьютекс | AUDIT 2026-06-11 | 5 | accepted |
 
 ### Стабильность (P1)

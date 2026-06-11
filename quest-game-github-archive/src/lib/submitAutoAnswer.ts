@@ -2,7 +2,8 @@ import { supabase } from './supabase'
 import { debugLog } from './debugLog'
 import { cancelActiveStorageUpload } from './storageUpload'
 import { setAnswerSaveInFlight } from './networkMutex'
-import { broadcastScoreUpdate, broadcastTeamsChanged } from './gameRealtime'
+import { broadcastScoreUpdate } from './gameRealtime'
+import { enqueueCritical } from './requestQueue'
 import { isTransientNetworkError } from './teamRegister'
 import { getTeamSessionToken } from './teamSession'
 import { trackProductEvent } from './productAnalytics'
@@ -116,7 +117,6 @@ export async function submitAutoAnswerToServer(
         delta: result.points_earned,
       })
     }
-    void broadcastTeamsChanged(req.game_id)
 
     trackProductEvent({
       event: 'answer_submitted',
@@ -142,5 +142,5 @@ export async function submitAutoAnswerToServer(
 export function enqueueSubmitAutoAnswer(
   req: SubmitAutoAnswerRequest
 ): Promise<SubmitAutoAnswerResult> {
-  return submitAutoAnswerToServer(req)
+  return enqueueCritical(() => submitAutoAnswerToServer(req))
 }

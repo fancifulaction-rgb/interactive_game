@@ -179,7 +179,7 @@ export default function ScoreboardDetailed() {
           setGame(gameData)
 
           const questionsRes = await supabase
-            .from('questions')
+            .from('questions_player')
             .select('id, question_number, order_index, question_text')
             .eq('game_id', gameId)
             .order('question_number', { ascending: true })

@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+### Исправлено
+- IMP-SEC-013: migrate `035` — anon не читает `questions`/`players` напрямую; только view `questions_player`
+- IMP-SEC-016: migrate `036` — `games.owner_id`, RLS update/delete по владельцу; Edge `delete-game` проверяет ownership
+- IMP-SEC-022: удалены root debug-скрипты с захардкоженными JWT (старый Supabase-проект, не текущий prod)
+- IMP-INF-011/012: манифест `006`/`007`/`037`; storage buckets и realtime `game_state` на облаке
+- IMP-LOG-023: `enqueueSubmitAutoAnswer` через `enqueueCritical`
+- IMP-RT-007: убран `broadcastTeamsChanged` на каждый ответ игрока
+
 ### Добавлено
 - IMP-PRD-010 (этап 2): мульти-медиа — раскладки, timeline playback, HostLiveCuePanel, MediaLayoutComposer
 - IMP-SEC-008: migration `034` — REVOKE прямого вызова `increment_team_score` для anon/authenticated
