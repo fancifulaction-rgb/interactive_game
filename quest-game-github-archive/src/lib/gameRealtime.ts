@@ -13,6 +13,12 @@ export const SCORE_BROADCAST_EVENT = 'score_update'
 export const TEAMS_BROADCAST_EVENT = 'teams_changed'
 export const SESSION_BROADCAST_EVENT = 'session_changed'
 export const MESSAGES_BROADCAST_EVENT = 'messages_changed'
+export const MEDIA_CUE_BROADCAST_EVENT = 'media_cue'
+
+export type MediaCueBroadcastPayload = {
+  media_id: string
+  question_id?: string
+}
 
 export type SessionBroadcastPayload = {
   current_state?: string | null
@@ -34,6 +40,7 @@ export type GameRealtimeHandlers = {
   onSessionChanged?: (payload: SessionBroadcastPayload) => void
   onGameStateChanged?: (row: GameStateRow) => void
   onMessagesChanged?: () => void
+  onMediaCue?: (payload: MediaCueBroadcastPayload) => void
 }
 
 type HandlerSlot = symbol
@@ -45,6 +52,7 @@ type GameRealtimeHub = {
   sessionHandlers: Map<HandlerSlot, (payload: SessionBroadcastPayload) => void>
   gameStateHandlers: Map<HandlerSlot, (row: GameStateRow) => void>
   messagesHandlers: Map<HandlerSlot, () => void>
+  mediaCueHandlers: Map<HandlerSlot, (payload: MediaCueBroadcastPayload) => void>
   refCount: number
 }
 
@@ -105,6 +113,10 @@ function dispatchMessages(hub: GameRealtimeHub) {
   for (const fn of hub.messagesHandlers.values()) fn()
 }
 
+function dispatchMediaCue(hub: GameRealtimeHub, payload: MediaCueBroadcastPayload) {
+  for (const fn of hub.mediaCueHandlers.values()) fn(payload)
+}
+
 function getOrCreateHub(gameId: string): GameRealtimeHub {
   const existing = hubs.get(gameId)
   if (existing) return existing
@@ -116,6 +128,7 @@ function getOrCreateHub(gameId: string): GameRealtimeHub {
     sessionHandlers: new Map(),
     gameStateHandlers: new Map(),
     messagesHandlers: new Map(),
+    mediaCueHandlers: new Map(),
     refCount: 0,
   }
 
@@ -134,6 +147,9 @@ function getOrCreateHub(gameId: string): GameRealtimeHub {
     })
     .on('broadcast', { event: MESSAGES_BROADCAST_EVENT }, () => {
       dispatchMessages(hub)
+    })
+    .on('broadcast', { event: MEDIA_CUE_BROADCAST_EVENT }, ({ payload }) => {
+      dispatchMediaCue(hub, payload as MediaCueBroadcastPayload)
     })
     .on(
       'postgres_changes',
@@ -217,6 +233,7 @@ export function attachGameRealtime(gameId: string, handlers: GameRealtimeHandler
   if (handlers.onSessionChanged) hub.sessionHandlers.set(slot, handlers.onSessionChanged)
   if (handlers.onGameStateChanged) hub.gameStateHandlers.set(slot, handlers.onGameStateChanged)
   if (handlers.onMessagesChanged) hub.messagesHandlers.set(slot, handlers.onMessagesChanged)
+  if (handlers.onMediaCue) hub.mediaCueHandlers.set(slot, handlers.onMediaCue)
   hub.refCount++
   agentDebugLog(
     'gameRealtime.ts',
@@ -231,6 +248,7 @@ export function attachGameRealtime(gameId: string, handlers: GameRealtimeHandler
     hub.sessionHandlers.delete(slot)
     hub.gameStateHandlers.delete(slot)
     hub.messagesHandlers.delete(slot)
+    hub.mediaCueHandlers.delete(slot)
     hub.refCount--
     agentDebugLog(
       'gameRealtime.ts',
@@ -368,6 +386,25 @@ export async function broadcastMessagesChanged(gameId: string): Promise<void> {
     )
   } catch (err) {
     console.warn('broadcastMessagesChanged failed:', err)
+  }
+}
+
+/** Пульт ведущего: показать медиа у игроков на текущем вопросе (IMP-PRD-010). */
+export async function broadcastMediaCue(
+  gameId: string,
+  payload: MediaCueBroadcastPayload
+): Promise<void> {
+  if (!gameId || !payload.media_id) return
+  try {
+    await withBroadcastChannel(gameId, (channel) =>
+      channelSendWithTimeout(channel, {
+        type: 'broadcast',
+        event: MEDIA_CUE_BROADCAST_EVENT,
+        payload: { game_id: gameId, ...payload },
+      })
+    )
+  } catch (err) {
+    console.warn('broadcastMediaCue failed:', err)
   }
 }
 

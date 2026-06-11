@@ -38,6 +38,7 @@ import { clearAdminFetchBoost, markAdminFetchBoost } from '../lib/adminFetchBoos
 import { useTeamProgress } from '../hooks/useTeamProgress'
 import { countFinishedTeams, teamProgressMap } from '../lib/teamProgress'
 import TeamProgressBadge from '../components/TeamProgressBadge'
+import HostLiveCuePanel from '../components/HostLiveCuePanel'
 import { trackProductEventOnce } from '../lib/productAnalytics'
 
 type HostTeam = {
@@ -327,6 +328,11 @@ export default function HostView() {
           )}
         </section>
       </main>
+
+      <HostLiveCuePanel
+        gameId={game.id}
+        enabled={canControl && (status === 'playing' || status === 'paused')}
+      />
 
       {canControl ? (
         <footer className="sticky bottom-0 border-t border-white/10 bg-slate-950/90 backdrop-blur px-6 py-4">

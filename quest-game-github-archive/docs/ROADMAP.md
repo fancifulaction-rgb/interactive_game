@@ -110,7 +110,7 @@
 
 | # | Задача | ID | Заметка |
 |---|--------|-----|---------|
-| 4.5 | Мульти-медиа этап 2 | IMP-PRD-010 | layout, timeline, live-cue — отдельный блок |
+| 4.5 | Мульти-медиа этап 2 | IMP-PRD-010 | done — layout composer, playback timeline, HostView live-cue |
 | 4.6 | RLS ужесточение | IMP-SEC-002, 004–006 | После `gstack-cso` |
 | 4.7 | CDN / load test | IMP-INF-006, 007 | Перед крупным мероприятием |
 

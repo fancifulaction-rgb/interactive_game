@@ -36,6 +36,7 @@ import {
   type QuestionMediaItem,
 } from '../lib/questionMediaTypes'
 import CollapsibleSection from '../components/CollapsibleSection'
+import MediaLayoutComposer from '../components/MediaLayoutComposer'
 import { canToggleQuestionHidden, type GameStateRow } from '../lib/gameSessionState'
 import {
   parseQuestionGradingOverride,
@@ -1503,6 +1504,16 @@ export default function GameEditor() {
                         )}
                       </div>
                     )}
+                    {(question.media_items ?? []).length > 0 && (
+                      <MediaLayoutComposer
+                        items={question.media_items ?? []}
+                        onChange={(media_items) => {
+                          const next = [...questions]
+                          next[qIndex] = { ...next[qIndex], media_items }
+                          setQuestions(next)
+                        }}
+                      />
+                    )}
                     {mediaUploadState?.qIndex === qIndex &&
                       mediaUploadState.hIndex === undefined && (
                         <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -1727,6 +1738,18 @@ export default function GameEditor() {
                                 )
                               )}
                             </div>
+                          )}
+                          {(hint.media_items ?? []).length > 0 && (
+                            <MediaLayoutComposer
+                              items={hint.media_items ?? []}
+                              onChange={(media_items) => {
+                                const next = [...questions]
+                                const hints = [...(next[qIndex].hints ?? [])]
+                                hints[hIndex] = { ...hints[hIndex], media_items }
+                                next[qIndex] = { ...next[qIndex], hints }
+                                setQuestions(next)
+                              }}
+                            />
                           )}
                           {mediaUploadState?.qIndex === qIndex &&
                             mediaUploadState.hIndex === hIndex && (

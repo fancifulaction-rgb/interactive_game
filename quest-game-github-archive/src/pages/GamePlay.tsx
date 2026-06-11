@@ -63,7 +63,9 @@ import {
   shouldShowTotalElapsed,
 } from '../lib/gameTimeConfig'
 import type { QuestionHint, QuestionMediaItem } from '../lib/questionMediaTypes'
-import QuestionMediaGallery from '../components/QuestionMediaGallery'
+import QuestionMediaStage from '../components/QuestionMediaStage'
+import { useMediaPlayback } from '../hooks/useMediaPlayback'
+import type { MediaCueBroadcastPayload } from '../lib/gameRealtime'
 import { trackProductEvent, trackProductEventOnce } from '../lib/productAnalytics'
 
 interface Question {
@@ -121,6 +123,24 @@ export default function GamePlay() {
   const [pendingReviewNotice, setPendingReviewNotice] = useState<string | null>(
     null
   )
+
+  const activeQuestion = questions[currentQuestionIndex]
+  const questionMediaPlaybackKey = `${activeQuestion?.id ?? 'none'}-${currentQuestionIndex}`
+  const questionMediaPlayback = useMediaPlayback(
+    activeQuestion?.media_items ?? [],
+    questionMediaPlaybackKey
+  )
+  const hintMediaItems = activeQuestion?.hints?.[currentHintDisplay]?.media_items ?? []
+  const hintMediaPlaybackKey = `${questionMediaPlaybackKey}-h${currentHintDisplay}`
+  const hintMediaPlayback = useMediaPlayback(hintMediaItems, hintMediaPlaybackKey)
+  const mediaCueHandlerRef = useRef<(payload: MediaCueBroadcastPayload) => void>(() => {})
+  mediaCueHandlerRef.current = (payload) => {
+    const q = questions[currentQuestionIndex]
+    if (payload.question_id && q?.id !== payload.question_id) return
+    questionMediaPlayback.revealCue(payload.media_id)
+    hintMediaPlayback.revealCue(payload.media_id)
+  }
+
   useEffect(() => {
     startPendingAnswerFlushLoop()
     markPlayerFetchBoost()
@@ -293,6 +313,14 @@ export default function GamePlay() {
     })
     return detach
   }, [game?.id, teamId, inLobby])
+
+  useEffect(() => {
+    if (!game?.id || inLobby) return
+    const detach = attachGameRealtime(game.id as string, {
+      onMediaCue: (payload) => mediaCueHandlerRef.current(payload),
+    })
+    return detach
+  }, [game?.id, inLobby])
 
   /** Повторная проверка при teams_changed — playAccessPhaseRef блокирует основной effect в лобби. */
   useEffect(() => {
@@ -1352,9 +1380,14 @@ export default function GamePlay() {
                 {currentQuestion.prompt}
               </h3>
 
-              {(currentQuestion.media_items?.length ?? 0) > 0 && (
+              {questionMediaPlayback.filterVisible(currentQuestion.media_items ?? []).length >
+                0 && (
                 <div className="mb-6">
-                  <QuestionMediaGallery items={currentQuestion.media_items ?? []} />
+                  <QuestionMediaStage
+                    items={questionMediaPlayback.filterVisible(
+                      currentQuestion.media_items ?? []
+                    )}
+                  />
                 </div>
               )}
             </div>
@@ -1397,11 +1430,15 @@ export default function GamePlay() {
                     {currentQuestion.hints?.[currentHintDisplay]?.text ??
                       hints[currentHintDisplay]}
                   </p>
-                  {(currentQuestion.hints?.[currentHintDisplay]?.media_items?.length ?? 0) > 0 && (
+                  {hintMediaPlayback.filterVisible(
+                    currentQuestion.hints?.[currentHintDisplay]?.media_items ?? []
+                  ).length > 0 && (
                     <div className="mt-3">
-                      <QuestionMediaGallery
+                      <QuestionMediaStage
                         compact
-                        items={currentQuestion.hints![currentHintDisplay].media_items ?? []}
+                        items={hintMediaPlayback.filterVisible(
+                          currentQuestion.hints![currentHintDisplay].media_items ?? []
+                        )}
                       />
                     </div>
                   )}

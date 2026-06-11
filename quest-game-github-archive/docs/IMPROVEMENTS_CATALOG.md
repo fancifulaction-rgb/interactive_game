@@ -115,7 +115,7 @@
 | IMP-PRD-011 | Логотип на приветственной | Home + settings | BACKLOG | proposed | proposed |
 | IMP-PRD-008 | Расширить оповещения админа | Broadcast всем игрокам | BACKLOG | proposed | proposed |
 | IMP-PRD-009 | Мульти-медиа вопросов и подсказок (этап 1) | `media_items` / `hints` JSONB; carousel в GamePlay; multi-upload + сжатие в редакторе; migrate 030–031 | Plan multi-media | 1 | done |
-| IMP-PRD-010 | Мульти-медиа (этап 2): layout / timeline / live-cue | Композитор раскладки, таймлайн подсказок, пульт ведущего | Plan multi-media | post | proposed |
+| IMP-PRD-010 | Мульти-медиа (этап 2): layout / timeline / live-cue | Композитор раскладки, таймлайн подсказок, пульт ведущего | Plan multi-media | post | done |
 
 ---
 
@@ -263,4 +263,4 @@
 
 ---
 
-*Версия каталога: 2026-06-10. IMP-LOG-022, IMP-ADM-004, IMP-UX-009, IMP-PRD-009 (этап 1): done. Следующий крупный блок: IMP-PRD-010 (этап 2 медиа) + QA IMP-LOG-022 G1–G4 — см. [ROADMAP.md](ROADMAP.md) §«Фаза 4».*
+*Версия каталога: 2026-06-11. IMP-PRD-010 (этап 2 медиа): done. Следующий фокус: ручной QA IMP-LOG-022 G1–G4 + prod migrate 034 — см. [ROADMAP.md](ROADMAP.md) §«Фаза 4».*

@@ -17,7 +17,7 @@
 - [ ] **SQL на prod:** `npm run db:migrate` (журнал до **034** включительно) · `npm run db:verify-schema`
 - [x] **Security smoke:** `npm run test:api` → security 8/8 + feature smoke (2026-06-11, migrate **034**)
 - [x] **Автоскрипты:** `npm run build` · `npm run test:api` · `npm run test:e2e` (6 UI + API)
-- [ ] **npm audit:** `npm audit fix` (2026-06-11: 17→3); остаток: xlsx (no fix), jspdf/postcss — только с `--force` + retest PDF export
+- [x] **npm audit:** jspdf 4.2.1 + postcss 8.5.15 (2026-06-11); остаток: xlsx high (no upstream fix) — retest Excel export вручную
 - [ ] **Edge:** deploy + secrets (`player-upload`, `delete-game`, `generate-questions`)
 - [ ] **Prod env:** `VITE_PUBLIC_URL`, ключи Supabase, без service role в клиенте
 - [ ] **OPERATIONS.md** — чеклист перед мероприятием
