@@ -14,16 +14,16 @@
 
 Чеклист для релиза на **боевой** Supabase / хостинг — закрыть дыры продукта и зависимостей.
 
-- [ ] **SQL на prod:** `npm run db:migrate` (журнал до **032** включительно: join_token, media_items, is_hidden, …) · `npm run db:verify-schema`
-- [ ] **Security smoke:** `node scripts/security-smoke.mjs` → 8/8
-- [ ] **Автоскрипты:** `npm run build` · `node scripts/e2e-game-flow.mjs` · `node scripts/qa-extended.mjs`
+- [ ] **SQL на prod:** `npm run db:migrate` (журнал до **034** включительно) · `npm run db:verify-schema`
+- [x] **Security smoke:** `npm run test:api` → security 8/8 + feature smoke (2026-06-11, migrate **034**)
+- [x] **Автоскрипты:** `npm run build` · `npm run test:api` · `npm run test:e2e` (6 UI + API)
 - [ ] **npm audit:** `npm audit fix` (2026-06-11: 17→3); остаток: xlsx (no fix), jspdf/postcss — только с `--force` + retest PDF export
 - [ ] **Edge:** deploy + secrets (`player-upload`, `delete-game`, `generate-questions`)
 - [ ] **Prod env:** `VITE_PUBLIC_URL`, ключи Supabase, без service role в клиенте
 - [ ] **OPERATIONS.md** — чеклист перед мероприятием
 - [ ] **Smoke на prod URL:** регистрация (`?join=` / код) → игра → табло → архив
 
-*2026-06-11 — синхронизировано с миграциями 027–032 в main*
+*2026-06-11 — migrate 034 (IMP-SEC-008 grants); `test:api` + Playwright join/hidden/invalid-code*
 
 ---
 
@@ -37,7 +37,7 @@
 ### IMP-UX-002 QR и deep link
 - [x] `/team/register?code=XXXX` открывает форму с подставленным кодом (headless QA 2026-06-06)
 - [x] QR в GameControls / HostView сканируется с телефона (retest 2026-06-08, T-005)
-- [ ] Неверный код в query — понятная ошибка
+- [x] Неверный код в query — понятная ошибка (Playwright `e2e/registration-code.spec.ts`, 2026-06-11)
 
 ### IMP-UX-003 Экран ведущего
 - [ ] `/host/:code` — код, QR, список команд, старт/пауза (для залогиненного админа)

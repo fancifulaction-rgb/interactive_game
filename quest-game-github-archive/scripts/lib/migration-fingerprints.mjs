@@ -89,6 +89,13 @@ export const MIGRATION_FINGERPRINTS = {
     (await fnExists(c, 'mark_team_finished')) &&
     (await fnExists(c, 'get_team_progress')),
   '027_question_hidden.sql': (c) => columnExists(c, 'questions', 'is_hidden'),
+  '033_product_events.sql': (c) => tableExists(c, 'product_events'),
+  '034_lock_increment_team_score_grants.sql': async (c) => {
+    const { rows } = await c.query(
+      `SELECT NOT has_function_privilege('anon', 'public.increment_team_score(uuid, integer)', 'EXECUTE') AS locked`
+    )
+    return rows[0]?.locked === true
+  },
 }
 
 /** 001–010 без отдельных probe: если public.games уже есть — считаем базовый слой применённым */

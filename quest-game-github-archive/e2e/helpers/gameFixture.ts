@@ -14,15 +14,99 @@ function loadEnvFile(): void {
   }
 }
 
+export type E2EGameFixtureOptions = {
+  /** Одна видимая + одна скрытая (IMP-ADM-004). */
+  withHiddenQuestion?: boolean
+}
+
 export type E2EGameFixture = {
   gameId: string
   code: string
+  joinToken: string
   admin: SupabaseClient
   startGame: () => Promise<void>
   destroy: () => Promise<void>
 }
 
-export async function createE2EGameFixture(): Promise<E2EGameFixture> {
+const defaultQuestions = (gameId: string) => [
+  {
+    game_id: gameId,
+    question_number: 1,
+    question_type: 'text',
+    type: 'text',
+    question_text: 'Столица России?',
+    answer: ['москва'],
+    options: [],
+    answer_count: 1,
+    difficulty: 'Средний',
+    points: 100,
+    hint_levels: [],
+    hint_penalties: [],
+    per_question_time_sec: 120,
+    order_index: 1,
+    is_hidden: false,
+  },
+  {
+    game_id: gameId,
+    question_number: 2,
+    question_type: 'text',
+    type: 'text',
+    question_text: '2+2?',
+    answer: ['4'],
+    options: [],
+    answer_count: 1,
+    difficulty: 'Легкий',
+    points: 50,
+    hint_levels: [],
+    hint_penalties: [],
+    per_question_time_sec: 120,
+    order_index: 2,
+    is_hidden: false,
+  },
+]
+
+function hiddenQuestionSet(gameId: string) {
+  return [
+    {
+      game_id: gameId,
+      question_number: 1,
+      question_type: 'text',
+      type: 'text',
+      question_text: 'Столица России?',
+      answer: ['москва'],
+      options: [],
+      answer_count: 1,
+      difficulty: 'Средний',
+      points: 100,
+      hint_levels: [],
+      hint_penalties: [],
+      per_question_time_sec: 120,
+      order_index: 1,
+      is_hidden: false,
+    },
+    {
+      game_id: gameId,
+      question_number: 2,
+      question_type: 'text',
+      type: 'text',
+      question_text: 'Скрытый вопрос',
+      answer: ['секрет'],
+      options: [],
+      answer_count: 1,
+      difficulty: 'Легкий',
+      points: 50,
+      hint_levels: [],
+      hint_penalties: [],
+      per_question_time_sec: 120,
+      order_index: 2,
+      is_hidden: true,
+    },
+  ]
+}
+
+export async function createE2EGameFixture(
+  options: E2EGameFixtureOptions = {}
+): Promise<E2EGameFixture> {
   loadEnvFile()
 
   const url = process.env.VITE_SUPABASE_URL
@@ -55,7 +139,7 @@ export async function createE2EGameFixture(): Promise<E2EGameFixture> {
       },
       finish_page_type: 'scoreboard',
     })
-    .select('id, code')
+    .select('id, code, join_token')
     .single()
 
   if (gameError || !game) {
@@ -64,40 +148,11 @@ export async function createE2EGameFixture(): Promise<E2EGameFixture> {
 
   const gameId = game.id as string
 
-  const { error: questionsError } = await admin.from('questions').insert([
-    {
-      game_id: gameId,
-      question_number: 1,
-      question_type: 'text',
-      type: 'text',
-      question_text: 'Столица России?',
-      answer: ['москва'],
-      options: [],
-      answer_count: 1,
-      difficulty: 'Средний',
-      points: 100,
-      hint_levels: [],
-      hint_penalties: [],
-      per_question_time_sec: 120,
-      order_index: 1,
-    },
-    {
-      game_id: gameId,
-      question_number: 2,
-      question_type: 'text',
-      type: 'text',
-      question_text: '2+2?',
-      answer: ['4'],
-      options: [],
-      answer_count: 1,
-      difficulty: 'Легкий',
-      points: 50,
-      hint_levels: [],
-      hint_penalties: [],
-      per_question_time_sec: 120,
-      order_index: 2,
-    },
-  ])
+  const questionRows = options.withHiddenQuestion
+    ? hiddenQuestionSet(gameId)
+    : defaultQuestions(gameId)
+
+  const { error: questionsError } = await admin.from('questions').insert(questionRows)
 
   if (questionsError) {
     await admin.from('games').delete().eq('id', gameId)
@@ -121,9 +176,15 @@ export async function createE2EGameFixture(): Promise<E2EGameFixture> {
     throw new Error(`Не удалось открыть лобби: ${stateError.message}`)
   }
 
+  const joinToken = String(game.join_token ?? '')
+  if (!joinToken) {
+    throw new Error('join_token отсутствует — примените миграцию 032')
+  }
+
   return {
     gameId,
     code: (game.code as string) ?? code,
+    joinToken,
     admin,
     async startGame() {
       const startedAt = new Date().toISOString()

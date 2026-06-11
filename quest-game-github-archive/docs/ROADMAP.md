@@ -104,7 +104,7 @@
 | 4.1 | Ручной QA `join_token` / QR / клон | IMP-UX-009 | `MANUAL_QA_CHECKLIST` QA-C02b, QA-B05b — ✅ |
 | 4.2 | Ручной QA скрытых вопросов | IMP-ADM-004 | QA-B07 — редактор, игрок не видит скрытые |
 | 4.3 | Grading QA фазы 4 | IMP-LOG-022 G1–G4 | Секция I в чеклисте; regex/jury/override |
-| 4.4 | `db:migrate` на prod/test + schema reload | — | 027, 030–032 в журнале; `verify-schema-drift` OK |
+| 4.4 | `db:migrate` на prod/test + schema reload | — | журнал до **034**; `verify-schema` OK; test DB — done |
 
 ### Приоритет 2 — продукт
 

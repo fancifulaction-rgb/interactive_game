@@ -31,4 +31,5 @@ export const ALL_MIGRATION_FILES = [
   '031_storage_limits_100mb.sql',
   '032_game_join_token.sql',
   '033_product_events.sql',
+  '034_lock_increment_team_score_grants.sql',
 ]

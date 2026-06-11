@@ -23,6 +23,7 @@ PostgreSQL в Supabase. Миграции: `docs/sql-migrations/`.
 | `030_question_media_items.sql` | `questions.media_items`, `questions.hints` JSONB; view `questions_player` (IMP-PRD-009) |
 | `031_storage_limits_100mb.sql` | Лимит buckets `answer-media`, `question-media`: 100 MB (IMP-PRD-009) |
 | `032_game_join_token.sql` | `games.join_token` UUID UNIQUE; QR/ссылка регистрации (IMP-UX-009) |
+| `034_lock_increment_team_score_grants.sql` | REVOKE `increment_team_score` для anon/authenticated (IMP-SEC-008) |
 
 **Скрипты:**
 - `npm run db:migrate` — новые миграции; перед прогоном журнал сверяется со схемой (дрейф 011+ залечивается автоматически)

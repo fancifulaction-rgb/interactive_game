@@ -45,7 +45,8 @@
     "docker:down": "docker compose down",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install chromium"
+    "test:e2e:install": "playwright install chromium",
+    "test:api": "node scripts/e2e-game-flow.mjs && node scripts/qa-extended.mjs && node scripts/security-smoke.mjs && node scripts/api-feature-smoke.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
