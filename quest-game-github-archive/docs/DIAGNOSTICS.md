@@ -41,6 +41,22 @@ DiagnosticLogsPanel (AdminPanel) — сессии с логами, активн�
 
 ---
 
+## Product analytics (IMP-DATA-005)
+
+Структурированные события продукта пишутся **в production и dev** через `trackProductEvent()` → RPC `track_product_events` → таблица `product_events`.
+
+| Слой | Файл / объект |
+|------|----------------|
+| Клиент | `src/lib/productAnalytics.ts`, `ProductRouteTracker` |
+| БД | `docs/sql-migrations/033_product_events.sql` |
+| DEV-зеркало | `POST /__product_events` → `diagnostic/product-events.jsonl` |
+
+События: `page_view`, `registration_completed`, `lobby_entered`, `game_play_entered`, `question_viewed`, `hint_requested`, `answer_submitted`, `team_finished`, `scoreboard_viewed`, `host_viewed`, `admin_session_action`.
+
+Анализ: SQL по `product_events` (воронка, время на вопрос, подсказки) или NDJSON в dev.
+
+---
+
 ## Что уже логируется
 
 - Старт сессии, route, `game_code`, `team_id`, UA, host

@@ -5,6 +5,7 @@ import { setAnswerSaveInFlight } from './networkMutex'
 import { broadcastScoreUpdate, broadcastTeamsChanged } from './gameRealtime'
 import { isTransientNetworkError } from './teamRegister'
 import { getTeamSessionToken } from './teamSession'
+import { trackProductEvent } from './productAnalytics'
 
 export type SubmitAutoAnswerRequest = {
   game_id: string
@@ -116,6 +117,21 @@ export async function submitAutoAnswerToServer(
       })
     }
     void broadcastTeamsChanged(req.game_id)
+
+    trackProductEvent({
+      event: 'answer_submitted',
+      role: 'player',
+      gameId: req.game_id,
+      teamId: req.team_id,
+      payload: {
+        question_number: req.question_number,
+        is_correct: result.is_correct,
+        points_earned: result.points_earned,
+        hints_used: req.hints_used,
+        grading_status: result.grading_status,
+        time_spent: req.time_spent,
+      },
+    })
 
     return result
   } finally {

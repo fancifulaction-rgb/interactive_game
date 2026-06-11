@@ -64,6 +64,7 @@ import {
 } from '../lib/gameTimeConfig'
 import type { QuestionHint, QuestionMediaItem } from '../lib/questionMediaTypes'
 import QuestionMediaGallery from '../components/QuestionMediaGallery'
+import { trackProductEvent, trackProductEventOnce } from '../lib/productAnalytics'
 
 interface Question {
   id: string
@@ -492,6 +493,59 @@ export default function GamePlay() {
       resetQuestionTimer(questions[0], game)
     }
   }, [inLobby, teamId, gameCode, questions.length, game, resetQuestionTimer])
+
+  useEffect(() => {
+    if (!inLobby || !teamId || !game?.id) return
+    const code = (gameCode ?? '').trim().toUpperCase()
+    trackProductEventOnce(`lobby:${code}:${teamId}`, {
+      event: 'lobby_entered',
+      role: 'player',
+      gameId: game.id as string,
+      gameCode: code,
+      teamId,
+    })
+  }, [inLobby, teamId, game?.id, gameCode])
+
+  useEffect(() => {
+    if (inLobby || isFinished || isPaused || questions.length === 0 || !teamId || !game?.id) return
+    const code = (gameCode ?? '').trim().toUpperCase()
+    trackProductEventOnce(`play:${code}:${teamId}`, {
+      event: 'game_play_entered',
+      role: 'player',
+      gameId: game.id as string,
+      gameCode: code,
+      teamId,
+      payload: { question_count: questions.length },
+    })
+  }, [inLobby, isFinished, isPaused, questions.length, teamId, game?.id, gameCode])
+
+  useEffect(() => {
+    if (inLobby || isFinished || questions.length === 0 || !game?.id || !teamId) return
+    const q = questions[currentQuestionIndex]
+    if (!q) return
+    const code = (gameCode ?? '').trim().toUpperCase()
+    const qNum = q.order_index ?? currentQuestionIndex + 1
+    trackProductEventOnce(`q:${code}:${teamId}:${qNum}`, {
+      event: 'question_viewed',
+      role: 'player',
+      gameId: game.id as string,
+      gameCode: code,
+      teamId,
+      payload: {
+        question_number: qNum,
+        question_index: currentQuestionIndex,
+        type: q.type,
+      },
+    })
+  }, [
+    inLobby,
+    isFinished,
+    questions,
+    currentQuestionIndex,
+    game?.id,
+    teamId,
+    gameCode,
+  ])
 
   useEffect(() => {
     if (inLobby || isPaused || isFinished || questions.length === 0) return
@@ -1488,6 +1542,21 @@ export default function GamePlay() {
                     onClick={() => {
                       setShowHint(true)
                       if (hintLevel < hints.length) {
+                        const nextLevel = hintLevel + 1
+                        if (game?.id && teamId) {
+                          trackProductEvent({
+                            event: 'hint_requested',
+                            role: 'player',
+                            gameId: game.id as string,
+                            gameCode: (gameCode ?? '').trim().toUpperCase(),
+                            teamId,
+                            payload: {
+                              hint_level: nextLevel,
+                              question_number:
+                                currentQuestion?.order_index ?? currentQuestionIndex + 1,
+                            },
+                          })
+                        }
                         setHintLevel(prev => prev + 1)
                         // При получении первой подсказки показываем её
                         if (hintLevel === 0) {

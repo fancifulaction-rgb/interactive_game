@@ -25,7 +25,16 @@ const REQUIRED_COLUMNS = [
 
 const LEGACY_COLUMNS = [['answers', 'question_id'], ['answers', 'answer_text']]
 
-const REQUIRED_TABLES = ['games', 'game_state', 'questions', 'teams', 'answers', 'event_archive', 'final_page_texts']
+const REQUIRED_TABLES = [
+  'games',
+  'game_state',
+  'questions',
+  'teams',
+  'answers',
+  'event_archive',
+  'final_page_texts',
+  'product_events',
+]
 
 const REQUIRED_RPC = [
   'submit_auto_answer',
@@ -38,6 +47,7 @@ const REQUIRED_RPC = [
   'mark_team_finished',
   'get_team_progress',
   'try_auto_finish_game',
+  'track_product_events',
 ]
 
 const REQUIRED_VIEWS = ['questions_player']

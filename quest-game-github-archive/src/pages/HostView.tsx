@@ -38,6 +38,7 @@ import { clearAdminFetchBoost, markAdminFetchBoost } from '../lib/adminFetchBoos
 import { useTeamProgress } from '../hooks/useTeamProgress'
 import { countFinishedTeams, teamProgressMap } from '../lib/teamProgress'
 import TeamProgressBadge from '../components/TeamProgressBadge'
+import { trackProductEventOnce } from '../lib/productAnalytics'
 
 type HostTeam = {
   id: string
@@ -123,6 +124,16 @@ export default function HostView() {
       cancelled = true
     }
   }, [loadGame, loadTeams])
+
+  useEffect(() => {
+    if (!game?.id || !gameCode) return
+    trackProductEventOnce(`host:${gameCode}`, {
+      event: 'host_viewed',
+      role: 'host',
+      gameId: game.id,
+      gameCode,
+    })
+  }, [game?.id, gameCode])
 
   useEffect(() => {
     if (!game?.id) return

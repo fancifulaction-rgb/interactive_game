@@ -127,6 +127,7 @@
 | IMP-DATA-002 | Мягкое удаление games | `deleted_at` + retention | DATA_LIFECYCLE | proposed | proposed |
 | IMP-DATA-003 | Очистка Storage в client fallback | deleteGame без Edge | DATA_LIFECYCLE | 1 | done |
 | IMP-DATA-004 | Таблица event_archive | Агрегаты после игры | GDPR/отчёты | 3 | done |
+| IMP-DATA-005 | Product events | `product_events` + RPC `track_product_events`; воронка регистрация→игра→финиш | Product analytics | 1 | done |
 
 ---
 
@@ -176,9 +177,9 @@
 |----|----------|----------|----------|--------|--------|
 | IMP-TD-001 | Заменить select('*') | AdminScoreboard, Scoreboard, export | Audit | 1 | done |
 | IMP-TD-002 | Удалить debug #region agent log | ingest :7862 убран; `agentDebugLog` → `collectClientLog` | BUGS_FOUND | post | done |
-| IMP-TD-003 | Playwright E2E | register→play→scoreboard | Testing | proposed | proposed |
-| IMP-TD-004 | Code-split xlsx/jspdf | Не грузить на player routes | Bundle size | proposed | proposed |
-| IMP-TD-005 | Unit-тесты scoring.ts | calculateQuestionScore | Testing | proposed | proposed |
+| IMP-TD-003 | Playwright E2E | smoke: home + register (`npm run test:e2e`); полный register→play — в `scripts/e2e-game-flow.mjs` | Testing | 1 | done |
+| IMP-TD-004 | Code-split xlsx/jspdf | `exportData.ts` dynamic import; страницы player — lazy routes | Bundle size | 1 | done |
+| IMP-TD-005 | Unit-тесты scoring.ts | `src/lib/scoring.test.ts`, `npm run test:unit` | Testing | 1 | done |
 | IMP-TD-006 | Консолидация Edge setup-* | Один setup script | EDGE_FUNCTIONS | proposed | proposed |
 | IMP-TD-008 | Явные поля admin `.select()` | createGame, MessagePanel, SettingsManager | BUG_AUDIT_HANDOFF L5 | 1 | done |
 | IMP-INF-009 | Schema drift verify (S7) | `db:verify-schema` включает 016–018; `00_run_all.sql` deprecated | BUG_AUDIT_HANDOFF S7 | 1 | done |

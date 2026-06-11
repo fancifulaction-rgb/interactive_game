@@ -30,4 +30,5 @@ export const ALL_MIGRATION_FILES = [
   '030_question_media_items.sql',
   '031_storage_limits_100mb.sql',
   '032_game_join_token.sql',
+  '033_product_events.sql',
 ]

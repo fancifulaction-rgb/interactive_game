@@ -5,6 +5,7 @@ import type { Plugin } from 'vite'
 
 const LOG_DIR = 'diagnostic'
 const LOG_FILE = 'client-logs.jsonl'
+const PRODUCT_EVENTS_FILE = 'product-events.jsonl'
 const DEVICES_DIR = 'devices'
 const EXPORTS_DIR = 'exports'
 const MANIFEST_FILE = 'devices-manifest.json'
@@ -45,6 +46,7 @@ function safeSessionFileName(sessionId: string): string {
 export function clientLogsFilePlugin(): Plugin {
   const absDir = path.resolve(__dirname, LOG_DIR)
   const absFile = path.join(absDir, LOG_FILE)
+  const absProductFile = path.join(absDir, PRODUCT_EVENTS_FILE)
   const absDevicesDir = path.join(absDir, DEVICES_DIR)
   const absExportsDir = path.join(absDir, EXPORTS_DIR)
   const absManifest = path.join(absDir, MANIFEST_FILE)
@@ -285,6 +287,34 @@ export function clientLogsFilePlugin(): Plugin {
           } catch {
             res.statusCode = 500
             res.end('ingest failed')
+          }
+          return
+        }
+
+        if (url === '/__product_events' && req.method === 'POST') {
+          try {
+            const body = await readBody(req)
+            const parsed = JSON.parse(body) as { events?: unknown[] }
+            const events = Array.isArray(parsed.events) ? parsed.events : []
+            if (events.length > 0) {
+              ensureDirs()
+              const lines =
+                events
+                  .map((ev) =>
+                    JSON.stringify({
+                      ts: Date.now(),
+                      kind: 'product',
+                      ...(typeof ev === 'object' && ev !== null ? ev : { event: ev }),
+                    })
+                  )
+                  .join('\n') + '\n'
+              fs.appendFileSync(absProductFile, lines)
+            }
+            res.statusCode = 204
+            res.end()
+          } catch {
+            res.statusCode = 400
+            res.end('invalid product events')
           }
           return
         }

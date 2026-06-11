@@ -5,6 +5,7 @@ import { debugLog } from './debugLog'
 import { enqueueBackground } from './requestQueue'
 import { getTeamSessionToken } from './teamSession'
 import { invalidateTeamProgressCache } from './teamProgress'
+import { trackProductEvent } from './productAnalytics'
 
 export type MarkTeamFinishedResult = {
   success: boolean
@@ -47,6 +48,17 @@ export async function markTeamFinished(
 
   invalidateTeamProgressCache(gameId)
   void broadcastTeamsChanged(gameId)
+
+  trackProductEvent({
+    event: 'team_finished',
+    role: 'player',
+    gameId,
+    teamId,
+    payload: {
+      game_finished: result.game_finished === true,
+      current_state: result.current_state,
+    },
+  })
 
   if (result.game_finished && result.current_state === 'finished') {
     debugLog('markTeamFinished', 'auto-finish session', { gameId })

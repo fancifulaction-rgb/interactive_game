@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { ThemeProvider } from './contexts/ThemeContext'
+import ProductRouteTracker from './components/ProductRouteTracker'
 import './App.css'
 
 // Ленивая загрузка страниц для оптимизации бандла
@@ -30,6 +31,7 @@ function App() {
   return (
     <ThemeProvider>
       <BrowserRouter>
+        <ProductRouteTracker />
         <Suspense fallback={<LoadingSpinner />}>
           <Routes>
             <Route path="/" element={<Home />} />

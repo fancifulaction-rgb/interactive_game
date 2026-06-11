@@ -1,4 +1,5 @@
 import { agentDebugLog } from './debugLog'
+import { trackAdminSessionAction } from './productAnalytics'
 import { logAdminAction, nextAdminActionId } from './adminActionLog'
 import { supabase } from './supabase'
 import { enqueueCritical } from './requestQueue'
@@ -172,6 +173,7 @@ async function runSessionRpc(
         teamsChanged: action === 'restart_to_lobby',
       })
       logAdminAction(actionId, 'optimistic', { current_state: gameState.current_state })
+      trackAdminSessionAction(gameId, action, { via: 'rpc' })
       return { gameState, skipReload: true }
     } catch (err) {
       if (!isRpcUnavailable(err)) throw err
@@ -270,6 +272,7 @@ async function legacySessionAction(
   }
   invalidateGameStateCache(gameId)
   const row = await fetchGameStateForGame(gameId, { force: true })
+  trackAdminSessionAction(gameId, action, { via: 'legacy' })
   return { gameState: row ?? { game_id: gameId }, skipReload: false }
 }
 
@@ -317,6 +320,10 @@ export async function restartGameSessionFromScratch(
         const snapshot = await callRestartFromScratchRpc(gameId, actionId)
         const gameState = await publishSessionSnapshot(gameId, snapshot, { teamsChanged: true })
         logAdminAction(actionId, 'optimistic', {
+          teams_deleted: snapshot.teams_deleted ?? 0,
+        })
+        trackAdminSessionAction(gameId, 'restart_from_scratch', {
+          via: 'rpc',
           teams_deleted: snapshot.teams_deleted ?? 0,
         })
         return {

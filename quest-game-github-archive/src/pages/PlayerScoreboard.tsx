@@ -35,6 +35,7 @@ import { useGameFinishedRedirect } from '../lib/useGameFinishedRedirect'
 import { fetchGameStateForGame } from '../lib/fetchGameState'
 
 import { isGameFinished } from '../lib/gameSessionState'
+import { trackProductEventOnce } from '../lib/productAnalytics'
 
 
 
@@ -86,7 +87,17 @@ export default function PlayerScoreboard() {
 
   useGameFinishedRedirect(gameCode, accessGameId ?? game?.id, waitingForFinish)
 
-
+  useEffect(() => {
+    const code = codeFromParams
+    const gameId = accessGameId ?? game?.id
+    if (!code || !gameId) return
+    trackProductEventOnce(`scoreboard:${code}`, {
+      event: 'scoreboard_viewed',
+      role: 'scoreboard',
+      gameId,
+      gameCode: code,
+    })
+  }, [codeFromParams, accessGameId, game?.id])
 
   useEffect(() => {
 

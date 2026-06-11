@@ -10,6 +10,10 @@ dist/
 .env.*.local
 **/Supabase.txt
 
+# Test artifacts
+test-results/
+playwright-report/
+
 # Logs & caches
 *.log
 # DEV diagnostics (local logs, exports, QA snapshots — not in git)

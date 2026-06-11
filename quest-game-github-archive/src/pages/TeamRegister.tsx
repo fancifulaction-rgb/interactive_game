@@ -49,6 +49,7 @@ import {
   normalizeGameAccessCode,
 } from '../lib/gameAccessCode'
 import { downloadClientLogsJson } from '../lib/clientLogCollector'
+import { trackProductEvent } from '../lib/productAnalytics'
 import { readRegistrationCodeFromSearch, readRegistrationJoinFromSearch } from '../lib/registrationUrl'
 import { ArrowLeft, Users, User, Upload, Hash } from 'lucide-react'
 
@@ -361,6 +362,15 @@ export default function TeamRegister() {
       const { game, team } = outcome
       agentDebugLog('TeamRegister.tsx', 'register ok', { gameId: game.id, teamId: team.id }, 'H1')
 
+      trackProductEvent({
+        event: 'registration_completed',
+        role: 'visitor',
+        gameId: game.id,
+        gameCode: normalizedCode,
+        teamId: team.id,
+        payload: { has_avatar: !!avatarFile },
+      })
+
       const teamSnapshot: TeamSnapshot = {
         id: team.id,
         team_name: (team.team_name || team.name) as string,
@@ -459,6 +469,15 @@ export default function TeamRegister() {
       }
       saveRegistrationError(msg, errMeta)
       void reportDebugToServer({ phase: 'registration-catch', msg })
+      trackProductEvent({
+        event: 'registration_failed',
+        role: 'visitor',
+        gameCode: normalizeGameAccessCode(gameCode),
+        payload: {
+          reason: isTeamNameTakenError(err) ? 'team_name_taken' : 'error',
+          message: msg.slice(0, 200),
+        },
+      })
       setErrorDetail(msg)
       setError(
         isTeamNameTakenError(err)
