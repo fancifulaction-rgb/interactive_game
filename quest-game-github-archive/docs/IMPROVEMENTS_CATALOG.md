@@ -177,7 +177,7 @@
 |----|----------|----------|----------|--------|--------|
 | IMP-TD-001 | Заменить select('*') | AdminScoreboard, Scoreboard, export | Audit | 1 | done |
 | IMP-TD-002 | Удалить debug #region agent log | ingest :7862 убран; `agentDebugLog` → `collectClientLog` | BUGS_FOUND | post | done |
-| IMP-TD-003 | Playwright E2E | smoke: home + register (`npm run test:e2e`); полный register→play — в `scripts/e2e-game-flow.mjs` | Testing | 1 | done |
+| IMP-TD-003 | Playwright E2E | smoke + UI `register→lobby→play→scoreboard` (`e2e/full-game-flow.spec.ts`); API — `scripts/e2e-game-flow.mjs` | Testing | 1 | done |
 | IMP-TD-004 | Code-split xlsx/jspdf | `exportData.ts` dynamic import; страницы player — lazy routes | Bundle size | 1 | done |
 | IMP-TD-005 | Unit-тесты scoring.ts | `src/lib/scoring.test.ts`, `npm run test:unit` | Testing | 1 | done |
 | IMP-TD-006 | Консолидация Edge setup-* | Один setup script | EDGE_FUNCTIONS | proposed | proposed |
