@@ -73,7 +73,6 @@ function logFetchFailure(
     },
     { level: 'error' }
   )
-  // #region agent log
   debugLog(
     'supabase.ts',
     'fetch failed',
@@ -87,7 +86,6 @@ function logFetchFailure(
     },
     ms >= timeoutMs - 500 ? 'H4' : 'H7'
   )
-  // #endregion
   // Отмена через abortSignal (StrictMode, уход со страницы) — не ошибка сети.
   if (import.meta.env.DEV && name !== 'AbortError') {
     console.warn('[quest-game] supabase fetch failed', {

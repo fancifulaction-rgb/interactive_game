@@ -107,7 +107,6 @@ export default function GameLobby({
         if (myTeamId && !next.some((t) => t.id === myTeamId)) {
           onMyTeamRemoved?.()
         }
-        // #region agent log
         agentDebugLog(
           'GameLobby.tsx',
           'loadTeams ok',
@@ -118,7 +117,6 @@ export default function GameLobby({
           },
           'H6'
         )
-        // #endregion
         if (code) {
           updateTeamsSnapshot(
             code,

@@ -42,24 +42,18 @@ export function invalidateLobbyTeamsCache(gameId: string): void {
 }
 
 async function fetchLobbyTeamsOnce(gameId: string): Promise<LobbyTeamRow[]> {
-  // #region agent log
   agentDebugLog('fetchLobbyTeams.ts', 'start', { gameId }, 'H3')
-  // #endregion
   const { data, error } = await supabase
     .from('teams')
     .select('id, team_name, name, captain_name, avatar_url')
     .eq('game_id', gameId)
     .order('registration_time', { ascending: true })
   if (error) {
-    // #region agent log
     agentDebugLog('fetchLobbyTeams.ts', 'error', { gameId, msg: error.message }, 'H3')
-    // #endregion
     throw error
   }
   const rows = data ?? []
-  // #region agent log
   agentDebugLog('fetchLobbyTeams.ts', 'ok', { gameId, count: rows.length }, 'H3')
-  // #endregion
   return rows
 }
 
@@ -93,9 +87,7 @@ export async function fetchLobbyTeams(
     if (errAt && now - errAt < ERROR_BACKOFF_MS) {
       const cached = lastOk.get(gameId)
       if (cached && cached.rows.length > 0) {
-        // #region agent log
         agentDebugLog('fetchLobbyTeams.ts', 'backoff cache', { gameId, count: cached.rows.length }, 'H3')
-        // #endregion
         return cached.rows
       }
     }

@@ -61,7 +61,6 @@ export function enqueueCritical<T>(task: Task<T>): Promise<T> {
     return task()
   }
   return new Promise<T>((resolve, reject) => {
-    // #region agent log
     debugLog(
       'requestQueue.ts',
       'enqueueCritical',
@@ -73,7 +72,6 @@ export function enqueueCritical<T>(task: Task<T>): Promise<T> {
       },
       'H2'
     )
-    // #endregion
     criticalQueue.push({
       task: task as Task<unknown>,
       resolve: resolve as (v: unknown) => void,

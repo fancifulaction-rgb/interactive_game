@@ -2,28 +2,6 @@ import { supabase } from './supabase'
 import { agentDebugLog } from './debugLog'
 import { normalizeJoinToken } from './joinToken'
 
-const DEBUG_INGEST =
-  'http://127.0.0.1:7862/ingest/7fb5ad31-3ebd-4437-b10a-7b29790fa840'
-const DEBUG_SESSION = '36d626'
-
-function debugIngest(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
-  if (!import.meta.env.DEV) return
-  // #region agent log
-  fetch(DEBUG_INGEST, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': DEBUG_SESSION },
-    body: JSON.stringify({
-      sessionId: DEBUG_SESSION,
-      location,
-      message,
-      data,
-      hypothesisId,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {})
-  // #endregion
-}
-
 const TTL_MS = 15 * 60 * 1000
 /** После этого возраста кэш отдаётся сразу, но в фоне идёт revalidate. */
 const STALE_REVALIDATE_MS = 60 * 1000
@@ -100,7 +78,6 @@ export function setCachedGameByCode(code: string, game: Omit<CachedGameRow, 'ts'
 
 async function fetchGameRowFromNetwork(normalized: string): Promise<CachedGameRow | null> {
   const started = Date.now()
-  debugIngest('gameLookupCache.ts', 'fetch start', { code: normalized }, 'H1')
   agentDebugLog('gameLookupCache.ts', 'fetch start', { code: normalized }, 'H1')
 
   const { data, error } = await supabase
@@ -111,18 +88,15 @@ async function fetchGameRowFromNetwork(normalized: string): Promise<CachedGameRo
 
   const ms = Date.now() - started
   if (error) {
-    debugIngest('gameLookupCache.ts', 'fetch error', { code: normalized, ms, msg: error.message }, 'H1')
     agentDebugLog('gameLookupCache.ts', 'fetch error', { code: normalized, ms, msg: error.message }, 'H1')
     throw error
   }
   if (!data) {
-    debugIngest('gameLookupCache.ts', 'fetch miss', { code: normalized, ms }, 'H1')
     agentDebugLog('gameLookupCache.ts', 'fetch miss', { code: normalized, ms }, 'H1')
     return null
   }
   const row = data as Omit<CachedGameRow, 'ts'>
   setCachedGameByCode(normalized, row)
-  debugIngest('gameLookupCache.ts', 'fetch ok', { code: normalized, gameId: row.id, ms }, 'H1')
   agentDebugLog('gameLookupCache.ts', 'fetch ok', { code: normalized, gameId: row.id, ms }, 'H1')
   return { ...row, ts: Date.now() }
 }
@@ -148,14 +122,14 @@ export function fetchGameByCode(code: string): Promise<CachedGameRow | null> {
     if (age >= STALE_REVALIDATE_MS) {
       revalidateGameByCodeInBackground(normalized)
     }
-    debugIngest('gameLookupCache.ts', 'cache hit', { code: normalized, gameId: cached.id, ageMs: age }, 'H1')
+    agentDebugLog('gameLookupCache.ts', 'cache hit', { code: normalized, gameId: cached.id, ageMs: age }, 'H1')
     return Promise.resolve(cached)
   }
 
   const reqGen = lookupGeneration.get(normalized) ?? 0
   const existing = lookupInflight.get(normalized)
   if (existing) {
-    debugIngest('gameLookupCache.ts', 'inflight join', { code: normalized }, 'H1')
+    agentDebugLog('gameLookupCache.ts', 'inflight join', { code: normalized }, 'H1')
     return existing.promise
   }
 
@@ -173,7 +147,6 @@ export function fetchGameByCode(code: string): Promise<CachedGameRow | null> {
 async function fetchGameRowByJoinFromNetwork(joinToken: string): Promise<CachedGameRow | null> {
   const normalized = normalizeJoinToken(joinToken)
   const started = Date.now()
-  debugIngest('gameLookupCache.ts', 'fetch join start', { joinToken: normalized }, 'H1')
   agentDebugLog('gameLookupCache.ts', 'fetch join start', { joinToken: normalized }, 'H1')
 
   const { data, error } = await supabase
@@ -184,12 +157,10 @@ async function fetchGameRowByJoinFromNetwork(joinToken: string): Promise<CachedG
 
   const ms = Date.now() - started
   if (error) {
-    debugIngest('gameLookupCache.ts', 'fetch join error', { joinToken: normalized, ms, msg: error.message }, 'H1')
     agentDebugLog('gameLookupCache.ts', 'fetch join error', { joinToken: normalized, ms, msg: error.message }, 'H1')
     throw error
   }
   if (!data) {
-    debugIngest('gameLookupCache.ts', 'fetch join miss', { joinToken: normalized, ms }, 'H1')
     agentDebugLog('gameLookupCache.ts', 'fetch join miss', { joinToken: normalized, ms }, 'H1')
     return null
   }
@@ -200,7 +171,6 @@ async function fetchGameRowByJoinFromNetwork(joinToken: string): Promise<CachedG
   } catch {
     /* ignore */
   }
-  debugIngest('gameLookupCache.ts', 'fetch join ok', { joinToken: normalized, gameId: row.id, ms }, 'H1')
   agentDebugLog('gameLookupCache.ts', 'fetch join ok', { joinToken: normalized, gameId: row.id, ms }, 'H1')
   return { ...row, ts: Date.now() }
 }

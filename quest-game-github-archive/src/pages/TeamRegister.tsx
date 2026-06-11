@@ -222,7 +222,6 @@ export default function TeamRegister() {
       return
     }
     debugLog('TeamRegister.tsx:submit', 'start', { normalizedCode, hasAvatar: !!avatarFile }, 'D')
-    // #region agent log
     agentDebugLog(
       'TeamRegister.tsx',
       'submit start',
@@ -233,7 +232,6 @@ export default function TeamRegister() {
       },
       'H1'
     )
-    // #endregion
 
     try {
       type RegOutcome =
@@ -354,18 +352,14 @@ export default function TeamRegister() {
         return
       }
       if (outcome.kind === 'denied') {
-        // #region agent log
         agentDebugLog('TeamRegister.tsx', 'denied', { message: outcome.message }, 'H2')
-        // #endregion
         setErrorDetail('')
         setError(outcome.message)
         return
       }
 
       const { game, team } = outcome
-      // #region agent log
       agentDebugLog('TeamRegister.tsx', 'register ok', { gameId: game.id, teamId: team.id }, 'H1')
-      // #endregion
 
       const teamSnapshot: TeamSnapshot = {
         id: team.id,
@@ -425,9 +419,7 @@ export default function TeamRegister() {
       }
 
       debugLog('TeamRegister.tsx', 'navigate', { path: `/game/${normalizedCode}` }, 'E')
-      // #region agent log
       agentDebugLog('TeamRegister.tsx', 'navigate', { gameId: game.id, teamId: team.id }, 'H8')
-      // #endregion
       setLoading(false)
       navigate(`/game/${normalizedCode}`, { replace: true })
 

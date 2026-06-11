@@ -13,7 +13,8 @@
 - IMP-PRD-009 (этап 1): мульти-медиа вопросов и подсказок — `media_items` / `hints` JSONB, carousel в GamePlay, multi-upload и сжатие в редакторе (migrate `030`–`031`)
 
 ### Изменено
-- Документация: `ROADMAP.md` §«Фаза 4» (post-sprint план), `IMPROVEMENTS_CATALOG` (IMP-UX-009, IMP-PRD-010, статусы), `MANUAL_QA_CHECKLIST` (QA-B07, QA-C02b, секция I grading)
+- IMP-TD-002: убран ingest :7862 / `__debug_ingest`; `agentDebugLog` → `collectClientLog`; IMP-PRD-011 (логотип, был дубликат IMP-PRD-007)
+- Документация: `ROADMAP.md` §«Фаза 4», `ARCHITECTURE` (poll табло 20 с), `TEST_BACKLOG` prod (миграции до 032), `MANUAL_QA_CHECKLIST` (QA-B07, QA-C02b, grading)
 
 ### Исправлено
 - Возврат в активную игру после «Назад» из регистрации в браузере

@@ -176,9 +176,7 @@ export default function AdminPanel() {
       if (signal?.aborted) return
       if (err instanceof DOMException && err.name === 'AbortError') return
       const msg = formatErrorMessage(err)
-      // #region agent log
       debugLog('AdminPanel.tsx', 'loadGames failed', { msg }, 'H6')
-      // #endregion
       console.error('Ошибка загрузки игр:', err)
       setGamesError(msg)
     } finally {

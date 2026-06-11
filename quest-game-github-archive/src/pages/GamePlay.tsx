@@ -149,9 +149,7 @@ export default function GamePlay() {
   }, [sessionUnknown, sessionKnown, inLobby])
 
   const handleSessionChange = useCallback((session: GameSessionSnapshot) => {
-    // #region agent log
     agentDebugLog('GamePlay.tsx', 'session change', { ...session }, 'H7')
-    // #endregion
     setSessionUnknown(session.sessionUnknown)
     setSessionKnown(!session.sessionUnknown)
     setInLobby(session.inLobby)
@@ -247,7 +245,6 @@ export default function GamePlay() {
     const code = (gameCode ?? '').trim().toUpperCase()
     const stored = readStoredPlayerSession(code)
     if (!stored) {
-      // #region agent log
       agentDebugLog(
         'GamePlay.tsx',
         'access invalid session',
@@ -258,7 +255,6 @@ export default function GamePlay() {
         },
         'H8'
       )
-      // #endregion
       setPlayAccessPending(false)
       setAccessDenied(PLAY_MESSAGES.invalid_session)
       setAccessDeniedRetryable(false)
@@ -270,9 +266,7 @@ export default function GamePlay() {
       .then((msg) => {
         setPlayAccessPending(false)
         if (msg) {
-          // #region agent log
           agentDebugLog('GamePlay.tsx', 'access denied', { msg, teamId, phase }, 'H8')
-          // #endregion
           setAccessDenied(msg)
           setAccessDeniedRetryable(false)
           setLoading(false)

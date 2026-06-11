@@ -24,7 +24,7 @@ DiagnosticLogsPanel (AdminPanel) — сессии с логами, активн�
 | Файл | Назначение |
 |------|------------|
 | `src/lib/clientLogCollector.ts` | Кольцо ~800 записей, flush на dev-сервер, export JSON, bundle при ошибке |
-| `src/lib/debugLog.ts` | `debugLog`, `agentDebugLog`, auto-upload bundle при ошибке регистрации |
+| `src/lib/debugLog.ts` | `debugLog` (VITE_DEBUG_LOG=1), `agentDebugLog` → ring-buffer; bundle при ошибке регистрации |
 | `vite-client-logs-plugin.ts` | Middleware Vite: NDJSON на диск, manifest устройств |
 | `src/components/DiagnosticLogsPanel.tsx` | UI: подключённые устройства, скачать лог устройства / общий JSONL |
 | `diagnostic/` | Папка логов (в `.gitignore`, кроме `.gitkeep`) |
@@ -118,6 +118,6 @@ collectClientLog('myModule', 'step failed', { step: 'upload', err: String(e) }, 
 
 ## Для следующего агента
 
-- Не удалять instrumentation (`agentDebugLog`, H17/H18/H21) без подтверждения владельца после успешного iPhone QA.
-- Контекст сессии: `gstack-context-restore` → checkpoint `ios-stability-admin-scratch` (2026-06-07).
-- IMP: INF-008, TD-001, RT-003 (частично), SEC-001 trade-off на finish-page.
+- Ingest на `:7862` / `__debug_ingest` удалён (IMP-TD-002); диагностика только через `POST /__client_logs` и DiagnosticLogsPanel.
+- `agentDebugLog` пишет в `collectClientLog`, не в внешний ingest.
+- IMP: RT-003 (частично), SEC-001 trade-off на finish-page.

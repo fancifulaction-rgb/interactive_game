@@ -65,7 +65,7 @@ In-memory + `sessionStorage` для кода игры: метаданные иг
 
 ### 5. Realtime
 
-`postgres_changes` на `game_state`, `teams` (табло). Подписка табло игрока откладывается ~8 с. Админ-табло дополнительно может poll каждые 5 с (техдолг, см. IMP-RT-002).
+`postgres_changes` на `game_state`, `teams` (табло). Подписка табло игрока откладывается ~8 с. Fallback poll табло — **20 с** (`SCOREBOARD_POLL_FALLBACK_MS` в `gameRealtime.ts`); основной путь — Broadcast (IMP-RT-001/002).
 
 ## Потоки данных (упрощённо)
 

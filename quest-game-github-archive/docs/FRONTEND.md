@@ -108,7 +108,7 @@ src/
 | `compressImage.ts` | Сжатие аватара (HEIC fallback) |
 | `builtinThemes.ts` | Встроенные темы |
 | `clientLogCollector.ts` | DEV ring buffer → `/__client_logs` |
-| `debugLog.ts` | DEV логи + `agentDebugLog` (сессия отладки) |
+| `debugLog.ts` | DEV: `debugLog` / `agentDebugLog` → `clientLogCollector` (DiagnosticLogsPanel) |
 | `deleteGame.ts` | Удаление игры |
 
 ## Контексты

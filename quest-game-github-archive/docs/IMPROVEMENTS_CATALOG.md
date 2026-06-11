@@ -112,7 +112,7 @@
 | IMP-PRD-005 | Дата создания в списке игр | AdminPanel | BACKLOG | 2 | done |
 | IMP-PRD-007 | Клонирование игры (новый заезд) | Новый код, название, тема; без команд/ответов | BACKLOG | 2 | done |
 | IMP-PRD-006 | Упростить типы вопросов в редакторе | UX GameEditor | BACKLOG | proposed | proposed |
-| IMP-PRD-007 | Логотип на приветственной | Home + settings | BACKLOG | proposed | proposed |
+| IMP-PRD-011 | Логотип на приветственной | Home + settings | BACKLOG | proposed | proposed |
 | IMP-PRD-008 | Расширить оповещения админа | Broadcast всем игрокам | BACKLOG | proposed | proposed |
 | IMP-PRD-009 | Мульти-медиа вопросов и подсказок (этап 1) | `media_items` / `hints` JSONB; carousel в GamePlay; multi-upload + сжатие в редакторе; migrate 030–031 | Plan multi-media | 1 | done |
 | IMP-PRD-010 | Мульти-медиа (этап 2): layout / timeline / live-cue | Композитор раскладки, таймлайн подсказок, пульт ведущего | Plan multi-media | post | proposed |
@@ -175,7 +175,7 @@
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
 | IMP-TD-001 | Заменить select('*') | AdminScoreboard, Scoreboard, export | Audit | 1 | done |
-| IMP-TD-002 | Удалить debug #region agent log | После подтверждения стабильности | BUGS_FOUND | proposed | proposed |
+| IMP-TD-002 | Удалить debug #region agent log | ingest :7862 убран; `agentDebugLog` → `collectClientLog` | BUGS_FOUND | post | done |
 | IMP-TD-003 | Playwright E2E | register→play→scoreboard | Testing | proposed | proposed |
 | IMP-TD-004 | Code-split xlsx/jspdf | Не грузить на player routes | Bundle size | proposed | proposed |
 | IMP-TD-005 | Unit-тесты scoring.ts | calculateQuestionScore | Testing | proposed | proposed |

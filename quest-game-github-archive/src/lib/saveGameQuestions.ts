@@ -55,9 +55,7 @@ function markStep(step: string, t0: number) {
   const totalMs = now - t0
   const stepMs = lastStepAt ? now - lastStepAt : totalMs
   lastStepAt = now
-  // #region agent log
   debugLog('saveGameQuestions.ts', step, { totalMs, stepMs }, 'H8')
-  // #endregion
   if (import.meta.env.DEV) {
     console.warn(`[quest-game] saveQuestions · ${step}: +${stepMs}ms (всего ${totalMs}ms)`)
   }

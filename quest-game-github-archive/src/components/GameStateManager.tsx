@@ -214,14 +214,12 @@ export default function GameStateManager({ gameId, onSessionChange }: GameStateM
         console.error('Ошибка загрузки состояния игры:', err)
         if (!cancelled && !hasSuccessfulApply) {
           firstApplyDone = true
-          // #region agent log
           agentDebugLog(
             'GameStateManager.tsx',
             'fetch error optimistic lobby',
             { gameId, err: err instanceof Error ? err.message : String(err) },
             'H7'
           )
-          // #endregion
           const fallback = resolveSlowFetchFallback(gameId)
           agentDebugLog(
             'GameStateManager.tsx',
@@ -239,14 +237,12 @@ export default function GameStateManager({ gameId, onSessionChange }: GameStateM
         if (!cancelled && !firstApplyDone && !hasSuccessfulApply) {
           firstApplyDone = true
           const fallback = resolveSlowFetchFallback(gameId)
-          // #region agent log
           agentDebugLog(
             'GameStateManager.tsx',
             'timeout slow-fetch fallback',
             { gameId, inLobby: fallback.inLobby, sessionUnknown: fallback.sessionUnknown },
             'H7'
           )
-          // #endregion
           emitSession(fallback)
         }
       }, setupTimeoutMs())

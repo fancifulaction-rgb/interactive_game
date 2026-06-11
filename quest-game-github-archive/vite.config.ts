@@ -5,18 +5,10 @@ import { VitePWA } from "vite-plugin-pwa"
 import { clientLogsFilePlugin } from "./vite-client-logs-plugin"
 
 // const isProd = process.env.BUILD_MODE === 'prod'
-const DEBUG_INGEST_PATH = "/ingest/7fb5ad31-3ebd-4437-b10a-7b29790fa840"
 
 export default defineConfig({
   server: {
     host: true,
-    proxy: {
-      "/__debug_ingest": {
-        target: "http://127.0.0.1:7862",
-        changeOrigin: true,
-        rewrite: () => DEBUG_INGEST_PATH,
-      },
-    },
   },
   plugins: [
     clientLogsFilePlugin(),

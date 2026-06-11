@@ -218,14 +218,12 @@ export function attachGameRealtime(gameId: string, handlers: GameRealtimeHandler
   if (handlers.onGameStateChanged) hub.gameStateHandlers.set(slot, handlers.onGameStateChanged)
   if (handlers.onMessagesChanged) hub.messagesHandlers.set(slot, handlers.onMessagesChanged)
   hub.refCount++
-  // #region agent log
   agentDebugLog(
     'gameRealtime.ts',
     'attach',
     { gameId, refCount: hub.refCount, teamsHandlers: hub.teamsHandlers.size },
     'H4'
   )
-  // #endregion
 
   return () => {
     hub.scoreHandlers.delete(slot)
@@ -234,14 +232,12 @@ export function attachGameRealtime(gameId: string, handlers: GameRealtimeHandler
     hub.gameStateHandlers.delete(slot)
     hub.messagesHandlers.delete(slot)
     hub.refCount--
-    // #region agent log
     agentDebugLog(
       'gameRealtime.ts',
       'detach',
       { gameId, refCount: hub.refCount },
       'H4'
     )
-    // #endregion
     if (hub.refCount <= 0) {
       supabase.removeChannel(hub.channel)
       hubs.delete(gameId)
@@ -347,18 +343,14 @@ export async function broadcastTeamsChanged(gameId: string): Promise<void> {
         payload: { game_id: gameId },
       })
     )
-    // #region agent log
     agentDebugLog('gameRealtime.ts', 'broadcastTeamsChanged ok', { gameId }, 'H5')
-    // #endregion
   } catch (err) {
-    // #region agent log
     agentDebugLog(
       'gameRealtime.ts',
       'broadcastTeamsChanged fail',
       { gameId, msg: err instanceof Error ? err.message : String(err) },
       'H5'
     )
-    // #endregion
     console.warn('broadcastTeamsChanged failed:', err)
   }
 }

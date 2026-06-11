@@ -14,16 +14,16 @@
 
 Чеклист для релиза на **боевой** Supabase / хостинг — закрыть дыры продукта и зависимостей.
 
-- [ ] **SQL на prod:** `npm run db:migrate:018` · `019` · `020` · `021`
+- [ ] **SQL на prod:** `npm run db:migrate` (журнал до **032** включительно: join_token, media_items, is_hidden, …) · `npm run db:verify-schema`
 - [ ] **Security smoke:** `node scripts/security-smoke.mjs` → 8/8
 - [ ] **Автоскрипты:** `npm run build` · `node scripts/e2e-game-flow.mjs` · `node scripts/qa-extended.mjs`
-- [ ] **npm audit:** 17 CVE (6 moderate · 10 high · 1 critical); `npm audit fix`, retest PDF (jspdf)
+- [ ] **npm audit:** `npm audit fix` (2026-06-11: 17→3); остаток: xlsx (no fix), jspdf/postcss — только с `--force` + retest PDF export
 - [ ] **Edge:** deploy + secrets (`player-upload`, `delete-game`, `generate-questions`)
 - [ ] **Prod env:** `VITE_PUBLIC_URL`, ключи Supabase, без service role в клиенте
 - [ ] **OPERATIONS.md** — чеклист перед мероприятием
-- [ ] **Smoke на prod URL:** регистрация → игра → табло → архив
+- [ ] **Smoke на prod URL:** регистрация (`?join=` / код) → игра → табло → архив
 
-*2026-06-08*
+*2026-06-11 — синхронизировано с миграциями 027–032 в main*
 
 ---
 
