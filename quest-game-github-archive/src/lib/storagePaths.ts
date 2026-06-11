@@ -1,3 +1,5 @@
+import { collectQuestionMediaUrls } from './questionMediaTypes'
+
 /** Buckets с медиа, привязанным к игре (IMP-ST-003). */
 export const GAME_MEDIA_BUCKETS = ['answer-media', 'avatars', 'question-media'] as const
 
@@ -33,6 +35,16 @@ export function collectPathsByBucket(urls: (string | null | undefined)[]): Map<s
     byBucket.set(parsed.bucket, list)
   }
   return byBucket
+}
+
+export function extractMediaUrlsFromQuestions(
+  rows: {
+    media_url?: string | null
+    media_items?: unknown
+    hints?: unknown
+  }[]
+): string[] {
+  return collectQuestionMediaUrls(rows)
 }
 
 export function extractMediaUrlsFromAnswers(

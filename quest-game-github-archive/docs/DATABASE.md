@@ -19,6 +19,7 @@ PostgreSQL в Supabase. Миграции: `docs/sql-migrations/`.
 | `011_…` … `012_…` | По мере спринтов (см. `docs/sql-migrations/`) |
 | `013_submit_auto_answer.sql` | RPC `submit_auto_answer` — серверная проверка авто-ответов (IMP-LOG-001) |
 | `014_event_archive.sql` | Таблица `event_archive` — снимок заезда и CSV (IMP-DATA-001) |
+| `030_question_media_items.sql` | `questions.media_items`, `questions.hints` JSONB; view `questions_player` (IMP-PRD-009) |
 
 **Скрипты:**
 - `npm run db:migrate` — новые миграции; перед прогоном журнал сверяется со схемой (дрейф 011+ залечивается автоматически)
@@ -91,11 +92,17 @@ games (1) ──< event_archive   (снимок заезда; game_id SET NULL �
 | `question_type` / `type` | VARCHAR | text, choice, media, … |
 | `options` | JSONB | Варианты |
 | `correct_answer` / `answer` | TEXT/JSONB | Эталон |
-| `hint`, `hint_levels`, `hint_penalties` | | Подсказки |
-| `media_url` | TEXT | Медиа вопроса |
+| `hint`, `hint_levels`, `hint_penalties` | | Подсказки (legacy; дублируются из `hints` при записи) |
+| `hints` | JSONB | Структурированные подсказки: `{ text, penalty, media_items? }[]` (IMP-PRD-009, migrate 030) |
+| `media_url` | TEXT | Медиа вопроса (legacy; первый элемент `media_items`) |
+| `media_items` | JSONB | Упорядоченный список медиа: `{ id, kind, url, order, … }[]` (IMP-PRD-009) |
 | `points` | INT | Базовые очки |
 | `difficulty` | TEXT | Легкий / Средний / Сложный |
 | `per_question_time_sec` | INT | Переопределение таймера |
+
+### View `questions_player`
+
+Используется prefetch игрока (`prefetchGameQuestions.ts`): без `answer`, без скрытых вопросов (`is_hidden`). После migrate 030 включает `media_items` и `hints` (синтетический fallback на клиенте из `media_url` / `hint_levels`).
 
 ### `answers`
 

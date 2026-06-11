@@ -7,8 +7,8 @@
 | ID | Назначение | Лимит (типично) | MIME |
 |----|------------|-----------------|------|
 | `avatars` | Аватары команд | ~5 MB | image/* |
-| `answer-media` | Фото/видео/аудио ответов | ~50 MB | image, video, audio |
-| `question-media` | Медиа в вопросах (редактор) | ~50 MB | image, video, audio |
+| `answer-media` | Фото/видео/аудио ответов | ~100 MB | image, video, audio |
+| `question-media` | Медиа в вопросах (редактор) | ~100 MB | image, video, audio |
 | `quest-logos` | Логотип квеста на главной | ~5 MB | image/* |
 
 Публичный bucket → URL вида:
@@ -59,7 +59,7 @@ curl -X POST .../functions/v1/player-upload
 ## Сжатие
 
 - **Изображения аватара:** `compressImage.ts` перед upload.
-- **Видео ответов:** лимиты размера в UI; серверное перекодирование — IMP-ST-002.
+- **Медиа вопросов и ответов:** `compressQuestionMedia.ts` перед upload — WebP/JPEG до 2560px (цель ≤10 MB в bucket; исходник фото до **20 MB**); видео — исходник до **500 MB**, lazy `@ffmpeg/ffmpeg` WASM до **720p H.264** (цель ≤100 MB в bucket; пропуск перекодирования если ≤10 MB); аудио без перекодирования если ≤100 MB (IMP-PRD-009).
 
 ## Очистка при удалении игры
 

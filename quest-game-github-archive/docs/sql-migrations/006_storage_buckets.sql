@@ -3,8 +3,8 @@
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES
   ('avatars', 'avatars', true, 5242880, ARRAY['image/*']::text[]),
-  ('answer-media', 'answer-media', true, 52428800, ARRAY['image/*','video/*','audio/*']::text[]),
-  ('question-media', 'question-media', true, 52428800, ARRAY['image/*','video/*','audio/*']::text[]),
+  ('answer-media', 'answer-media', true, 104857600, ARRAY['image/*','video/*','audio/*']::text[]),
+  ('question-media', 'question-media', true, 104857600, ARRAY['image/*','video/*','audio/*']::text[]),
   ('quest-logos', 'quest-logos', true, 5242880, ARRAY['image/*']::text[])
 ON CONFLICT (id) DO NOTHING;
 

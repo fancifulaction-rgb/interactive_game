@@ -2,6 +2,11 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { uploadAnswerMediaQueued, cancelActiveStorageUpload } from '../lib/storageUpload'
+import {
+  SOURCE_MAX_IMAGE_BYTES,
+  SOURCE_MAX_VIDEO_BYTES,
+  confirmLargeVideoUpload,
+} from '../lib/compressQuestionMedia'
 import { applyOptimisticTeamScoreBump, syncPlayerTeamScoreFromServer } from '../lib/teamScore'
 import { normalizeUserAnswers } from '../lib/answerGrading'
 import { enqueueSubmitAutoAnswer } from '../lib/submitAutoAnswer'
@@ -23,6 +28,7 @@ import {
 import { enqueuePendingAnswer, startPendingAnswerFlushLoop } from '../lib/pendingAnswerQueue'
 import { mapQuestionsForPlay, prefetchQuestionsForGame, fetchQuestionsFullForGame } from '../lib/prefetchGameQuestions'
 import { markPlayerFetchBoost } from '../lib/playerFetchBoost'
+import { cachedGameMissingSettings } from '../lib/gameSettings'
 import {
   revalidateGamePlayCritical,
   revalidateQuestionsForGameCritical,
@@ -56,6 +62,8 @@ import {
   shouldShowTotalCountdown,
   shouldShowTotalElapsed,
 } from '../lib/gameTimeConfig'
+import type { QuestionHint, QuestionMediaItem } from '../lib/questionMediaTypes'
+import QuestionMediaGallery from '../components/QuestionMediaGallery'
 
 interface Question {
   id: string
@@ -64,6 +72,8 @@ interface Question {
   type: string
   prompt: string
   media_url: string | null
+  media_items?: QuestionMediaItem[]
+  hints?: QuestionHint[]
   answer: string[]
   options: string[]
   answer_count: number
@@ -88,6 +98,7 @@ export default function GamePlay() {
   const [answerFile, setAnswerFile] = useState<File | null>(null)
   const [answerFilePreview, setAnswerFilePreview] = useState<string | null>(null)
   const [uploadingFile, setUploadingFile] = useState(false)
+  const [uploadProgressLabel, setUploadProgressLabel] = useState<string | null>(null)
   const [timeLeft, setTimeLeft] = useState(0)
   const [elapsedSec, setElapsedSec] = useState(0)
   const [totalElapsedSec, setTotalElapsedSec] = useState(0)
@@ -338,14 +349,22 @@ export default function GamePlay() {
       const mapped = mapQuestionsForPlay(cached.questions) as Question[]
       applyPlayData(cached.game, mapped)
       debugLog('GamePlay.tsx', 'hydrate from cache', { questions: mapped.length }, 'F')
-      postponeAvatarUntilAfterAnswer()
+      if (cachedGameMissingSettings(cached.game)) {
+        void loadGameData(gen, true)
+      } else {
+        postponeAvatarUntilAfterAnswer()
+      }
       return
     }
 
     if (cached?.game && isGamePlayCacheFresh(code)) {
       applyPlayData(cached.game, [])
       debugLog('GamePlay.tsx', 'hydrate game only, questions pending', {}, 'H16')
-      postponeAvatarUntilAfterAnswer()
+      if (cachedGameMissingSettings(cached.game)) {
+        void loadGameData(gen, true)
+      } else {
+        postponeAvatarUntilAfterAnswer()
+      }
       return
     }
 
@@ -397,6 +416,16 @@ export default function GamePlay() {
     if (!gameRow?.id) return
 
     if (!gamePlayCacheNeedsFullQuestions(cached) && questions.length > 0) return
+
+    if (cachedGameMissingSettings(gameRow)) {
+      resumeBackgroundRevalidate()
+      const gen = ++loadGenRef.current
+      setLoading(true)
+      void loadGameData(gen, true).finally(() => {
+        if (gen === loadGenRef.current) setLoading(false)
+      })
+      return
+    }
 
     agentDebugLog(
       'GamePlay.tsx',
@@ -761,6 +790,7 @@ export default function GamePlay() {
     isSubmittingRef.current = true
     timerArmedRef.current = false
     setUploadingFile(true)
+    setUploadProgressLabel('Отправка...')
     const submitStarted = Date.now()
     debugLog('GamePlay.tsx:submit', 'start', { hasFile: !!answerFile, q: currentQuestionIndex, timeoutSkip }, 'H')
 
@@ -771,7 +801,9 @@ export default function GamePlay() {
 
       if (answerFile && !timeoutSkip) {
         try {
-          mediaUrl = await uploadAnswerMediaQueued(answerFile, game.id)
+          mediaUrl = await uploadAnswerMediaQueued(answerFile, game.id, {
+            onCompressProgress: (_pct, label) => setUploadProgressLabel(label),
+          })
           debugLog('GamePlay.tsx:submit', 'media ok', { ms: Date.now() - submitStarted }, 'H')
         } catch (err) {
           debugLog('GamePlay.tsx:submit', 'media fail', {
@@ -892,6 +924,7 @@ export default function GamePlay() {
       }
     } finally {
       setUploadingFile(false)
+      setUploadProgressLabel(null)
       isSubmittingRef.current = false
     }
   }
@@ -951,12 +984,20 @@ export default function GamePlay() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      const maxSize = file.type.startsWith('video/') ? 50 * 1024 * 1024 : 
-                      file.type.startsWith('audio/') ? 10 * 1024 * 1024 : 
-                      5 * 1024 * 1024
+      const maxSize = file.type.startsWith('video/')
+        ? SOURCE_MAX_VIDEO_BYTES
+        : file.type.startsWith('audio/')
+          ? 10 * 1024 * 1024
+          : SOURCE_MAX_IMAGE_BYTES
 
       if (file.size > maxSize) {
         alert(`Размер файла не должен превышать ${maxSize / (1024 * 1024)} МБ`)
+        e.target.value = ''
+        return
+      }
+
+      if (!confirmLargeVideoUpload(file)) {
+        e.target.value = ''
         return
       }
 
@@ -1263,25 +1304,9 @@ export default function GamePlay() {
                 {currentQuestion.prompt}
               </h3>
 
-              {currentQuestion.media_url && (
-                <div className="mb-6 rounded-lg overflow-hidden">
-                  {currentQuestion.type === 'image' && (
-                    <img
-                      src={currentQuestion.media_url}
-                      alt="Question media"
-                      className="w-full max-h-96 object-contain"
-                    />
-                  )}
-                  {currentQuestion.type === 'video' && (
-                    <video controls className="w-full max-h-96">
-                      <source src={currentQuestion.media_url} />
-                    </video>
-                  )}
-                  {currentQuestion.type === 'audio' && (
-                    <audio controls className="w-full">
-                      <source src={currentQuestion.media_url} />
-                    </audio>
-                  )}
+              {(currentQuestion.media_items?.length ?? 0) > 0 && (
+                <div className="mb-6">
+                  <QuestionMediaGallery items={currentQuestion.media_items ?? []} />
                 </div>
               )}
             </div>
@@ -1321,8 +1346,17 @@ export default function GamePlay() {
                 {/* Текущая подсказка */}
                 <div className="mb-4">
                   <p className="text-yellow-900 text-lg">
-                    {hints[currentHintDisplay]}
+                    {currentQuestion.hints?.[currentHintDisplay]?.text ??
+                      hints[currentHintDisplay]}
                   </p>
+                  {(currentQuestion.hints?.[currentHintDisplay]?.media_items?.length ?? 0) > 0 && (
+                    <div className="mt-3">
+                      <QuestionMediaGallery
+                        compact
+                        items={currentQuestion.hints![currentHintDisplay].media_items ?? []}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Информация о штрафах и оставшихся подсказках */}
@@ -1441,7 +1475,7 @@ export default function GamePlay() {
                       <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm sm:text-base text-gray-600">Загрузить файл</p>
                       <p className="text-sm text-gray-500 mt-1">
-                        Фото до 5 МБ, видео до 50 МБ, аудио до 10 МБ
+                        Фото до 20 МБ (сжимается, в Storage до 10 МБ); видео до 500 МБ (720p, в Storage до 100 МБ); аудио до 10 МБ
                       </p>
                     </div>
                     <input
@@ -1500,7 +1534,7 @@ export default function GamePlay() {
                   className="flex-1 flex items-center justify-center gap-2 px-4 sm:px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base min-h-[48px]"
                 >
                   <Send className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span>{uploadingFile ? 'Отправка...' : 'Отправить ответ'}</span>
+                  <span>{uploadProgressLabel ?? (uploadingFile ? 'Отправка...' : 'Отправить ответ')}</span>
                 </button>
               </div>
             </div>

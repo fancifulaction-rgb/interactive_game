@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
 
     // Add optional configurations
     bucketConfig.allowed_mime_types = ["image/*", "video/*", "audio/*"];
-    bucketConfig.file_size_limit = 52428800;
+    bucketConfig.file_size_limit = 104857600;
 
     // Create bucket using Storage API
     const response = await fetch(storageUrl, {
@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
         name: 'question-media',
         public: true,
         allowed_mime_types: ["image/*", "video/*", "audio/*"],
-        file_size_limit: 52428800,
+        file_size_limit: 104857600,
         policies: policyResults
         }
     }), {

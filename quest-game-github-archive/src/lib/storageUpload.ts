@@ -5,8 +5,11 @@ import { buildGameScopedFileName } from './storagePaths'
 import { getTeamSessionToken } from './teamSession'
 import { assertUploadAllowed } from './uploadFileGuard'
 import { broadcastTeamsChanged } from './gameRealtime'
+import { compressQuestionMedia, type CompressProgressFn } from './compressQuestionMedia'
+import { isAdminRoute } from './adminFetchBoost'
 
 const UPLOAD_TIMEOUT_MS = 90_000
+const EDGE_FALLBACK_MAX_BYTES = 8 * 1024 * 1024
 const UPLOAD_RETRIES = 3
 
 let activeUpload: AbortController | null = null
@@ -18,6 +21,10 @@ export function cancelActiveStorageUpload() {
     activeUpload = null
     debugLog('storageUpload.ts', 'upload cancelled', {}, 'H')
   }
+}
+
+function uploadTimeoutMs(sizeBytes: number): number {
+  return Math.min(300_000, Math.max(UPLOAD_TIMEOUT_MS, Math.ceil(sizeBytes / (50 * 1024)) * 1000))
 }
 
 async function uploadViaEdgeFunction(
@@ -82,7 +89,7 @@ async function uploadOnce(
   cancelActiveStorageUpload()
   const controller = new AbortController()
   activeUpload = controller
-  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), uploadTimeoutMs(file.size))
 
   debugLog('storageUpload.ts', 'upload start', { bucket, fileName, size: file.size }, 'B')
 
@@ -103,6 +110,11 @@ async function uploadOnce(
       const text = await res.text().catch(() => '')
       debugLog('storageUpload.ts', 'upload http error', { status: res.status, text: text.slice(0, 200) }, 'B')
       if (res.status === 401 || res.status === 403 || res.status === 400) {
+        if (bucket === 'question-media' && file.size > EDGE_FALLBACK_MAX_BYTES) {
+          throw new Error(
+            `Загрузка отклонена (${res.status}). Файл ${Math.round(file.size / 1024 / 1024)} МБ — проверьте политики Storage для question-media.`
+          )
+        }
         return uploadViaEdgeFunction(bucket, file, fileName, gameId, teamId)
       }
       throw new Error(`Storage ${res.status}: ${text || res.statusText}`)
@@ -143,12 +155,56 @@ async function uploadWithRetry(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
 }
 
-export function uploadAnswerMediaQueued(file: File, gameId: string): Promise<string> {
-  return enqueueCritical(() => uploadWithRetry('answer-media', file, gameId, 'answer-'))
+export type AnswerMediaUploadOptions = {
+  onCompressProgress?: CompressProgressFn
 }
 
-export function uploadQuestionMediaQueued(file: File, gameId: string): Promise<string> {
-  return enqueueCritical(() => uploadWithRetry('question-media', file, gameId, 'q-'))
+async function uploadAnswerMediaInner(
+  file: File,
+  gameId: string,
+  options?: AnswerMediaUploadOptions
+): Promise<string> {
+  const prepared = await compressQuestionMedia(file, options?.onCompressProgress)
+  options?.onCompressProgress?.(100, 'Загружаем в облако…')
+  return uploadWithRetry('answer-media', prepared, gameId, 'answer-')
+}
+
+export function uploadAnswerMediaQueued(
+  file: File,
+  gameId: string,
+  options?: AnswerMediaUploadOptions
+): Promise<string> {
+  return enqueueCritical(() => uploadAnswerMediaInner(file, gameId, options))
+}
+
+export type QuestionMediaUploadOptions = {
+  onCompressProgress?: CompressProgressFn
+  skipCompress?: boolean
+}
+
+async function uploadQuestionMediaInner(
+  file: File,
+  gameId: string,
+  options?: QuestionMediaUploadOptions
+): Promise<string> {
+  const prepared = await compressQuestionMedia(
+    file,
+    options?.onCompressProgress,
+    { skipCompress: options?.skipCompress }
+  )
+  options?.onCompressProgress?.(100, 'Загружаем в облако…')
+  return uploadWithRetry('question-media', prepared, gameId, 'q-')
+}
+
+export function uploadQuestionMediaQueued(
+  file: File,
+  gameId: string,
+  options?: QuestionMediaUploadOptions
+): Promise<string> {
+  if (isAdminRoute()) {
+    return uploadQuestionMediaInner(file, gameId, options)
+  }
+  return enqueueCritical(() => uploadQuestionMediaInner(file, gameId, options))
 }
 
 export function uploadAvatarQueued(file: File, gameId: string, teamId?: string): Promise<string> {

@@ -6,6 +6,12 @@ import {
   questionGradingOverrideStorageValue,
   type QuestionGradingOverride,
 } from './answerGradingConfig'
+import {
+  legacyHintArraysFromHints,
+  legacyMediaFromItems,
+  type QuestionHint,
+  type QuestionMediaItem,
+} from './questionMediaTypes'
 
 export type QuestionSaveInput = {
   id?: string
@@ -19,6 +25,8 @@ export type QuestionSaveInput = {
   base_points: number
   hint_levels: string[]
   hint_penalties: number[]
+  media_items?: QuestionMediaItem[]
+  hints?: QuestionHint[]
   per_question_time_sec: number | null
   grading_override?: QuestionGradingOverride | null
   is_hidden?: boolean
@@ -81,20 +89,35 @@ function buildRow(gameId: string, question: QuestionSaveInput, meta: QuestionNum
     question.grading_override
   )
 
+  const mediaItems = question.media_items ?? []
+  const hints = question.hints ?? []
+  const legacyMedia = legacyMediaFromItems(mediaItems)
+  const legacyHints = legacyHintArraysFromHints(
+    hints.length
+      ? hints
+      : (question.hint_levels ?? []).map((text, i) => ({
+          text,
+          penalty: question.hint_penalties?.[i] ?? 10,
+          media_items: [],
+        }))
+  )
+
   return {
     game_id: gameId,
     question_number: meta.question_number,
-    question_type: question.type || 'text',
-    type: question.type || 'text',
+    question_type: legacyMedia.type || question.type || 'text',
+    type: legacyMedia.type || question.type || 'text',
     question_text: question.prompt.trim(),
-    media_url: question.media_url,
+    media_url: legacyMedia.media_url ?? question.media_url,
+    media_items: mediaItems,
+    hints,
     answer: finalAnswer,
     options: finalOptions,
     answer_count: question.answer_count > 1 ? finalOptions.length : 1,
     difficulty: question.difficulty,
     points: question.base_points,
-    hint_levels: question.hint_levels ?? [],
-    hint_penalties: question.hint_penalties ?? [],
+    hint_levels: legacyHints.hint_levels,
+    hint_penalties: legacyHints.hint_penalties,
     per_question_time_sec: question.per_question_time_sec,
     order_index: meta.order_index,
     is_hidden: Boolean(question.is_hidden),

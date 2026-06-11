@@ -66,8 +66,8 @@
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES 
   ('avatars', 'avatars', true, 5242880, '{"image/*"}'),
-  ('answer-media', 'answer-media', true, 52428800, '{"image/*","video/*","audio/*"}'),
-  ('question-media', 'question-media', true, 52428800, '{"image/*","video/*","audio/*"}'),
+  ('answer-media', 'answer-media', true, 104857600, '{"image/*","video/*","audio/*"}'),
+  ('question-media', 'question-media', true, 104857600, '{"image/*","video/*","audio/*"}'),
   ('quest-logos', 'quest-logos', true, 5242880, '{"image/*"}');
 ```
 

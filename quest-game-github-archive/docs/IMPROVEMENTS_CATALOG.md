@@ -113,6 +113,7 @@
 | IMP-PRD-006 | Упростить типы вопросов в редакторе | UX GameEditor | BACKLOG | proposed | proposed |
 | IMP-PRD-007 | Логотип на приветственной | Home + settings | BACKLOG | proposed | proposed |
 | IMP-PRD-008 | Расширить оповещения админа | Broadcast всем игрокам | BACKLOG | proposed | proposed |
+| IMP-PRD-009 | Мульти-медиа вопросов и подсказок | `media_items` / `hints` JSONB; carousel в GamePlay; multi-upload в редакторе; клиентское сжатие (этап 1). Этап 2: layout/timeline/live-cue | Plan multi-media | 1 | done |
 
 ---
 
@@ -150,7 +151,7 @@
 
 | ID | Название | Описание | Источник | Спринт | Статус |
 |----|----------|----------|----------|--------|--------|
-| IMP-ST-001 | Лимит длительности видео на клиенте | Сжатие перед upload | Scale | proposed | proposed |
+| IMP-ST-001 | Лимит длительности видео на клиенте | Сжатие перед upload (часть IMP-PRD-009: `compressQuestionMedia`, ffmpeg WASM lazy) | Scale | 1 | done |
 | IMP-ST-002 | Серверное перекодирование видео | Edge ffmpeg (тяжело) | — | proposed | proposed |
 | IMP-ST-003 | Префикс game_id во всех paths | Упрощение delete-game | DATA_LIFECYCLE | 1 | done |
 | IMP-ST-004 | MIME/size guard upload | `uploadFileGuard.ts` + magic bytes в player-upload | BUG_AUDIT_HANDOFF L4 | 1 | done |

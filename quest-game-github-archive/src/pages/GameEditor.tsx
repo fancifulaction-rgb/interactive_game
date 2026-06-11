@@ -3,12 +3,38 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { isAdminPanelLoggedIn } from '../lib/adminAuth'
 import { uploadQuestionMediaQueued } from '../lib/storageUpload'
+import { confirmLargeVideoUpload } from '../lib/compressQuestionMedia'
 import { QUESTION_DB_SELECT } from '../lib/prefetchGameQuestions'
 import { formatErrorMessage } from '../lib/errorMessage'
 import { enqueueCritical } from '../lib/requestQueue'
 import { saveQuestionsForGame } from '../lib/saveGameQuestions'
 import { generateQuestionsWithAi, type AiQuestionProvider } from '../lib/generateQuestions'
-import { ArrowLeft, Save, Plus, Trash2, Upload, X, Sparkles, ChevronDown, Eye, EyeOff } from 'lucide-react'
+import {
+  ArrowLeft,
+  Save,
+  Plus,
+  Trash2,
+  Upload,
+  X,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+} from 'lucide-react'
+import {
+  createMediaItem,
+  inferMediaKind,
+  legacyHintArraysFromHints,
+  legacyMediaFromItems,
+  moveMediaItem,
+  normalizeHintsFromRow,
+  normalizeMediaItemsFromRow,
+  reindexMediaItems,
+  removeMediaItemAt,
+  type QuestionHint,
+  type QuestionMediaItem,
+} from '../lib/questionMediaTypes'
 import CollapsibleSection from '../components/CollapsibleSection'
 import { canToggleQuestionHidden, type GameStateRow } from '../lib/gameSessionState'
 import {
@@ -33,6 +59,7 @@ interface Question {
   type: string
   prompt: string
   media_url: string | null
+  media_items: QuestionMediaItem[]
   answer: string[]
   options: string[]
   answer_count: number
@@ -40,10 +67,18 @@ interface Question {
   base_points: number
   hint_levels: string[]
   hint_penalties: number[]
+  hints: QuestionHint[]
   per_question_time_sec: number | null
   grading_override: QuestionGradingOverride | null
   is_hidden: boolean
 }
+
+type MediaUploadState = {
+  qIndex: number
+  hIndex?: number
+  pct: number
+  label: string
+} | null
 
 export default function GameEditor() {
   const { gameId } = useParams()
@@ -61,6 +96,7 @@ export default function GameEditor() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [expandedQuestions, setExpandedQuestions] = useState<Record<number, boolean>>({})
   const [gameSessionState, setGameSessionState] = useState<GameStateRow | null>(null)
+  const [mediaUploadState, setMediaUploadState] = useState<MediaUploadState>(null)
 
   const showStatus = (message: string) => {
     setStatusMessage(message)
@@ -92,6 +128,26 @@ export default function GameEditor() {
     void loadGameData()
   }, [gameId])
 
+  const syncQuestionLegacy = (q: Question): Question => {
+    const media_items = reindexMediaItems(q.media_items ?? [])
+    const legacy = legacyMediaFromItems(media_items)
+    const hints = (q.hints ?? []).map((h) => ({
+      text: h.text ?? '',
+      penalty: typeof h.penalty === 'number' ? h.penalty : 10,
+      media_items: reindexMediaItems(h.media_items ?? []),
+    }))
+    const { hint_levels, hint_penalties } = legacyHintArraysFromHints(hints)
+    return {
+      ...q,
+      media_items,
+      hints,
+      media_url: legacy.media_url,
+      type: legacy.type,
+      hint_levels,
+      hint_penalties,
+    }
+  }
+
   const normalizeQuestion = (q: Record<string, unknown>): Question => {
     let answer: string[] = []
     if (Array.isArray(q.answer)) {
@@ -112,24 +168,31 @@ export default function GameEditor() {
           ? Math.max(2, options.length || 2)
           : 1
 
-    return {
+    const media_items = normalizeMediaItemsFromRow(q)
+    const hints = normalizeHintsFromRow(q)
+    const legacy = legacyMediaFromItems(media_items)
+    const { hint_levels, hint_penalties } = legacyHintArraysFromHints(hints)
+
+    return syncQuestionLegacy({
       id: q.id as string | undefined,
       game_id: (q.game_id as string) || gameId!,
       order_index: (q.order_index as number) ?? (q.question_number as number) ?? 0,
-      type: (q.type as string) || (q.question_type as string) || 'text',
+      type: legacy.type,
       prompt: (q.question_text as string) || (q.prompt as string) || '',
-      media_url: (q.media_url as string | null) ?? null,
+      media_url: legacy.media_url,
+      media_items,
       answer,
       options: options.length ? options : Array(answerCount).fill(''),
       answer_count: answerCount,
       difficulty: (q.difficulty as string) || 'Средний',
       base_points: (q.points as number) ?? (q.base_points as number) ?? 100,
-      hint_levels: Array.isArray(q.hint_levels) ? (q.hint_levels as string[]) : [],
-      hint_penalties: Array.isArray(q.hint_penalties) ? (q.hint_penalties as number[]) : [],
+      hint_levels,
+      hint_penalties,
+      hints,
       per_question_time_sec: (q.per_question_time_sec as number | null) ?? null,
       grading_override: parseQuestionGradingOverride(q.grading_override),
       is_hidden: Boolean(q.is_hidden),
-    }
+    })
   }
 
   const loadGameData = async () => {
@@ -248,23 +311,34 @@ export default function GameEditor() {
           ? null
           : (game?.per_question_time_sec ?? DEFAULT_QUESTION_TIME_SEC)
 
-      const mapped: Question[] = drafts.map((d, i) => ({
-        game_id: gameId,
-        order_index: baseIndex + i + 1,
-        type: d.type || 'text',
-        prompt: d.prompt,
-        media_url: null,
-        answer: d.answer ?? [],
-        options: d.options ?? [],
-        answer_count: d.answer_count > 1 ? d.answer_count : 1,
-        difficulty: d.difficulty || aiDifficulty,
-        base_points: d.base_points ?? 100,
-        hint_levels: d.hint_levels?.length ? d.hint_levels : ['Подсказка'],
-        hint_penalties: d.hint_penalties?.length ? d.hint_penalties : [10],
-        per_question_time_sec: d.per_question_time_sec ?? perQuestionTime,
-        grading_override: null,
-        is_hidden: false,
-      }))
+      const mapped: Question[] = drafts.map((d, i) => {
+        const hintTexts = d.hint_levels?.length ? d.hint_levels : ['Подсказка']
+        const hintPenalties = d.hint_penalties?.length ? d.hint_penalties : [10]
+        const hints: QuestionHint[] = hintTexts.map((text, hi) => ({
+          text,
+          penalty: hintPenalties[hi] ?? 10,
+          media_items: [],
+        }))
+        return syncQuestionLegacy({
+          game_id: gameId,
+          order_index: baseIndex + i + 1,
+          type: d.type || 'text',
+          prompt: d.prompt,
+          media_url: null,
+          media_items: [],
+          answer: d.answer ?? [],
+          options: d.options ?? [],
+          answer_count: d.answer_count > 1 ? d.answer_count : 1,
+          difficulty: d.difficulty || aiDifficulty,
+          base_points: d.base_points ?? 100,
+          hint_levels: hintTexts,
+          hint_penalties: hintPenalties,
+          hints,
+          per_question_time_sec: d.per_question_time_sec ?? perQuestionTime,
+          grading_override: null,
+          is_hidden: false,
+        })
+      })
 
       setQuestions([...questions, ...mapped])
       setExpandedQuestions((prev) => {
@@ -298,6 +372,7 @@ export default function GameEditor() {
       type: 'text',
       prompt: '',
       media_url: null,
+      media_items: [],
       answer: [],
       options: [],
       answer_count: 1,
@@ -305,6 +380,7 @@ export default function GameEditor() {
       base_points: 100,
       hint_levels: [],
       hint_penalties: [],
+      hints: [],
       per_question_time_sec: 60,
       grading_override: null,
       is_hidden: false,
@@ -403,7 +479,7 @@ export default function GameEditor() {
     setSaving(true)
     try {
       const merged = await saveQuestionsForGame(gameId, questions)
-      setQuestions(merged as Question[])
+      setQuestions((merged as Record<string, unknown>[]).map((q) => normalizeQuestion(q)))
       showStatus(`Вопросы сохранены: ${questions.length}`)
     } catch (err: unknown) {
       console.error('Ошибка сохранения вопросов:', err)
@@ -499,7 +575,12 @@ export default function GameEditor() {
     }
   }
 
-  const handleMediaUpload = async (index: number, file: File) => {
+  const uploadMediaFiles = async (
+    qIndex: number,
+    files: File[],
+    target: 'question' | 'hint',
+    hIndex?: number
+  ) => {
     if (!isAdminPanelLoggedIn()) {
       alert('Ошибка доступа: сессия администратора не найдена. Войдите снова.')
       navigate('/admin/login')
@@ -512,46 +593,173 @@ export default function GameEditor() {
       return
     }
 
-    try {
-      const publicUrl = await uploadQuestionMediaQueued(file, scopedGameId)
+    for (const file of files) {
+      if (!confirmLargeVideoUpload(file)) continue
 
-      const getMediaType = (name: string): string => {
-        const ext = name.toLowerCase().split('.').pop()
-        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) {
-          return 'image'
+      setMediaUploadState({
+        qIndex,
+        hIndex: target === 'hint' ? hIndex : undefined,
+        pct: 0,
+        label: `Загрузка ${file.name}…`,
+      })
+      try {
+        const publicUrl = await uploadQuestionMediaQueued(file, scopedGameId, {
+          onCompressProgress: (pct, label) => {
+            setMediaUploadState({
+              qIndex,
+              hIndex: target === 'hint' ? hIndex : undefined,
+              pct,
+              label,
+            })
+          },
+        })
+        const kind = inferMediaKind(file.name, file.type)
+
+        setQuestions((prev) => {
+          const next = [...prev]
+          const q = { ...next[qIndex] }
+          let order = 0
+          if (target === 'question') {
+            order = (q.media_items ?? []).length
+            const item = createMediaItem(kind, publicUrl, order, file.size)
+            q.media_items = reindexMediaItems([...(q.media_items ?? []), item])
+          } else if (typeof hIndex === 'number') {
+            const hints = [...(q.hints ?? [])]
+            const hint = { ...hints[hIndex] }
+            order = (hint.media_items ?? []).length
+            const item = createMediaItem(kind, publicUrl, order, file.size)
+            hint.media_items = reindexMediaItems([...(hint.media_items ?? []), item])
+            hints[hIndex] = hint
+            q.hints = hints
+          }
+          next[qIndex] = syncQuestionLegacy(q)
+          return next
+        })
+      } catch (err: unknown) {
+        console.error('Upload error:', err)
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes('size') || msg.includes('больш')) {
+          alert(msg || 'Ошибка: файл слишком большой. Фото — до 20 МБ до сжатия (в Storage до 10 МБ); видео — до 500 МБ до сжатия, в Storage — до 100 МБ.')
+        } else if (msg.includes('type') || msg.includes('format')) {
+          alert('Ошибка: Неподдерживаемый формат файла')
+        } else if (msg.includes('network') || msg.includes('fetch')) {
+          alert('Ошибка сети: Проверьте подключение к интернету и попробуйте снова')
+        } else {
+          alert('Ошибка загрузки файла: ' + msg)
         }
-        if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv'].includes(ext || '')) {
-          return 'video'
-        }
-        if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext || '')) {
-          return 'audio'
-        }
-        return 'image'
-      }
-
-      const mediaType = getMediaType(file.name)
-
-      const newQuestions = [...questions]
-      newQuestions[index].media_url = publicUrl
-      newQuestions[index].type = mediaType
-      setQuestions(newQuestions)
-
-      alert('Файл успешно загружен')
-    } catch (err: any) {
-      console.error('Upload error:', err)
-      
-      // Детальная обработка различных типов ошибок
-      if (err.message?.includes('size')) {
-        alert('Ошибка: Файл слишком большой. Максимальный размер: 50 МБ')
-      } else if (err.message?.includes('type') || err.message?.includes('format')) {
-        alert('Ошибка: Неподдерживаемый формат файла')
-      } else if (err.message?.includes('network') || err.message?.includes('fetch')) {
-        alert('Ошибка сети: Проверьте подключение к интернету и попробуйте снова')
-      } else {
-        alert('Ошибка загрузки файла: ' + err.message + '\n\nПроверьте консоль браузера (F12) для подробностей.')
+        break
       }
     }
+    setMediaUploadState(null)
   }
+
+  const removeQuestionMedia = (qIndex: number, mIndex: number) => {
+    setQuestions((prev) => {
+      const next = [...prev]
+      const q = { ...next[qIndex] }
+      q.media_items = removeMediaItemAt(q.media_items ?? [], mIndex)
+      next[qIndex] = syncQuestionLegacy(q)
+      return next
+    })
+  }
+
+  const moveQuestionMedia = (qIndex: number, mIndex: number, dir: -1 | 1) => {
+    setQuestions((prev) => {
+      const next = [...prev]
+      const q = { ...next[qIndex] }
+      q.media_items = moveMediaItem(q.media_items ?? [], mIndex, dir)
+      next[qIndex] = syncQuestionLegacy(q)
+      return next
+    })
+  }
+
+  const removeHintMedia = (qIndex: number, hIndex: number, mIndex: number) => {
+    setQuestions((prev) => {
+      const next = [...prev]
+      const q = { ...next[qIndex] }
+      const hints = [...(q.hints ?? [])]
+      const hint = { ...hints[hIndex] }
+      hint.media_items = removeMediaItemAt(hint.media_items ?? [], mIndex)
+      hints[hIndex] = hint
+      q.hints = hints
+      next[qIndex] = syncQuestionLegacy(q)
+      return next
+    })
+  }
+
+  const moveHintMedia = (qIndex: number, hIndex: number, mIndex: number, dir: -1 | 1) => {
+    setQuestions((prev) => {
+      const next = [...prev]
+      const q = { ...next[qIndex] }
+      const hints = [...(q.hints ?? [])]
+      const hint = { ...hints[hIndex] }
+      hint.media_items = moveMediaItem(hint.media_items ?? [], mIndex, dir)
+      hints[hIndex] = hint
+      q.hints = hints
+      next[qIndex] = syncQuestionLegacy(q)
+      return next
+    })
+  }
+
+  const renderMediaItemRow = (
+    item: QuestionMediaItem,
+    mIndex: number,
+    total: number,
+    onMoveUp: () => void,
+    onMoveDown: () => void,
+    onRemove: () => void
+  ) => (
+    <div
+      key={item.id}
+      className="flex flex-col sm:flex-row gap-3 p-3 border border-gray-200 rounded-lg bg-white"
+    >
+      <div className="flex-shrink-0 w-full sm:w-24 h-20 bg-gray-100 rounded overflow-hidden flex items-center justify-center">
+        {item.kind === 'image' ? (
+          <img src={item.url} alt="" className="max-w-full max-h-full object-contain" />
+        ) : item.kind === 'video' ? (
+          <video src={item.url} className="max-w-full max-h-full" muted />
+        ) : (
+          <audio src={item.url} controls className="w-full px-1" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <span className="inline-block text-xs font-medium px-2 py-0.5 rounded bg-blue-100 text-blue-800 mb-1">
+          {item.kind === 'image' ? 'Фото' : item.kind === 'video' ? 'Видео' : 'Аудио'}
+        </span>
+        <p className="text-xs text-gray-500 truncate" title={item.url}>
+          {item.url.length > 60 ? `${item.url.slice(0, 60)}…` : item.url}
+        </p>
+      </div>
+      <div className="flex gap-1 self-start sm:self-center">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={mIndex === 0}
+          className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-40"
+          title="Выше"
+        >
+          <ChevronUp className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={mIndex >= total - 1}
+          className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-40"
+          title="Ниже"
+        >
+          <ChevronDown className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="p-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
+          title="Удалить"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  )
 
   const patchGradingOverride = (
     index: number,
@@ -579,29 +787,47 @@ export default function GameEditor() {
   }
 
   const addHint = (index: number) => {
-    const newQuestions = [...questions]
-    newQuestions[index].hint_levels = [...newQuestions[index].hint_levels, '']
-    newQuestions[index].hint_penalties = [...newQuestions[index].hint_penalties, 10] // По умолчанию 10 штрафных баллов
-    setQuestions(newQuestions)
+    setQuestions((prev) => {
+      const next = [...prev]
+      const q = { ...next[index] }
+      q.hints = [...(q.hints ?? []), { text: '', penalty: 10, media_items: [] }]
+      next[index] = syncQuestionLegacy(q)
+      return next
+    })
   }
 
   const updateHint = (qIndex: number, hIndex: number, value: string) => {
-    const newQuestions = [...questions]
-    newQuestions[qIndex].hint_levels[hIndex] = value
-    setQuestions(newQuestions)
+    setQuestions((prev) => {
+      const next = [...prev]
+      const q = { ...next[qIndex] }
+      const hints = [...(q.hints ?? [])]
+      hints[hIndex] = { ...hints[hIndex], text: value }
+      q.hints = hints
+      next[qIndex] = syncQuestionLegacy(q)
+      return next
+    })
   }
 
   const updateHintPenalty = (qIndex: number, hIndex: number, value: number) => {
-    const newQuestions = [...questions]
-    newQuestions[qIndex].hint_penalties[hIndex] = value
-    setQuestions(newQuestions)
+    setQuestions((prev) => {
+      const next = [...prev]
+      const q = { ...next[qIndex] }
+      const hints = [...(q.hints ?? [])]
+      hints[hIndex] = { ...hints[hIndex], penalty: value }
+      q.hints = hints
+      next[qIndex] = syncQuestionLegacy(q)
+      return next
+    })
   }
 
   const deleteHint = (qIndex: number, hIndex: number) => {
-    const newQuestions = [...questions]
-    newQuestions[qIndex].hint_levels = newQuestions[qIndex].hint_levels.filter((_, i) => i !== hIndex)
-    newQuestions[qIndex].hint_penalties = newQuestions[qIndex].hint_penalties.filter((_, i) => i !== hIndex)
-    setQuestions(newQuestions)
+    setQuestions((prev) => {
+      const next = [...prev]
+      const q = { ...next[qIndex] }
+      q.hints = (q.hints ?? []).filter((_, i) => i !== hIndex)
+      next[qIndex] = syncQuestionLegacy(q)
+      return next
+    })
   }
 
   // Функции для работы с вариантами ответов
@@ -1262,73 +1488,53 @@ export default function GameEditor() {
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium mb-2">Медиафайл</label>
-                    {question.media_url ? (
-                      <div className="space-y-3">
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-start gap-2">
-                              <a 
-                                href={question.media_url} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="text-blue-600 text-xs sm:text-sm break-all hover:text-blue-800 flex-1"
-                                title={question.media_url}
-                              >
-                                {question.media_url.length > 80 
-                                  ? `${question.media_url.substring(0, 80)}...` 
-                                  : question.media_url
-                                }
-                              </a>
-                            </div>
-                            <div className="flex gap-2">
-                              <label className="flex-1 cursor-pointer">
-                                <button className="w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
-                                  Заменить файл
-                                </button>
-                                <input
-                                  type="file"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0]
-                                    if (file) handleMediaUpload(qIndex, file)
-                                  }}
-                                  className="hidden"
-                                  accept="image/*,video/*,audio/*"
-                                />
-                              </label>
-                              <button
-                                onClick={() => {
-                                  updateQuestion(qIndex, 'media_url', null)
-                                  updateQuestion(qIndex, 'type', 'text')
-                                }}
-                                className="text-red-600 hover:text-red-800 p-2 min-w-[48px] min-h-[48px] flex items-center justify-center border border-red-200 rounded-lg hover:bg-red-50"
-                              >
-                                <X className="w-5 h-5" />
-                              </button>
-                            </div>
+                    <label className="block text-sm font-medium mb-2">Медиафайлы</label>
+                    {(question.media_items ?? []).length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {(question.media_items ?? []).map((item, mIndex) =>
+                          renderMediaItemRow(
+                            item,
+                            mIndex,
+                            question.media_items!.length,
+                            () => moveQuestionMedia(qIndex, mIndex, -1),
+                            () => moveQuestionMedia(qIndex, mIndex, 1),
+                            () => removeQuestionMedia(qIndex, mIndex)
+                          )
+                        )}
+                      </div>
+                    )}
+                    {mediaUploadState?.qIndex === qIndex &&
+                      mediaUploadState.hIndex === undefined && (
+                        <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <p className="text-sm text-blue-800 mb-2">{mediaUploadState.label}</p>
+                          <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-600 transition-all duration-300"
+                              style={{ width: `${mediaUploadState.pct}%` }}
+                            />
                           </div>
                         </div>
+                      )}
+                    <label className="cursor-pointer">
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500">
+                        <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-sm text-gray-600">Добавить файлы</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Фото до 20 МБ (сжимается, в Storage до 10 МБ); видео до 500 МБ → 720p (в Storage до 100 МБ); аудио до 10 МБ
+                        </p>
                       </div>
-                    ) : (
-                      <label className="cursor-pointer">
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500">
-                          <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                          <p className="text-sm text-gray-600">Загрузить файл</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Фото до 5 МБ, видео до 50 МБ, аудио до 10 МБ
-                          </p>
-                        </div>
-                        <input
-                          type="file"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0]
-                            if (file) handleMediaUpload(qIndex, file)
-                          }}
-                          className="hidden"
-                          accept="image/*,video/*,audio/*"
-                        />
-                      </label>
-                    )}
+                      <input
+                        type="file"
+                        multiple
+                        onChange={(e) => {
+                          const files = e.target.files
+                          if (files?.length) uploadMediaFiles(qIndex, Array.from(files), 'question')
+                          e.target.value = ''
+                        }}
+                        className="hidden"
+                        accept="image/*,video/*,audio/*"
+                      />
+                    </label>
                   </div>
 
                   <div className="mb-4 p-4 border border-purple-100 rounded-lg bg-purple-50/40">
@@ -1474,7 +1680,7 @@ export default function GameEditor() {
                         Добавить
                       </button>
                     </div>
-                    {question.hint_levels.map((hint, hIndex) => (
+                    {(question.hints ?? []).map((hint, hIndex) => (
                       <div key={hIndex} className="mb-3 p-4 border border-gray-200 rounded-lg bg-white">
                         <div className="flex flex-col sm:flex-row gap-3 mb-3">
                           <div className="flex-1">
@@ -1483,7 +1689,7 @@ export default function GameEditor() {
                             </label>
                             <input
                               type="text"
-                              value={hint}
+                              value={hint.text}
                               onChange={(e) => updateHint(qIndex, hIndex, e.target.value)}
                               placeholder={`Введите текст подсказки ${hIndex + 1}`}
                               className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base min-h-[48px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -1495,7 +1701,7 @@ export default function GameEditor() {
                             </label>
                             <input
                               type="number"
-                              value={question.hint_penalties[hIndex] || 10}
+                              value={hint.penalty ?? question.hint_penalties[hIndex] ?? 10}
                               onChange={(e) => updateHintPenalty(qIndex, hIndex, parseInt(e.target.value) || 0)}
                               className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base min-h-[48px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               placeholder="10"
@@ -1503,6 +1709,56 @@ export default function GameEditor() {
                               max="100"
                             />
                           </div>
+                        </div>
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Медиа подсказки
+                          </label>
+                          {(hint.media_items ?? []).length > 0 && (
+                            <div className="space-y-2 mb-2">
+                              {(hint.media_items ?? []).map((item, mIndex) =>
+                                renderMediaItemRow(
+                                  item,
+                                  mIndex,
+                                  hint.media_items!.length,
+                                  () => moveHintMedia(qIndex, hIndex, mIndex, -1),
+                                  () => moveHintMedia(qIndex, hIndex, mIndex, 1),
+                                  () => removeHintMedia(qIndex, hIndex, mIndex)
+                                )
+                              )}
+                            </div>
+                          )}
+                          {mediaUploadState?.qIndex === qIndex &&
+                            mediaUploadState.hIndex === hIndex && (
+                              <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p className="text-sm text-blue-800 mb-2">{mediaUploadState.label}</p>
+                                <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-blue-600 transition-all duration-300"
+                                    style={{ width: `${mediaUploadState.pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          <label className="cursor-pointer inline-block">
+                            <span className="inline-flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                              <Upload className="w-4 h-4" />
+                              Добавить медиа
+                            </span>
+                            <input
+                              type="file"
+                              multiple
+                              onChange={(e) => {
+                                const files = e.target.files
+                                if (files?.length) {
+                                  uploadMediaFiles(qIndex, Array.from(files), 'hint', hIndex)
+                                }
+                                e.target.value = ''
+                              }}
+                              className="hidden"
+                              accept="image/*,video/*,audio/*"
+                            />
+                          </label>
                         </div>
                         <div className="flex justify-end">
                           <button

@@ -78,11 +78,12 @@ export async function revalidateQuestionsForGameCritical(
   const code = gameCode.trim().toUpperCase()
   const game =
     cachedGame ?? getGamePlayCache(code)?.game ?? null
-  if (!game || String(game.id) !== String(gameId)) {
+  const settingsMissing = game != null && !('settings' in game)
+  if (!game || String(game.id) !== String(gameId) || settingsMissing) {
     agentDebugLog(
       'revalidateGamePlay.ts',
       'questions-only fallback full revalidate',
-      { gameId, hasGame: !!game },
+      { gameId, hasGame: !!game, settingsMissing },
       'H15'
     )
     return revalidateGamePlayFromServerInner(gameCode)

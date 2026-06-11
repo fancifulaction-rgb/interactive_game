@@ -1,9 +1,10 @@
 import { agentDebugLog } from './debugLog'
 import { supabase } from './supabase'
+import { hintsForPlay, mediaItemsForPlay } from './questionMediaTypes'
 
 /** Полный select для админки / таблицы questions (с эталоном answer). */
 export const QUESTION_DB_SELECT =
-  'id, game_id, question_number, order_index, question_text, question_type, type, options, answer, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url, grading_override, is_hidden'
+  'id, game_id, question_number, order_index, question_text, question_type, type, options, answer, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url, media_items, hints, grading_override, is_hidden'
 
 /** Лёгкий select для лобби — таблица questions. */
 export const QUESTION_LOBBY_SELECT =
@@ -11,7 +12,7 @@ export const QUESTION_LOBBY_SELECT =
 
 /** Игрок: view questions_player без поля answer (IMP-SEC-009). */
 export const QUESTION_PLAYER_SELECT =
-  'id, game_id, question_number, order_index, question_text, question_type, type, options, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url'
+  'id, game_id, question_number, order_index, question_text, question_type, type, options, answer_count, difficulty, points, hint_levels, hint_penalties, per_question_time_sec, media_url, media_items, hints'
 
 export const QUESTION_PLAYER_LOBBY_SELECT =
   'id, game_id, question_number, order_index, question_text, question_type, type, options, answer_count, difficulty, points, per_question_time_sec'
@@ -91,13 +92,22 @@ export function fetchQuestionsFullForGame(gameId: string): Promise<Record<string
 }
 
 export function mapQuestionsForPlay(questionsData: Record<string, unknown>[]) {
-  return questionsData.map((q) => ({
-    ...q,
-    order_index: q.question_number,
-    prompt: q.question_text,
-    base_points: q.points,
-    hint_levels: q.hint_levels ?? [],
-    hint_penalties: q.hint_penalties ?? [],
-    media_url: q.media_url ?? null,
-  }))
+  return questionsData.map((q) => {
+    const media_items = mediaItemsForPlay(q)
+    const hints = hintsForPlay(q)
+    const hint_levels = hints.map((h) => h.text)
+    const hint_penalties = hints.map((h) => h.penalty)
+    return {
+      ...q,
+      order_index: q.question_number,
+      prompt: q.question_text,
+      base_points: q.points,
+      media_items,
+      hints,
+      hint_levels,
+      hint_penalties,
+      media_url: media_items[0]?.url ?? (q.media_url as string | null) ?? null,
+      type: media_items[0]?.kind ?? (q.type as string) ?? 'text',
+    }
+  })
 }

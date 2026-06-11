@@ -100,3 +100,8 @@ export function mergeGameSettings(
   }
   return merged
 }
+
+/** Кэш до IMP-UX-005 мог сохранять game без поля settings — таймеры тогда показываются все. */
+export function cachedGameMissingSettings(game: unknown): boolean {
+  return game != null && typeof game === 'object' && !('settings' in (game as object))
+}

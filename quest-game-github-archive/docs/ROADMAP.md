@@ -18,8 +18,9 @@
 | 1.4 | Убрать service role с клиента (если есть) | IMP-SEC-003 | Только Edge для опасных операций |
 | 1.5 | CI: `build` + `e2e-game-flow.mjs` | IMP-INF-005 | Pipeline green на PR |
 | 1.6 | Документировать статус Edge в OPERATIONS | — | Чеклист обновлён |
+| 1.7 | Мульти-медиа в вопросах и подсказках (этап 1) | IMP-PRD-009, IMP-ST-001 | migrate 030; редактор multi-upload + сжатие; GamePlay gallery; legacy `media_url`/`hint_levels` |
 
-**Не входит в спринт 1:** PWA, комната ожидания, AI.
+**Не входит в спринт 1:** PWA, комната ожидания, AI; композитор layout/timeline и live-пульт (этап 2 IMP-PRD-009).
 
 ---
 

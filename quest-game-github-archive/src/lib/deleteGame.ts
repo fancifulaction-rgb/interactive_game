@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { deleteGameStorageBestEffort } from './deleteGameStorage'
-import { extractMediaUrlsFromAnswers } from './storagePaths'
+import { extractMediaUrlsFromAnswers, extractMediaUrlsFromQuestions } from './storagePaths'
 
 export type DeleteGameResult = {
   success: boolean
@@ -62,7 +62,7 @@ export async function deleteGameCompletely(gameId: string): Promise<DeleteGameRe
   const [questionsRes, teamsRes, questionsMediaRes, teamsMediaRes] = await Promise.all([
     supabase.from('questions').select('id', { count: 'exact', head: true }).eq('game_id', gameId),
     supabase.from('teams').select('id', { count: 'exact', head: true }).eq('game_id', gameId),
-    supabase.from('questions').select('media_url').eq('game_id', gameId),
+    supabase.from('questions').select('media_url, media_items, hints').eq('game_id', gameId),
     supabase.from('teams').select('id, avatar_url').eq('game_id', gameId),
   ])
 
@@ -80,7 +80,7 @@ export async function deleteGameCompletely(gameId: string): Promise<DeleteGameRe
   }
 
   const mediaUrls = [
-    ...(questionsMediaRes.data ?? []).map((q) => q.media_url),
+    ...extractMediaUrlsFromQuestions(questionsMediaRes.data ?? []),
     ...(teamsMediaRes.data ?? []).map((t) => t.avatar_url),
     ...extractMediaUrlsFromAnswers(answerMediaRows),
   ]

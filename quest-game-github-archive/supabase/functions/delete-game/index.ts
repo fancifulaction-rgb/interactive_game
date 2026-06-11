@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     console.log('Fetching related data...');
     
     // Получаем все вопросы этой игры
-    const questionsResponse = await fetch(`${supabaseUrl}/rest/v1/questions?game_id=eq.${gameId}&select=id,media_url`, {
+    const questionsResponse = await fetch(`${supabaseUrl}/rest/v1/questions?game_id=eq.${gameId}&select=id,media_url,media_items,hints`, {
       headers: {
         'Authorization': `Bearer ${supabaseServiceKey}`,
         'apikey': supabaseServiceKey
@@ -90,10 +90,30 @@ Deno.serve(async (req) => {
       pathsByBucket.get(bucket)!.add(path);
     };
 
+    const pushMediaUrl = (url: unknown) => {
+      if (typeof url !== 'string' || !url) return;
+      const p = parsePublicUrl(url);
+      if (p) addPath(p.bucket, p.path);
+    };
+
     for (const q of questions) {
-      if (q.media_url) {
-        const p = parsePublicUrl(q.media_url);
-        if (p) addPath(p.bucket, p.path);
+      pushMediaUrl(q.media_url);
+      const items = Array.isArray(q.media_items) ? q.media_items : [];
+      for (const item of items) {
+        if (item && typeof item === 'object' && 'url' in item) {
+          pushMediaUrl((item as { url?: string }).url);
+        }
+      }
+      const hints = Array.isArray(q.hints) ? q.hints : [];
+      for (const hint of hints) {
+        if (!hint || typeof hint !== 'object') continue;
+        const hintItems = (hint as { media_items?: unknown }).media_items;
+        if (!Array.isArray(hintItems)) continue;
+        for (const item of hintItems) {
+          if (item && typeof item === 'object' && 'url' in item) {
+            pushMediaUrl((item as { url?: string }).url);
+          }
+        }
       }
     }
     for (const team of teams) {

@@ -37,11 +37,12 @@ export type CachedGameRow = {
   scoring: unknown
   mask_board: boolean | null
   total_time_sec: number | null
+  settings: unknown
   ts: number
 }
 
 const GAME_SELECT =
-  'id, code, title, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec'
+  'id, code, title, theme, per_question_time_sec, finish_page_type, scoring, mask_board, total_time_sec, settings'
 
 type InflightEntry = {
   promise: Promise<CachedGameRow | null>

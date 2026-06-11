@@ -2,7 +2,7 @@ const ALLOWED_BUCKETS = new Set(['avatars', 'answer-media'])
 
 const BUCKET_MAX_BYTES: Record<string, number> = {
   avatars: 5 * 1024 * 1024,
-  'answer-media': 50 * 1024 * 1024,
+  'answer-media': 100 * 1024 * 1024,
 }
 
 const MIME_PREFIXES: Record<string, string[]> = {

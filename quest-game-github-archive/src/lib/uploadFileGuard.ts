@@ -12,7 +12,7 @@ const BUCKET_RULES: Record<
     extensions: ['.jpg', '.jpeg', '.png', '.webp', '.gif'],
   },
   'answer-media': {
-    maxBytes: 50 * MB,
+    maxBytes: 100 * MB,
     mimePrefixes: ['image/', 'video/', 'audio/'],
     extensions: [
       '.jpg',
@@ -31,7 +31,7 @@ const BUCKET_RULES: Record<
     ],
   },
   'question-media': {
-    maxBytes: 50 * MB,
+    maxBytes: 100 * MB,
     mimePrefixes: ['image/', 'video/', 'audio/'],
     extensions: [
       '.jpg',
