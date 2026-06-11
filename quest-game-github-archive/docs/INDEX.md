@@ -9,7 +9,7 @@
 | Язык | Русский |
 | Корень репозитория | `quest-game-github-archive/` |
 | Целевая нагрузка | 2–100 одновременных команд на одном мероприятии |
-| План развития | Спринты 1–3 (закрыты) + **Фаза 4** post-sprint — [ROADMAP.md](ROADMAP.md) |
+| План развития | Спринты 1–4 (код закрыт) + **Спринт 5** (prod) — [ROADMAP.md](ROADMAP.md) |
 | Каталог улучшений | Нумерованные ID — [IMPROVEMENTS_CATALOG.md](IMPROVEMENTS_CATALOG.md) |
 
 ---
@@ -45,7 +45,7 @@
 | 15 | [DEPLOYMENT.md](DEPLOYMENT.md) | 🔗 | Выкладка фронта |
 | 15b | [DOCKER_COMPOSE.md](DOCKER_COMPOSE.md) | ✅ | Self-host: `docker compose up` |
 | 16 | [OPERATIONS.md](OPERATIONS.md) | ✅ | Runbook мероприятия |
-| 17 | [ROADMAP.md](ROADMAP.md) | ✅ | Спринты 1–3 + Фаза 4 (post-sprint) |
+| 17 | [ROADMAP.md](ROADMAP.md) | ✅ | Спринты 1–5 (текущий: prod P0 / P1 / P2) |
 | 18 | [IMPROVEMENTS_CATALOG.md](IMPROVEMENTS_CATALOG.md) | ✅ | Каталог идей (ID) |
 | 19 | [DATA_LIFECYCLE.md](DATA_LIFECYCLE.md) | 🔗 | Жизненный цикл данных |
 | 20 | [CHANGELOG.md](../CHANGELOG.md) | 🔗 | История версий |
@@ -134,7 +134,7 @@ quest-game-github-archive/
 
 ## 4. Связь документов с планом
 
-- **Спринт 1–3:** [ROADMAP.md](ROADMAP.md)
+- **Спринты 1–5:** [ROADMAP.md](ROADMAP.md) (текущий фокус: **спринт 5**, P0 prod)
 - **Все предложенные улучшения с ID:** [IMPROVEMENTS_CATALOG.md](IMPROVEMENTS_CATALOG.md)
 - **Старый бэклог (чеклисты):** [BACKLOG.md](BACKLOG.md) — не дублирует ID, только напоминания
 

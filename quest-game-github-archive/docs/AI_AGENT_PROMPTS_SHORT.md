@@ -47,7 +47,7 @@ Project Rules уже в контексте — не пересказывай и�
    @quest-game-github-archive/AGENTS.md
    @quest-game-github-archive/docs/INDEX.md — только § «Куда идти по задаче»
    @quest-game-github-archive/docs/BUG_AUDIT_HANDOFF.md — текущий список багов и приоритеты
-   @quest-game-github-archive/docs/ROADMAP.md — Спринт 1 + что уже done
+   @quest-game-github-archive/docs/ROADMAP.md — Спринт 5 (P0 prod / P1 / P2) + что уже done
    @quest-game-github-archive/CHANGELOG.md — [Unreleased]
    В IMPROVEMENTS_CATALOG — только IMP-* из ROADMAP / checkpoint / задачи владельца.
 

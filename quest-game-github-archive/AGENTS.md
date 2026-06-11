@@ -42,7 +42,7 @@ Cursor Rule **`quest-game-gstack.mdc`** задаёт, когда вызыват�
 1. Прочитать **[docs/INDEX.md](docs/INDEX.md)** — полный каталог документов.
 2. Для фич/багов в игроке: **[docs/API_AND_FLOWS.md](docs/API_AND_FLOWS.md)** + **[docs/REALTIME_AND_NETWORKING.md](docs/REALTIME_AND_NETWORKING.md)**.
 3. Для БД/SQL: **[docs/DATABASE.md](docs/DATABASE.md)** + `docs/sql-migrations/`.
-4. План работ: **[docs/ROADMAP.md](docs/ROADMAP.md)** (3 спринта).
+4. План работ: **[docs/ROADMAP.md](docs/ROADMAP.md)** (спринт 5: prod P0 → P1 → P2).
 5. Идеи «брать / не брать»: **[docs/IMPROVEMENTS_CATALOG.md](docs/IMPROVEMENTS_CATALOG.md)** — только по ID из каталога.
 
 ## Критические правила разработки

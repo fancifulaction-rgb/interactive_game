@@ -14,6 +14,8 @@
 
 Чеклист для релиза на **боевой** Supabase / хостинг — закрыть дыры продукта и зависимостей.
 
+**План спринта:** [ROADMAP.md](ROADMAP.md) §«Спринт 5» — P0 (критично), P1 (желательно), P2 (бэклог).
+
 - [ ] **SQL на prod:** `npm run db:migrate` (журнал до **034** включительно) · `npm run db:verify-schema`
 - [x] **Security smoke:** `npm run test:api` → security 8/8 + feature smoke (2026-06-11, migrate **034**)
 - [x] **Автоскрипты:** `npm run build` · `npm run test:api` · `npm run test:e2e` (6 UI + API)
