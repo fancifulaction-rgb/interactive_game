@@ -1,8 +1,4 @@
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
+import { handleCors, jsonResponse, requireAuthenticatedUser } from '../_shared/adminAuth.ts'
 
 type Provider = 'groq' | 'qwen' | 'deepseek'
 
@@ -45,6 +41,20 @@ const PROVIDER_CONFIG: Record<
     model: 'deepseek-chat',
     envKey: 'DEEPSEEK_API_KEY',
   },
+}
+
+const MAX_BODY_BYTES = 8_192
+const RATE_WINDOW_MS = 60_000
+const RATE_MAX_PER_USER = 10
+const rateHits = new Map<string, number[]>()
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const recent = (rateHits.get(userId) ?? []).filter((t) => now - t < RATE_WINDOW_MS)
+  if (recent.length >= RATE_MAX_PER_USER) return false
+  recent.push(now)
+  rateHits.set(userId, recent)
+  return true
 }
 
 function buildPrompt(req: GenerateRequest): string {
@@ -190,19 +200,37 @@ function normalizeQuestion(raw: RawQuestion, index: number) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders })
-  }
+  const cors = handleCors(req)
+  if (cors) return cors
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ error: 'Method not allowed' }, 405)
+  }
+
+  const auth = await requireAuthenticatedUser(req)
+  if (auth instanceof Response) return auth
+
+  if (!checkRateLimit(auth.userId)) {
+    return jsonResponse({ success: false, error: 'Rate limit exceeded. Try again later.' }, 429)
+  }
+
+  const contentLength = Number(req.headers.get('content-length') ?? 0)
+  if (contentLength > MAX_BODY_BYTES) {
+    return jsonResponse({ success: false, error: 'Request body too large' }, 413)
   }
 
   try {
-    const body = (await req.json()) as GenerateRequest
+    const rawBody = await req.text()
+    if (rawBody.length > MAX_BODY_BYTES) {
+      return jsonResponse({ success: false, error: 'Request body too large' }, 413)
+    }
+
+    const body = (rawBody ? JSON.parse(rawBody) : {}) as GenerateRequest
+    const topic = (body.topic ?? '').trim()
+    if (!topic || topic.length > 500) {
+      return jsonResponse({ success: false, error: 'Invalid topic' }, 400)
+    }
+
     const provider: Provider =
       body.provider === 'deepseek'
         ? 'deepseek'
@@ -222,15 +250,9 @@ Deno.serve(async (req) => {
       throw new Error('Модель не вернула ни одного валидного вопроса')
     }
 
-    return new Response(
-      JSON.stringify({ success: true, provider, questions }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return jsonResponse({ success: true, provider, questions })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return new Response(JSON.stringify({ success: false, error: message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ success: false, error: message }, 400)
   }
 })

@@ -15,7 +15,7 @@ const PROJECT_REF =
   'tvytsnnujaucoluoyvjq'
 
 const publicFunctions = ['player-upload']
-const jwtFunctions = ['delete-game', 'delete-teams', 'confirm-admin-email']
+const jwtFunctions = ['delete-game', 'delete-teams', 'confirm-admin-email', 'generate-questions']
 
 function run(command) {
   console.log(`→ ${command}`)

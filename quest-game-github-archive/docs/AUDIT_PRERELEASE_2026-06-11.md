@@ -72,7 +72,7 @@
 - **Суть:** регистрация работает и без валидного `join_token`, токен не enforced → обход уникальной ссылки/контроля доступа.
 - **Фикс:** если у игры задан `join_token` — требовать его в `register_team`; иначе fail-closed.
 
-### IMP-SEC-020 — Edge `generate-questions` без auth и rate-limit ✅(reported, путь подтверждён)
+### IMP-SEC-020 — Edge `generate-questions` без auth и rate-limit ✅
 - **Файл:** `supabase/functions/generate-questions/index.ts`
 - **Суть:** нет проверки админ-сессии и лимитов → любой может жечь токены LLM-провайдера (Qwen/DeepSeek) и деньги.
 - **Фикс:** `verify_jwt`/admin-session чек + rate-limit (по IP/админу) + лимит размера запроса.
