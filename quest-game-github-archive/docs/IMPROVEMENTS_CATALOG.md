@@ -267,10 +267,10 @@
 | IMP-SEC-018 | Перехват сессии команды | `recover_team_session` по угадываемым данным | AUDIT 2026-06-11 | 5 | done (`041`, клиент) |
 | IMP-SEC-019 | `join_token` не enforced | регистрация без валидного токена | AUDIT 2026-06-11 | 5 | done (`041`, TeamRegister) |
 | IMP-SEC-020 | Edge `generate-questions` без auth/rate-limit | жжёт токены LLM | AUDIT 2026-06-11 | 5 | done |
-| IMP-SEC-021 | git-tracked `alternative-upload` | незащищённый upload-путь, удалить | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-021 | git-tracked `alternative-upload` | незащищённый upload-путь, удалить | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-022 | Захардкоженные JWT в репо | удалены root debug-скрипты; ключи старого проекта, не текущего prod | AUDIT 2026-06-11 | 5 | done |
-| IMP-SEC-023 | Обход админ-доступа через localStorage | серверная валидация сессии | AUDIT 2026-06-11 | 5 | accepted |
-| IMP-SEC-024 | Лишние anon-grants и CORS `*` | ревизия GRANT/CORS, в SECURITY.md | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-023 | Обход админ-доступа через localStorage | серверная валидация сессии | AUDIT 2026-06-11 | 5 | done |
+| IMP-SEC-024 | Лишние anon-grants и CORS `*` | ревизия GRANT/CORS, в SECURITY.md | AUDIT 2026-06-11 | 5 | done |
 
 ### БД / манифест (P0)
 
@@ -285,7 +285,7 @@
 |----|----------|----------|----------|--------|--------|
 | IMP-LOG-023 | Ответ мимо `enqueueCritical` | `enqueueSubmitAutoAnswer` → `enqueueCritical` | AUDIT 2026-06-11 | 5 | done |
 | IMP-RT-007 | broadcast-шторм `teams_changed` | убран `broadcastTeamsChanged` на каждый ответ | AUDIT 2026-06-11 | 5 | done |
-| IMP-PERF-004 | Storage upload параллелит с REST | провести через очередь/мьютекс | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-PERF-004 | Storage upload параллелит с REST | провести через очередь/мьютекс | AUDIT 2026-06-11 | 5 | done |
 
 ### Стабильность (P1)
 

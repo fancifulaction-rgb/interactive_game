@@ -77,7 +77,7 @@
 - **Суть:** нет проверки админ-сессии и лимитов → любой может жечь токены LLM-провайдера (Qwen/DeepSeek) и деньги.
 - **Фикс:** `verify_jwt`/admin-session чек + rate-limit (по IP/админу) + лимит размера запроса.
 
-### IMP-SEC-021 — git-tracked `alternative-upload` 🔎
+### IMP-SEC-021 — git-tracked `alternative-upload` ✅
 - **Файл:** `supabase/functions/alternative-upload/index.ts` (в индексе git).
 - **Суть:** обходной незащищённый upload-путь.
 - **Фикс:** удалить функцию и из `git`, и из любых deploy-скриптов; оставить только `player-upload`.
@@ -87,12 +87,12 @@
 - **Суть:** в коде зашиты ключи Supabase (anon/возможно service). Утечка ключей.
 - **Фикс:** удалить файлы из git (и из истории, если ключ — service role: **ротация ключа обязательна**), вынести в `.env`/CI secrets, добавить в `.gitignore`. Прогнать `gstack-cso` секрет-скан.
 
-### IMP-SEC-023 — обход админ-доступа через localStorage 🔎
+### IMP-SEC-023 — обход админ-доступа через localStorage ✅
 - **Где:** клиентская проверка админ-сессии (контекст/guard).
 - **Суть:** доступ к админ-UI определяется значением в localStorage без серверной валидации → подделка флага открывает панель (UI; реальные мутации всё равно должны падать на RLS, но утечка структуры/действий возможна).
 - **Фикс:** проверять админ-сессию серверно (RPC `17_admin_session`) перед рендером действий; localStorage — только кэш, не источник правды.
 
-### IMP-SEC-024 — лишние anon-grants и CORS `*` 🔎
+### IMP-SEC-024 — лишние anon-grants и CORS `*` ✅
 - **Суть:** ряд RPC (`get_teams_pending_review`, `track_product_events` и т.п.) и Edge-функций имеют широкий grant `anon` / `Access-Control-Allow-Origin: *`.
 - **Фикс:** ревизия всех `GRANT ... TO anon`; CORS — whitelist доменов прод/стейдж. Свести в `SECURITY.md`.
 
@@ -122,7 +122,7 @@
 - **Суть:** `void broadcastTeamsChanged(req.game_id)` вызывается после **каждого** ответа любой команды → при массовой отправке штормит канал и провоцирует лавину перерисовок/REST у всех клиентов.
 - **Фикс:** не слать `teams_changed` на каждый ответ; достаточно `broadcastScoreUpdate` (уже есть, по delta>0). Если нужен teams-refresh — throttle/debounce (напр. ≥3-5 c) и/или только для админ-табло.
 
-### IMP-PERF-004 — Storage upload параллелит с REST в одной вкладке 🔎
+### IMP-PERF-004 — Storage upload параллелит с REST в одной вкладке ✅
 - **Файл:** `src/lib/storageUpload.ts`
 - **Суть:** загрузка медиа ответа может идти параллельно с критическим REST (нарушение правила «не параллелить REST + Storage»), хотя есть `cancelActiveStorageUpload`/`networkMutex` — проверить, что upload всегда вне окна critical и отменяется перед submit.
 - **Фикс:** провести upload через ту же очередь/мьютекс; гарантировать порядок: отмена upload → submit ответа.
