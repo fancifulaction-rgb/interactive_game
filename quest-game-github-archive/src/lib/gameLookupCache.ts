@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { agentDebugLog } from './debugLog'
+import { normalizeJoinToken } from './joinToken'
 
 const DEBUG_INGEST =
   'http://127.0.0.1:7862/ingest/7fb5ad31-3ebd-4437-b10a-7b29790fa840'
@@ -53,6 +54,10 @@ const lookupInflight = new Map<string, InflightEntry>()
 const lookupGeneration = new Map<string, number>()
 const revalidateInflight = new Set<string>()
 
+const joinLookupInflight = new Map<string, InflightEntry>()
+const joinLookupGeneration = new Map<string, number>()
+const joinRevalidateInflight = new Set<string>()
+
 function bumpLookupGeneration(code: string): number {
   const next = (lookupGeneration.get(code) ?? 0) + 1
   lookupGeneration.set(code, next)
@@ -61,6 +66,16 @@ function bumpLookupGeneration(code: string): number {
 
 function key(code: string) {
   return `quest_game_lookup_${code.trim().toUpperCase()}`
+}
+
+function joinKey(joinToken: string) {
+  return `quest_game_lookup_join_${normalizeJoinToken(joinToken)}`
+}
+
+function bumpJoinLookupGeneration(token: string): number {
+  const next = (joinLookupGeneration.get(token) ?? 0) + 1
+  joinLookupGeneration.set(token, next)
+  return next
 }
 
 export function getCachedGameByCode(code: string): CachedGameRow | null {
@@ -152,5 +167,92 @@ export function fetchGameByCode(code: string): Promise<CachedGameRow | null> {
   })
 
   lookupInflight.set(normalized, { promise, gen: reqGen })
+  return promise
+}
+
+async function fetchGameRowByJoinFromNetwork(joinToken: string): Promise<CachedGameRow | null> {
+  const normalized = normalizeJoinToken(joinToken)
+  const started = Date.now()
+  debugIngest('gameLookupCache.ts', 'fetch join start', { joinToken: normalized }, 'H1')
+  agentDebugLog('gameLookupCache.ts', 'fetch join start', { joinToken: normalized }, 'H1')
+
+  const { data, error } = await supabase
+    .from('games')
+    .select(GAME_SELECT)
+    .eq('join_token', normalized)
+    .maybeSingle()
+
+  const ms = Date.now() - started
+  if (error) {
+    debugIngest('gameLookupCache.ts', 'fetch join error', { joinToken: normalized, ms, msg: error.message }, 'H1')
+    agentDebugLog('gameLookupCache.ts', 'fetch join error', { joinToken: normalized, ms, msg: error.message }, 'H1')
+    throw error
+  }
+  if (!data) {
+    debugIngest('gameLookupCache.ts', 'fetch join miss', { joinToken: normalized, ms }, 'H1')
+    agentDebugLog('gameLookupCache.ts', 'fetch join miss', { joinToken: normalized, ms }, 'H1')
+    return null
+  }
+  const row = data as Omit<CachedGameRow, 'ts'>
+  setCachedGameByCode(row.code, row)
+  try {
+    sessionStorage.setItem(joinKey(normalized), JSON.stringify({ ...row, ts: Date.now() }))
+  } catch {
+    /* ignore */
+  }
+  debugIngest('gameLookupCache.ts', 'fetch join ok', { joinToken: normalized, gameId: row.id, ms }, 'H1')
+  agentDebugLog('gameLookupCache.ts', 'fetch join ok', { joinToken: normalized, gameId: row.id, ms }, 'H1')
+  return { ...row, ts: Date.now() }
+}
+
+function getCachedGameByJoinToken(joinToken: string): CachedGameRow | null {
+  try {
+    const raw = sessionStorage.getItem(joinKey(joinToken))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CachedGameRow
+    if (!parsed?.id || Date.now() - parsed.ts > TTL_MS) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function revalidateGameByJoinInBackground(joinToken: string): void {
+  const normalized = normalizeJoinToken(joinToken)
+  if (joinRevalidateInflight.has(normalized)) return
+  joinRevalidateInflight.add(normalized)
+  void fetchGameRowByJoinFromNetwork(normalized)
+    .catch(() => {})
+    .finally(() => {
+      joinRevalidateInflight.delete(normalized)
+    })
+}
+
+/** Lookup по секретной ссылке регистрации (join_token). */
+export function fetchGameByJoinToken(joinToken: string): Promise<CachedGameRow | null> {
+  const normalized = normalizeJoinToken(joinToken)
+  const cached = getCachedGameByJoinToken(normalized)
+  if (cached) {
+    const age = Date.now() - cached.ts
+    if (age >= STALE_REVALIDATE_MS) {
+      revalidateGameByJoinInBackground(normalized)
+    }
+    return Promise.resolve(cached)
+  }
+
+  const reqGen = joinLookupGeneration.get(normalized) ?? 0
+  const existing = joinLookupInflight.get(normalized)
+  if (existing) {
+    return existing.promise
+  }
+
+  const promise = fetchGameRowByJoinFromNetwork(normalized).finally(() => {
+    const entry = joinLookupInflight.get(normalized)
+    if (entry?.gen === reqGen) {
+      joinLookupInflight.delete(normalized)
+    }
+  })
+
+  joinLookupInflight.set(normalized, { promise, gen: reqGen })
   return promise
 }

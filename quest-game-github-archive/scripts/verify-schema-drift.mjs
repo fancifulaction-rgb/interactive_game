@@ -12,6 +12,7 @@ loadEnv()
 const EXPECTED_MIGRATIONS = ALL_MIGRATION_FILES
 
 const REQUIRED_COLUMNS = [
+  ['games', 'join_token'],
   ['game_state', 'is_paused'],
   ['game_state', 'paused_at'],
   ['answers', 'question_number'],

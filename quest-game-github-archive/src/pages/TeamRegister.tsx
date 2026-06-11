@@ -22,7 +22,8 @@ import { fetchGameStateForGame } from '../lib/fetchGameState'
 import { getGamePlayCache, setGamePlayCache } from '../lib/gamePlayCache'
 import { prefetchQuestionsForGame } from '../lib/prefetchGameQuestions'
 import { fetchLobbyTeams } from '../lib/fetchLobbyTeams'
-import { fetchGameByCode, getCachedGameByCode } from '../lib/gameLookupCache'
+import { fetchGameByCode, fetchGameByJoinToken, getCachedGameByCode } from '../lib/gameLookupCache'
+import { isValidJoinToken } from '../lib/joinToken'
 import { markPlayerFetchBoost } from '../lib/playerFetchBoost'
 import { markRegistrationSubmitBoost } from '../lib/registrationBoost'
 import {
@@ -48,7 +49,7 @@ import {
   normalizeGameAccessCode,
 } from '../lib/gameAccessCode'
 import { downloadClientLogsJson } from '../lib/clientLogCollector'
-import { readRegistrationCodeFromSearch } from '../lib/registrationUrl'
+import { readRegistrationCodeFromSearch, readRegistrationJoinFromSearch } from '../lib/registrationUrl'
 import { ArrowLeft, Users, User, Upload, Hash } from 'lucide-react'
 
 type GameRow = {
@@ -97,6 +98,20 @@ export default function TeamRegister() {
   }, [])
 
   useEffect(() => {
+    const join = readRegistrationJoinFromSearch(searchParams.toString())
+    if (join && isValidJoinToken(join)) {
+      let cancelled = false
+      void fetchGameByJoinToken(join)
+        .then((game) => {
+          if (cancelled || !game?.code) return
+          setGameCode(normalizeGameAccessCode(game.code))
+        })
+        .catch(() => {})
+      return () => {
+        cancelled = true
+      }
+    }
+
     const fromUrl = readRegistrationCodeFromSearch(searchParams.toString())
     if (fromUrl.length >= GAME_ACCESS_CODE_MIN) {
       setGameCode(fromUrl)

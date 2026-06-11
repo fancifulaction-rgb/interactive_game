@@ -1,16 +1,17 @@
 import { useMemo, useState } from 'react'
 import QRCode from 'react-qr-code'
 import { Copy, Check, QrCode } from 'lucide-react'
-import { buildTeamRegistrationUrl } from '../lib/registrationUrl'
+import { buildTeamRegistrationJoinUrl } from '../lib/registrationUrl'
 
 interface RegistrationQrCardProps {
-  gameCode: string
+  joinToken: string
+  gameCode?: string | null
   gameTitle?: string
 }
 
-export default function RegistrationQrCard({ gameCode, gameTitle }: RegistrationQrCardProps) {
+export default function RegistrationQrCard({ joinToken, gameCode, gameTitle }: RegistrationQrCardProps) {
   const [copied, setCopied] = useState(false)
-  const registrationUrl = useMemo(() => buildTeamRegistrationUrl(gameCode), [gameCode])
+  const registrationUrl = useMemo(() => buildTeamRegistrationJoinUrl(joinToken), [joinToken])
 
   const copyLink = async () => {
     try {
@@ -35,11 +36,14 @@ export default function RegistrationQrCard({ gameCode, gameTitle }: Registration
         </div>
         <div className="flex-1 w-full space-y-2 min-w-0">
           <p className="text-sm text-gray-600">
-            Участники сканируют QR или переходят по ссылке — код игры подставится автоматически.
+            Участники сканируют QR или переходят по ссылке — игра откроется без ввода кода.
           </p>
-          <p className="text-xs text-gray-500">
-            Код: <span className="font-mono font-semibold text-gray-800">{gameCode}</span>
-          </p>
+          {gameCode && (
+            <p className="text-xs text-gray-500">
+              Код для ведущего:{' '}
+              <span className="font-mono font-semibold text-gray-800">{gameCode}</span>
+            </p>
+          )}
           <div className="flex gap-2">
             <input
               type="text"

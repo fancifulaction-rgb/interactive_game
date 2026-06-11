@@ -60,6 +60,7 @@ interface Game {
   id: string
   title: string
   code: string | null
+  join_token: string | null
   theme: string
   mask_board: boolean
   total_time_sec: number
@@ -90,7 +91,7 @@ interface Settings {
 
 /** IMP-TD-001: явные поля вместо select('*') на hot-path админки */
 const GAME_LIST_SELECT =
-  'id, title, code, theme, mask_board, total_time_sec, per_question_time_sec, created_at, scoring'
+  'id, title, code, join_token, theme, mask_board, total_time_sec, per_question_time_sec, created_at, scoring'
 const THEME_SELECT = 'id, name, display_name, colors, effects, created_at'
 const SETTINGS_SELECT = 'key, value, description, category'
 

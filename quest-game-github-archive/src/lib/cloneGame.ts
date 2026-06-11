@@ -82,7 +82,7 @@ export async function cloneGame(input: CloneGameInput): Promise<ClonedGame> {
       title,
       code,
       theme,
-      password: src.password,
+      password: null,
       settings: src.settings ?? {},
       mask_board: src.mask_board ?? false,
       total_time_sec: src.total_time_sec ?? 1800,

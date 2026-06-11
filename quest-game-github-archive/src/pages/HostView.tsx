@@ -33,7 +33,7 @@ import {
   getGameSessionStatusLabel,
   type GameStateRow,
 } from '../lib/gameSessionState'
-import { buildTeamRegistrationUrl } from '../lib/registrationUrl'
+import { buildTeamRegistrationJoinUrl } from '../lib/registrationUrl'
 import { clearAdminFetchBoost, markAdminFetchBoost } from '../lib/adminFetchBoost'
 import { useTeamProgress } from '../hooks/useTeamProgress'
 import { countFinishedTeams, teamProgressMap } from '../lib/teamProgress'
@@ -51,6 +51,7 @@ type HostGame = {
   title: string
   code: string
   theme: string | null
+  join_token: string | null
 }
 
 export default function HostView() {
@@ -74,7 +75,7 @@ export default function HostView() {
     }
     const { data, error } = await supabase
       .from('games')
-      .select('id, title, code, theme')
+      .select('id, title, code, theme, join_token')
       .eq('code', gameCode)
       .maybeSingle()
 
@@ -191,7 +192,7 @@ export default function HostView() {
   )
   const progressByTeam = teamProgressMap(progressRows)
   const finishedTeamCount = countFinishedTeams(progressRows)
-  const registrationUrl = game?.code ? buildTeamRegistrationUrl(game.code) : ''
+  const registrationUrl = game?.join_token ? buildTeamRegistrationJoinUrl(game.join_token) : ''
 
   const statusBadgeClass =
     status === 'closed'

@@ -53,6 +53,7 @@ export interface GameControlsGame {
   id: string
   title: string
   code: string | null
+  join_token: string | null
 }
 
 interface GameControlsProps {
@@ -411,11 +412,17 @@ export default function GameControls({
             {dataLoading && !gameState && (
               <p className="text-sm text-gray-500 text-center py-2">Загрузка данных игры…</p>
             )}
-            {!selectedGame.code ? (
-              <p className="text-sm text-gray-500">У игры нет кода доступа.</p>
+            {!selectedGame.join_token ? (
+              <p className="text-sm text-gray-500">
+                Нет ссылки регистрации. Примените миграцию 032 (join_token) и обновите список игр.
+              </p>
             ) : status === 'waiting' ? (
               <div className="space-y-3">
-                <RegistrationQrCard gameCode={selectedGame.code} gameTitle={selectedGame.title} />
+                <RegistrationQrCard
+                  joinToken={selectedGame.join_token}
+                  gameCode={selectedGame.code}
+                  gameTitle={selectedGame.title}
+                />
                 <button
                   type="button"
                   onClick={() => navigate(`/host/${selectedGame.code}`)}
