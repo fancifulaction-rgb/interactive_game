@@ -53,11 +53,28 @@ Service role живёт только на сервере Deno.
 
 | Функция | JWT | Проверки |
 |---------|-----|----------|
-| `delete-game`, `delete-teams` | да | authenticated admin (`_shared/adminAuth.ts`) |
+| `delete-game`, `delete-teams`, `generate-questions` | да | authenticated admin (`_shared/adminAuth.ts`); AI — rate-limit |
 | `player-upload` | нет (anon игрок) | bucket whitelist, path `{gameId}/…`, размер, `verify_team_session` |
 | `confirm-admin-email` | да + `ADMIN_SETUP_SECRET` | одноразовый setup, не для прода без секрета |
 
-Миграция: `docs/sql-migrations/018_security_s1_s5.sql` (`npm run db:migrate:018`).
+**CORS:** Edge отвечает `Access-Control-Allow-Origin: *` для вызовов из браузера с anon key. На prod допустимо при JWT-gated мутациях; публичные функции (`player-upload`) ограничены session token. Whitelist доменов — backlog при выделенном API-gateway.
+
+**Удалено из git (IMP-SEC-021):** `alternative-upload`, `test-*` upload — не деплоить.
+
+Миграции: `018_security_s1_s5.sql`, `038_secure_grading_scoreboard_rpc.sql`, `041_team_session_join_token_security.sql`.
+
+## Anon EXECUTE (ревизия IMP-SEC-024)
+
+| RPC | anon | Примечание |
+|-----|------|------------|
+| `register_team`, `recover_team_session` | да | требуют `join_token` + session token (`041`) |
+| `submit_auto_answer`, `update_team_avatar` | да | session token |
+| `track_product_events` | да | только INSERT аналитики, без PII |
+| `get_scoreboard_answers`, `get_teams_pending_review`, grading RPC | **нет** | `038` — только authenticated/service_role |
+| `process_game_schedule` | **нет** | `040` |
+| `increment_team_score` | **нет** | `034` |
+
+Админ UI: gate по `supabase.auth.getSession()` (`verifyAdminPanelAccess`), не `localStorage.admin_logged_in` (IMP-SEC-023).
 
 ## Удаление команд с клиента (IMP-SEC-001)
 
