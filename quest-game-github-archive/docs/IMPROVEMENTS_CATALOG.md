@@ -251,6 +251,76 @@
 
 ---
 
+## M. Аудит перед релизом (2026-06-11)
+
+Источник всех записей ниже: [AUDIT_PRERELEASE_2026-06-11.md](AUDIT_PRERELEASE_2026-06-11.md). P0 = `accepted`, P1/P2 = `proposed`. Детали/файлы/фиксы — в документе аудита.
+
+### Безопасность (P0)
+
+| ID | Название | Описание | Источник | Спринт | Статус |
+|----|----------|----------|----------|--------|--------|
+| IMP-SEC-013 | anon SELECT утекает `answer` | 021 вернула `questions_anon_select USING(true)`; `players` тоже; новая миграция-фикс + view `questions_player` | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-014 | Утечка ответов через scoreboard/grading RPC | RPC отдаёт `answer`/`is_correct` без проверки роли | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-015 | Публичная загрузка в Storage | запись по anon-пути без team session/whitelist | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-016 | IDOR удаление/правка чужих игр | нет проверки владельца (`owner_id`) | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-017 | `process_game_schedule` доступен anon | убрать grant anon, только доверенный контекст | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-018 | Перехват сессии команды | `recover_team_session` по угадываемым данным | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-019 | `join_token` не enforced | регистрация без валидного токена | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-020 | Edge `generate-questions` без auth/rate-limit | жжёт токены LLM | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-021 | git-tracked `alternative-upload` | незащищённый upload-путь, удалить | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-022 | Захардкоженные JWT в репо | `debug_questions.js`, `test_with_data.mjs` и др.; ротация | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-023 | Обход админ-доступа через localStorage | серверная валидация сессии | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-024 | Лишние anon-grants и CORS `*` | ревизия GRANT/CORS, в SECURITY.md | AUDIT 2026-06-11 | 5 | accepted |
+
+### БД / манифест (P0)
+
+| ID | Название | Описание | Источник | Спринт | Статус |
+|----|----------|----------|----------|--------|--------|
+| IMP-INF-011 | `013_realtime_game_state.sql` не в манифесте | коллизия номера 013; нет realtime на свежей БД | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-INF-012 | `006_storage_buckets` / `007_fix_mojibake` не в манифесте | нет бакетов на свежей БД | AUDIT 2026-06-11 | 5 | accepted |
+
+### Hot-path / realtime (P0)
+
+| ID | Название | Описание | Источник | Спринт | Статус |
+|----|----------|----------|----------|--------|--------|
+| IMP-LOG-023 | Ответ мимо `enqueueCritical` | `enqueueSubmitAutoAnswer` зовёт сервер напрямую | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-RT-007 | broadcast-шторм `teams_changed` | шлётся на каждый ответ; throttle/убрать | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-PERF-004 | Storage upload параллелит с REST | провести через очередь/мьютекс | AUDIT 2026-06-11 | 5 | accepted |
+
+### Стабильность (P1)
+
+| ID | Название | Описание | Источник | Спринт | Статус |
+|----|----------|----------|----------|--------|--------|
+| IMP-LOG-024 | Гонка `force` в fetchGameState | single-flight по gen-token | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-LOG-025 | Дубль prefetch вопросов | in-flight dedupe | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-LOG-026 | `pendingAnswerQueue` не чистится | TTL + дедуп + флаш через critical | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-LOG-027 | Нет фидбэка при сбое ответа | toast + ретрай-статус | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-LOG-028 | Затык finish/export в critical | boost на host-route | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-RT-008 | Медленный poll-fallback на mobile | адаптивный интервал | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-ST-005 | Медиа грузится не лениво | `preload="none"`/lazy | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-ADM-005 | Правка вопросов во время игры | блокировать при `playing` | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-ADM-006 | Старт без видимых вопросов | guard перед стартом | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-ADM-007 | Удаление участников не по `game_id` | строгий scope | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-ADM-008 | Клон без rollback | транзакция + фидбэк | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-DATA-006 | Нет проверки целостности архива | не удалять при неполном архиве | AUDIT 2026-06-11 | 5 | proposed |
+
+### CI / гигиена (P2)
+
+| ID | Название | Описание | Источник | Спринт | Статус |
+|----|----------|----------|----------|--------|--------|
+| IMP-TD-009 | Неполный strict TS | включить strict-флаги поэтапно | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-TD-010 | ffmpeg в основном бандле | строго dynamic import | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-TD-011 | Нет bootstrap-с-нуля в CI | smoke на чистой БД | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-TD-012 | Агрессивный кэш PWA | стратегия обновления SW + гейт прод | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-TD-013 | Мусор в репо/нет `engines` | чистка, `engines`, lazy diag-panel | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-INF-013 | Нет security-заголовков nginx | CSP, X-Content-Type-Options и т.д. | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-INF-014 | Нет CI-гейтов lint/verify/audit | добавить шаги в CI | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-INF-015 | CI ходит в реальный Supabase | изолированный стейдж | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-INF-016 | env: нет fail-fast/проброса VITE_* | валидация на старте + compose | AUDIT 2026-06-11 | 5 | proposed |
+| IMP-INF-017 | Нет наблюдаемости | Sentry фронт + алерты 429/5xx | AUDIT 2026-06-11 | 5 | proposed |
+
+---
+
 ## Добавление новой идеи
 
 Шаблон:

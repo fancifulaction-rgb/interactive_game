@@ -64,6 +64,7 @@
 | # | Документ | Статус |
 |---|----------|--------|
 | 25 | [SCALING.md](SCALING.md) | 🔗 |
+| 25b | [AUDIT_PRERELEASE_2026-06-11.md](AUDIT_PRERELEASE_2026-06-11.md) | ✅ | **Предрелизный аудит** — баги P0/P1/P2, рекомендации, промт для агента |
 | 26 | [BUGS_FOUND.md](BUGS_FOUND.md) | 🔗 |
 | 27 | [BACKLOG.md](BACKLOG.md) | 🔗 → ссылается на каталог |
 | 28 | [CONTRIBUTING.md](../CONTRIBUTING.md) | 🔗 |
@@ -102,6 +103,7 @@
 | Деплой на мероприятие | OPERATIONS → DEPLOYMENT → SUPABASE_SETUP |
 | Новая фича из списка идей | IMPROVEMENTS_CATALOG (ID) → ROADMAP |
 | Безопасность / RLS | SECURITY |
+| Закрытие багов перед релизом | AUDIT_PRERELEASE_2026-06-11 → IMPROVEMENTS_CATALOG (раздел M) |
 
 ---
 
