@@ -1,4 +1,21 @@
 const REG_TIME_KEY = 'team_registration_time'
+const JOIN_TOKEN_KEY_PREFIX = 'join_token:'
+
+export function saveGameJoinToken(gameId: string, joinToken: string): void {
+  try {
+    localStorage.setItem(`${JOIN_TOKEN_KEY_PREFIX}${gameId}`, joinToken.trim())
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function readGameJoinToken(gameId: string): string | null {
+  try {
+    return localStorage.getItem(`${JOIN_TOKEN_KEY_PREFIX}${gameId}`)
+  } catch {
+    return null
+  }
+}
 
 export function teamIdKeyForGame(gameCode: string): string {
   return `team_id:${gameCode.trim().toUpperCase()}`

@@ -3,6 +3,7 @@ import { useNavigate, useNavigationType, useSearchParams } from 'react-router-do
 import {
   isTeamNameTakenError,
   isTransientNetworkError,
+  joinTokenRequiredUserMessage,
   registerTeamDirect,
   teamNameTakenUserMessage,
 } from '../lib/teamRegister'
@@ -28,6 +29,7 @@ import { markPlayerFetchBoost } from '../lib/playerFetchBoost'
 import { markRegistrationSubmitBoost } from '../lib/registrationBoost'
 import {
   readStoredTeamIdForGame,
+  saveGameJoinToken,
   saveTeamSession,
   writeStoredCurrentTeam,
 } from '../lib/playerSession'
@@ -71,6 +73,7 @@ export default function TeamRegister() {
   const navigationType = useNavigationType()
   const [searchParams] = useSearchParams()
   const [gameCode, setGameCode] = useState('')
+  const [joinToken, setJoinToken] = useState('')
   const [teamName, setTeamName] = useState('')
   const [captainName, setCaptainName] = useState('')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
@@ -101,11 +104,13 @@ export default function TeamRegister() {
   useEffect(() => {
     const join = readRegistrationJoinFromSearch(searchParams.toString())
     if (join && isValidJoinToken(join)) {
+      setJoinToken(join)
       let cancelled = false
       void fetchGameByJoinToken(join)
         .then((game) => {
           if (cancelled || !game?.code) return
           setGameCode(normalizeGameAccessCode(game.code))
+          saveGameJoinToken(game.id, join)
         })
         .catch(() => {})
       return () => {
@@ -222,6 +227,13 @@ export default function TeamRegister() {
       submittingRef.current = false
       return
     }
+    if (!joinToken || !isValidJoinToken(joinToken)) {
+      setError(joinTokenRequiredUserMessage())
+      setLoading(false)
+      submittingRef.current = false
+      return
+    }
+
     debugLog('TeamRegister.tsx:submit', 'start', { normalizedCode, hasAvatar: !!avatarFile }, 'D')
     agentDebugLog(
       'TeamRegister.tsx',
@@ -329,9 +341,12 @@ export default function TeamRegister() {
         )
 
         const regInsertDone = Date.now()
+        saveGameJoinToken(gameData!.id, joinToken)
+
         const { team } = await registerTeamDirect({
           gameId: gameData!.id,
           gameCode: normalizedCode,
+          joinToken,
           teamName,
           captainName,
           avatarFile,

@@ -40,4 +40,5 @@ export const ALL_MIGRATION_FILES = [
   '038_secure_grading_scoreboard_rpc.sql',
   '039_secure_storage_upload.sql',
   '040_lock_process_game_schedule_grants.sql',
+  '041_team_session_join_token_security.sql',
 ]

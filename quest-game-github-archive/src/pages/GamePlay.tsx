@@ -15,6 +15,7 @@ import { attachGameRealtime } from '../lib/gameRealtime'
 import { recoverTeamSessionIfNeeded, ensureTeamSessionToken, isTransientNetworkError } from '../lib/teamRegister'
 import { getTeamSessionToken } from '../lib/teamSession'
 import {
+  readGameJoinToken,
   readStoredTeamIdForGame,
   readStoredCurrentTeam,
   writeStoredCurrentTeam,
@@ -355,7 +356,13 @@ export default function GamePlay() {
     const name = (team.name ?? team.team_name ?? '').trim()
     const captain = (team.captain_name ?? '').trim()
     if (!name || !captain) return
-    void recoverTeamSessionIfNeeded(game.id as string, name, captain, teamId)
+    void recoverTeamSessionIfNeeded(
+      game.id as string,
+      name,
+      captain,
+      teamId,
+      readGameJoinToken(game.id as string)
+    )
   }, [game?.id, teamId])
 
   useEffect(() => {
@@ -923,7 +930,11 @@ export default function GamePlay() {
 
       let sessionToken = getTeamSessionToken(teamId)
       if (!sessionToken) {
-        sessionToken = await ensureTeamSessionToken(game.id, teamId)
+        sessionToken = await ensureTeamSessionToken(
+          game.id,
+          teamId,
+          readGameJoinToken(game.id)
+        )
       }
       if (!sessionToken) {
         alert('Сессия команды не найдена. Обновите страницу или зарегистрируйтесь заново в лобби.')
@@ -1034,7 +1045,7 @@ export default function GamePlay() {
         const gameId = game?.id as string | undefined
         let token = sessionToken ?? getTeamSessionToken(teamId)
         if (gameId && teamId && !token) {
-          token = await ensureTeamSessionToken(gameId, teamId)
+          token = await ensureTeamSessionToken(gameId, teamId, readGameJoinToken(gameId))
         }
         if (!gameId || !teamId || !token) {
           alert('Не удалось завершить игру: сессия команды не найдена. Обновите страницу или перерегистрируйтесь.')

@@ -36,6 +36,7 @@ const fail = (msg, err) => {
 const code = 'T' + Date.now().toString(36).slice(-5).toUpperCase()
 
 let gameId
+let gameJoinToken
 let teamId
 
 // 1. Создать игру
@@ -57,6 +58,7 @@ let teamId
   if (error) fail('Создание игры', error)
   else {
     gameId = data.id
+    gameJoinToken = data.join_token
     ok(`Игра ${code}`)
   }
 }
@@ -112,6 +114,7 @@ if (gameId) {
     p_game_id: gameId,
     p_team_name: 'E2E Команда',
     p_captain_name: 'Тестер',
+    p_join_token: gameJoinToken,
   })
   if (error) fail('Регистрация команды (register_team)', error)
   else {

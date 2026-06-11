@@ -35,7 +35,9 @@ const fail = (id, msg, err) => {
 }
 
 const code = ('Q' + Date.now().toString(36).slice(-5)).toUpperCase().slice(0, 6)
-let gameId, teamId
+let gameId
+let gameJoinToken
+let teamId
 
 // Создание игры с lobby + hide scoreboard
 {
@@ -57,6 +59,7 @@ let gameId, teamId
   if (error) fail('IMP-UX-005-setup', 'Создание игры hide_scoreboard', error)
   else {
     gameId = data.id
+    gameJoinToken = data.join_token
     ok('IMP-UX-005-setup', `Игра ${code} hide_scoreboard=true`)
   }
 }
@@ -119,6 +122,7 @@ if (gameId) {
     p_game_id: gameId,
     p_team_name: 'QA Команда',
     p_captain_name: 'Автотест',
+    p_join_token: gameJoinToken,
   })
   if (error) fail('register', 'Регистрация команды (register_team)', error)
   else {

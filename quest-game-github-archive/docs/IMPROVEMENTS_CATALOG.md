@@ -264,8 +264,8 @@
 | IMP-SEC-015 | Публичная загрузка в Storage | migrate `039`: убрать anon INSERT; игрок — Edge `player-upload`; админ — authenticated | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-016 | IDOR удаление/правка чужих игр | migrate `036` owner_id + RLS; Edge delete-game ownership | AUDIT 2026-06-11 | 5 | done |
 | IMP-SEC-017 | `process_game_schedule` доступен anon | migrate `040`: auth guard + REVOKE anon | AUDIT 2026-06-11 | 5 | done |
-| IMP-SEC-018 | Перехват сессии команды | `recover_team_session` по угадываемым данным | AUDIT 2026-06-11 | 5 | accepted |
-| IMP-SEC-019 | `join_token` не enforced | регистрация без валидного токена | AUDIT 2026-06-11 | 5 | accepted |
+| IMP-SEC-018 | Перехват сессии команды | `recover_team_session` по угадываемым данным | AUDIT 2026-06-11 | 5 | done (`041`, клиент) |
+| IMP-SEC-019 | `join_token` не enforced | регистрация без валидного токена | AUDIT 2026-06-11 | 5 | done (`041`, TeamRegister) |
 | IMP-SEC-020 | Edge `generate-questions` без auth/rate-limit | жжёт токены LLM | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-021 | git-tracked `alternative-upload` | незащищённый upload-путь, удалить | AUDIT 2026-06-11 | 5 | accepted |
 | IMP-SEC-022 | Захардкоженные JWT в репо | удалены root debug-скрипты; ключи старого проекта, не текущего prod | AUDIT 2026-06-11 | 5 | done |

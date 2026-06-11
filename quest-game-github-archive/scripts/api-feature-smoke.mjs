@@ -145,6 +145,7 @@ const gradingSettings = {
     p_game_id: gameId,
     p_team_name: `Feat ${Date.now().toString(36).slice(-4)}`,
     p_captain_name: 'Bot',
+    p_join_token: joinToken,
   })
   if (error) fail('register_team', error.message)
   else {

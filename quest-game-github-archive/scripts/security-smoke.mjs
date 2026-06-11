@@ -70,13 +70,14 @@ const { data: game, error: gErr } = await admin
     scoring: { p_base: 100, k_diff: 1, k_time: 0.5, k_fast: 1.2, k_skip: 0.8, combo_bonus: 10 },
     finish_page_type: 'scoreboard',
   })
-  .select()
+  .select('id, join_token')
   .single()
 if (gErr) {
   console.error('setup game failed', gErr.message)
   process.exit(1)
 }
 gameId = game.id
+const gameJoinToken = game.join_token
 
 await admin.from('questions').insert({
   game_id: gameId,
@@ -99,6 +100,7 @@ const { data: reg, error: regErr } = await supabase.rpc('register_team', {
   p_game_id: gameId,
   p_team_name: 'SecTest',
   p_captain_name: 'Bot',
+  p_join_token: gameJoinToken,
 })
 if (regErr) {
   console.error('register_team failed', regErr.message)
@@ -186,6 +188,28 @@ ok('register_team выдаёт session_token')
     upsert: false,
   })
   expectFail('SEC-015: anon upload answer-media → отказ', error)
+}
+
+// SEC-019: register_team без join_token
+{
+  const { error } = await supabase.rpc('register_team', {
+    p_game_id: gameId,
+    p_team_name: 'NoJoin',
+    p_captain_name: 'Bot',
+  })
+  expectFail('SEC-019: register_team без join_token → отказ', error)
+}
+
+// SEC-018: recover по имени без валидного session_token
+{
+  const { error } = await supabase.rpc('recover_team_session', {
+    p_game_id: gameId,
+    p_team_name: 'SecTest',
+    p_captain_name: 'Bot',
+    p_session_token: 'fake-session-token',
+    p_join_token: gameJoinToken,
+  })
+  expectFail('SEC-018: recover с неверным session_token → отказ', error)
 }
 
 // SEC-017: anon process_game_schedule

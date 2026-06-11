@@ -9,22 +9,19 @@ import {
   setTeamSessionToken,
   type RegisterTeamRpcRow,
 } from './teamSession'
-import { readStoredCurrentTeam } from './playerSession'
+import { readGameJoinToken, readStoredCurrentTeam } from './playerSession'
+import { normalizeJoinToken } from './joinToken'
 
 export type RegisterTeamInput = {
   gameId: string
   gameCode: string
+  joinToken: string
   teamName: string
   captainName: string
   avatarFile: File | null
 }
 
-const TEAM_RETURN_COLUMNS =
-  'id, game_id, team_name, captain_name, name, avatar_url, avatar, registration_time, created_at, total_score'
-
 const RECOVERY_PAUSE_MS = 400
-const RECOVERY_LOOKUP_ATTEMPTS = 4
-const RECOVERY_LOOKUP_DELAYS_MS = [200, 400, 700, 1200]
 
 /** RPC register_team / unique index: название уже занято в этой игре. */
 export function isTeamNameTakenError(err: unknown): boolean {
@@ -38,6 +35,10 @@ export function isTeamNameTakenError(err: unknown): boolean {
 
 export function teamNameTakenUserMessage(): string {
   return 'Команда с таким названием уже зарегистрирована в этой игре. Выберите другое имя.'
+}
+
+export function joinTokenRequiredUserMessage(): string {
+  return 'Откройте ссылку регистрации из QR-кода организатора (параметр join в адресе).'
 }
 
 export function isTransientNetworkError(err: unknown): boolean {
@@ -70,18 +71,28 @@ export async function withTransientRetry<T>(
       await new Promise((r) => setTimeout(r, 500 * (i + 1)))
     }
   }
-  throw last
+  throw last instanceof Error ? last : new Error(String(last))
+}
+
+function requireJoinToken(joinToken: string): string {
+  const normalized = normalizeJoinToken(joinToken)
+  if (!normalized) {
+    throw new Error(joinTokenRequiredUserMessage())
+  }
+  return normalized
 }
 
 async function registerTeamViaRpc(
   gameId: string,
   teamName: string,
-  captainName: string
+  captainName: string,
+  joinToken: string
 ): Promise<{ team: RegisterTeamRpcRow; sessionToken: string }> {
   const { data, error } = await supabase.rpc('register_team', {
     p_game_id: gameId,
     p_team_name: teamName.trim(),
     p_captain_name: captainName.trim(),
+    p_join_token: requireJoinToken(joinToken),
   })
   if (error) throw new Error(error.message)
   const parsed = parseRegisterTeamRpc(data)
@@ -92,42 +103,21 @@ async function registerTeamViaRpc(
 async function recoverTeamSessionViaRpc(
   gameId: string,
   teamName: string,
-  captainName: string
+  captainName: string,
+  sessionToken: string,
+  joinToken: string
 ): Promise<{ team: RegisterTeamRpcRow; sessionToken: string }> {
   const { data, error } = await supabase.rpc('recover_team_session', {
     p_game_id: gameId,
     p_team_name: teamName.trim(),
     p_captain_name: captainName.trim(),
+    p_session_token: sessionToken,
+    p_join_token: requireJoinToken(joinToken),
   })
   if (error) throw new Error(error.message)
   const parsed = parseRegisterTeamRpc(data)
   if (!parsed) throw new Error('recover_team_session: invalid response')
   return parsed
-}
-
-async function findRegisteredTeam(gameId: string, teamName: string, captainName: string) {
-  for (let attempt = 0; attempt < RECOVERY_LOOKUP_ATTEMPTS; attempt++) {
-    if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, RECOVERY_LOOKUP_DELAYS_MS[attempt - 1] ?? 500))
-    }
-    const { data, error } = await supabase
-      .from('teams')
-      .select(TEAM_RETURN_COLUMNS)
-      .eq('game_id', gameId)
-      .eq('team_name', teamName.trim())
-      .eq('captain_name', captainName.trim())
-      .order('registration_time', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (!error && data) return data
-    if (error && !isTransientNetworkError(error)) {
-      agentDebugLog('teamRegister.ts', 'recover lookup failed', { msg: error.message }, 'H11')
-      return null
-    }
-  }
-  agentDebugLog('teamRegister.ts', 'recover lookup exhausted', { gameId }, 'H11')
-  return null
 }
 
 /** Вызов только внутри `enqueueCritical` (без повторной постановки в очередь). */
@@ -145,7 +135,12 @@ export async function registerTeamDirect(input: RegisterTeamInput) {
   let sessionToken: string
 
   try {
-    const result = await registerTeamViaRpc(input.gameId, input.teamName, input.captainName)
+    const result = await registerTeamViaRpc(
+      input.gameId,
+      input.teamName,
+      input.captainName,
+      input.joinToken
+    )
     team = result.team
     sessionToken = result.sessionToken
     agentDebugLog('teamRegister.ts', 'register rpc ok', { teamId: team.id }, 'H11')
@@ -155,28 +150,15 @@ export async function registerTeamDirect(input: RegisterTeamInput) {
     const netMsg = err instanceof Error ? err.message : String(err)
     agentDebugLog('teamRegister.ts', 'register network fail', { netMsg }, 'H11')
     await new Promise((r) => setTimeout(r, RECOVERY_PAUSE_MS))
-
-    try {
-      const recovered = await recoverTeamSessionViaRpc(
-        input.gameId,
-        input.teamName,
-        input.captainName
-      )
-      team = recovered.team
-      sessionToken = recovered.sessionToken
-      agentDebugLog('teamRegister.ts', 'recover session after fail', { teamId: team.id }, 'H11')
-    } catch {
-      const existing = await findRegisteredTeam(input.gameId, input.teamName, input.captainName)
-      if (!existing) throw err
-      const recovered2 = await recoverTeamSessionViaRpc(
-        input.gameId,
-        input.teamName,
-        input.captainName
-      )
-      team = recovered2.team
-      sessionToken = recovered2.sessionToken
-      agentDebugLog('teamRegister.ts', 'recover session after lookup', { teamId: team.id }, 'H11')
-    }
+    const retry = await registerTeamViaRpc(
+      input.gameId,
+      input.teamName,
+      input.captainName,
+      input.joinToken
+    )
+    team = retry.team
+    sessionToken = retry.sessionToken
+    agentDebugLog('teamRegister.ts', 'register retry ok', { teamId: team.id }, 'H11')
   }
 
   setTeamSessionToken(sessionToken, team.id)
@@ -195,15 +177,28 @@ export function registerTeam(input: RegisterTeamInput) {
   return enqueueCritical(() => registerTeamDirect(input))
 }
 
-/** Восстановить токен для уже зарегистрированной команды (обновление страницы без токена). */
+/** Восстановить токен только при валидном prior session token (IMP-SEC-018). */
 export async function recoverTeamSessionIfNeeded(
   gameId: string,
   teamName: string,
   captainName: string,
-  expectedTeamId?: string
+  expectedTeamId?: string,
+  joinToken?: string | null
 ): Promise<string | null> {
+  const resolvedJoin = joinToken ?? readGameJoinToken(gameId)
+  if (!resolvedJoin) return null
+
+  const priorToken = expectedTeamId ? getTeamSessionToken(expectedTeamId) : null
+  if (!priorToken) return null
+
   try {
-    const { team, sessionToken } = await recoverTeamSessionViaRpc(gameId, teamName, captainName)
+    const { team, sessionToken } = await recoverTeamSessionViaRpc(
+      gameId,
+      teamName,
+      captainName,
+      priorToken,
+      resolvedJoin
+    )
     if (expectedTeamId && team.id !== expectedTeamId) {
       debugLog('recoverTeamSession', 'team id mismatch', {
         expectedTeamId,
@@ -218,10 +213,11 @@ export async function recoverTeamSessionIfNeeded(
   }
 }
 
-/** Токен этой команды: из storage или recover по scoped current_team (не чужой вкладки). */
+/** Токен этой команды: из storage или recover по prior token + join (не чужой вкладки). */
 export async function ensureTeamSessionToken(
   gameId: string,
-  teamId: string
+  teamId: string,
+  joinToken?: string | null
 ): Promise<string | null> {
   const existing = getTeamSessionToken(teamId)
   if (existing) return existing
@@ -230,5 +226,5 @@ export async function ensureTeamSessionToken(
   const name = (team.name ?? team.team_name ?? '').trim()
   const captain = (team.captain_name ?? '').trim()
   if (!name || !captain) return null
-  return recoverTeamSessionIfNeeded(gameId, name, captain, teamId)
+  return recoverTeamSessionIfNeeded(gameId, name, captain, teamId, joinToken)
 }
