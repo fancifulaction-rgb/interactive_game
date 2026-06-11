@@ -5,7 +5,10 @@ import {
   levenshteinDistance,
   normalizeAnswerToken,
 } from './answerGrading'
-import { ANSWER_GRADING_BASELINE } from './answerGradingConfig'
+import {
+  ANSWER_GRADING_BASELINE,
+  validateGradingRegex,
+} from './answerGradingConfig'
 
 describe('normalizeAnswerToken', () => {
   it('ignores case and punctuation when configured', () => {
@@ -83,5 +86,26 @@ describe('levenshteinDistance', () => {
   it('returns edit distance', () => {
     expect(levenshteinDistance('кот', 'котик')).toBe(2)
     expect(extractCorrectAnswers(['A', 'B'])).toEqual(['a', 'b'])
+  })
+})
+
+describe('validateGradingRegex', () => {
+  it('accepts valid pattern and flags', () => {
+    expect(validateGradingRegex('^answer-\\d+$', 'i')).toEqual({ ok: true })
+  })
+
+  it('rejects empty pattern', () => {
+    expect(validateGradingRegex('  ').ok).toBe(false)
+  })
+
+  it('rejects invalid flags', () => {
+    const result = validateGradingRegex('test', 'x')
+    expect(result.ok).toBe(false)
+    if (result.ok === false) expect(result.error).toMatch(/флаги/i)
+  })
+
+  it('rejects invalid syntax', () => {
+    const result = validateGradingRegex('([unclosed')
+    expect(result.ok).toBe(false)
   })
 })

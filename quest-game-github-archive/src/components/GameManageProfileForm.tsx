@@ -14,7 +14,9 @@ import {
   ANSWER_GRADING_PRESETS,
   answerGradingStorageValue,
   presetAnswerGrading,
+  validateGradingRegex,
   type AnswerGradingPresetId,
+  type GradingRegexValidation,
   type TextMatchMode,
 } from '../lib/answerGradingConfig'
 import { mergeGameSettings } from '../lib/gameSettings'
@@ -105,8 +107,20 @@ export default function GameManageProfileForm({
     window.setTimeout(() => setStatusMessage(null), 4000)
   }
 
+  const regexValidation: GradingRegexValidation =
+    draft.answer_grading.text_match === 'regex'
+      ? validateGradingRegex(
+          draft.answer_grading.regex?.pattern ?? '',
+          draft.answer_grading.regex?.flags ?? ''
+        )
+      : { ok: true }
+
   const handleSave = async () => {
     if (!gameId) return
+    if (regexValidation.ok === false) {
+      alert(`Исправьте regex: ${regexValidation.error}`)
+      return
+    }
     setSaving(true)
     try {
       await saveGameProfile(gameId, draft, existingSettings)
@@ -430,6 +444,11 @@ export default function GameManageProfileForm({
                     i — без учёта регистра (как ~* в Postgres).
                   </p>
                 </div>
+                {regexValidation.ok === false && (
+                  <p className="sm:col-span-2 text-sm text-red-700" role="alert">
+                    {regexValidation.error}
+                  </p>
+                )}
               </>
             )}
           </div>

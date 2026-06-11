@@ -39,7 +39,11 @@ import CollapsibleSection from '../components/CollapsibleSection'
 import MediaLayoutComposer from '../components/MediaLayoutComposer'
 import { canToggleQuestionHidden, type GameStateRow } from '../lib/gameSessionState'
 import {
+  ANSWER_GRADING_BASELINE,
+  mergeQuestionAnswerGrading,
   parseQuestionGradingOverride,
+  summarizeAnswerGradingConfig,
+  validateGradingRegex,
   type AnswerGradingRouting,
   type QuestionGradingOverride,
   type TextMatchMode,
@@ -475,6 +479,18 @@ export default function GameEditor() {
           return
         }
       }
+
+      const ov = question.grading_override
+      if (ov?.text_match === 'regex') {
+        const rxCheck = validateGradingRegex(
+          ov.regex?.pattern ?? '',
+          ov.regex?.flags ?? ''
+        )
+        if (rxCheck.ok === false) {
+          alert(`Вопрос ${i + 1}: ${rxCheck.error}`)
+          return
+        }
+      }
     }
 
     setSaving(true)
@@ -906,6 +922,7 @@ export default function GameEditor() {
   }
 
   const gameSettings = parseGameSettings(game?.settings)
+  const gameAnswerGrading = gameSettings.answer_grading ?? ANSWER_GRADING_BASELINE
   const safeGame = {
     total_time_sec: normalizeTotalTimeSec(game?.total_time_sec),
     per_question_time_sec: normalizeQuestionTimeSec(game?.per_question_time_sec),
@@ -1606,49 +1623,63 @@ export default function GameEditor() {
                             <option value="manual">Только модератор</option>
                           </select>
                         </div>
-                        {question.grading_override.text_match === 'regex' && (
-                          <>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                Regex-паттерн
-                              </label>
-                              <input
-                                type="text"
-                                value={question.grading_override.regex?.pattern ?? ''}
-                                onChange={(e) =>
-                                  patchGradingOverride(qIndex, {
-                                    regex: {
-                                      pattern: e.target.value,
-                                      flags:
-                                        question.grading_override?.regex?.flags ?? '',
-                                    },
-                                  })
-                                }
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                Флаги
-                              </label>
-                              <input
-                                type="text"
-                                value={question.grading_override.regex?.flags ?? ''}
-                                onChange={(e) =>
-                                  patchGradingOverride(qIndex, {
-                                    regex: {
-                                      pattern:
-                                        question.grading_override?.regex?.pattern ?? '',
-                                      flags: e.target.value,
-                                    },
-                                  })
-                                }
-                                placeholder="i"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-                              />
-                            </div>
-                          </>
-                        )}
+                        {question.grading_override.text_match === 'regex' && (() => {
+                          const rxValidation = validateGradingRegex(
+                            question.grading_override?.regex?.pattern ?? '',
+                            question.grading_override?.regex?.flags ?? ''
+                          )
+                          return (
+                            <>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                  Regex-паттерн
+                                </label>
+                                <input
+                                  type="text"
+                                  value={question.grading_override.regex?.pattern ?? ''}
+                                  onChange={(e) =>
+                                    patchGradingOverride(qIndex, {
+                                      regex: {
+                                        pattern: e.target.value,
+                                        flags:
+                                          question.grading_override?.regex?.flags ?? '',
+                                      },
+                                    })
+                                  }
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                  Флаги
+                                </label>
+                                <input
+                                  type="text"
+                                  value={question.grading_override.regex?.flags ?? ''}
+                                  onChange={(e) =>
+                                    patchGradingOverride(qIndex, {
+                                      regex: {
+                                        pattern:
+                                          question.grading_override?.regex?.pattern ?? '',
+                                        flags: e.target.value,
+                                      },
+                                    })
+                                  }
+                                  placeholder="i"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                                />
+                              </div>
+                              {rxValidation.ok === false && (
+                                <p
+                                  className="sm:col-span-2 text-xs text-red-700"
+                                  role="alert"
+                                >
+                                  {rxValidation.error}
+                                </p>
+                              )}
+                            </>
+                          )
+                        })()}
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">
                             Штраф пересдачи (%)
@@ -1672,6 +1703,30 @@ export default function GameEditor() {
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                           />
+                        </div>
+                        <div className="sm:col-span-2 rounded border border-gray-200 bg-white p-3">
+                          <p className="text-xs font-medium text-gray-800 mb-1">
+                            Эффективные настройки
+                          </p>
+                          <ul className="list-disc ml-4 text-xs text-gray-600 space-y-0.5">
+                            {summarizeAnswerGradingConfig(
+                              mergeQuestionAnswerGrading(
+                                gameAnswerGrading,
+                                question.grading_override
+                              )
+                            ).map((line) => (
+                              <li key={line}>{line}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <button
+                            type="button"
+                            onClick={() => patchGradingOverride(qIndex, null)}
+                            className="text-xs text-purple-700 hover:text-purple-900 underline"
+                          >
+                            Сбросить override
+                          </button>
                         </div>
                       </div>
                     )}

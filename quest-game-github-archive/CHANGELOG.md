@@ -8,13 +8,17 @@
 ## [Unreleased]
 
 ### Добавлено
+- IMP-PRD-010 (этап 2): мульти-медиа — раскладки, timeline playback, HostLiveCuePanel, MediaLayoutComposer
+- IMP-SEC-008: migration `034` — REVOKE прямого вызова `increment_team_score` для anon/authenticated
+- Grading UX G2–G3: `validateGradingRegex`, превью эффективного cfg и сброс override в GameEditor
 - IMP-UX-009: уникальные ссылки регистрации `games.join_token` — QR и «Скопировать ссылку» ведут на `/team/register?join=<uuid>`; lookup по токену; новый токен при клоне игры (migrate `032`)
 - IMP-ADM-004: скрытие вопросов без удаления — `questions.is_hidden`, view `questions_player` (migrate `027`)
 - IMP-PRD-009 (этап 1): мульти-медиа вопросов и подсказок — `media_items` / `hints` JSONB, carousel в GamePlay, multi-upload и сжатие в редакторе (migrate `030`–`031`)
 
 ### Изменено
 - IMP-TD-002: убран ingest :7862 / `__debug_ingest`; `agentDebugLog` → `collectClientLog`; IMP-PRD-011 (логотип, был дубликат IMP-PRD-007)
-- Документация: `ROADMAP.md` §«Фаза 4», `ARCHITECTURE` (poll табло 20 с), `TEST_BACKLOG` prod (миграции до 032), `MANUAL_QA_CHECKLIST` (QA-B07, QA-C02b, grading)
+- Документация: `ROADMAP.md` спринт 5 (P0 prod / P1 / P2), `OPERATIONS.md` (миграции до 034), `TEST_BACKLOG` / `MANUAL_QA_CHECKLIST`
+- CI: `npm run test:api` (security-smoke, join/hidden/grading e2e scripts)
 
 ### Исправлено
 - Возврат в активную игру после «Назад» из регистрации в браузере

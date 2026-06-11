@@ -5,9 +5,11 @@
 ## За 1–3 дня до события
 
 - [ ] Supabase проект **Active** (не Paused)
-- [ ] Миграции 001–009 применены
+- [ ] Миграции **001–034** применены (`npm run db:migrate` + `npm run db:verify-schema`)
+- [ ] После migrate: **Reload schema** в Supabase Dashboard → Settings → API
 - [ ] Realtime publication включена
-- [ ] Edge Functions `player-upload`, `delete-game` задеплоены — см. [§ Edge Functions](#edge-functions)
+- [ ] Edge Functions `player-upload`, `delete-game`, `generate-questions` задеплоены — см. [§ Edge Functions](#edge-functions)
+- [ ] `npm run test:api` и `npm run edge:verify` на prod URL (security smoke 8/8)
 - [ ] Создана игра, код записан (например на бумаге для ведущего)
 - [ ] Все вопросы сохранены, превью в GameEditor
 - [ ] Тестовая команда прошла квест на телефоне
@@ -58,7 +60,7 @@
 
 ## Edge Functions
 
-Продакшен-функции: `player-upload` (upload с service role), `delete-game` (игра + Storage).
+Продакшен-функции: `player-upload` (upload с service role), `delete-game` (игра + Storage), `generate-questions` (AI-генерация вопросов, опционально).
 
 **Деплой (один раз или после изменений в `supabase/functions/`):**
 

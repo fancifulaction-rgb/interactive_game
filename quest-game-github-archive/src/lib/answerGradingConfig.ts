@@ -402,3 +402,70 @@ export function answerGradingStorageValue(
 ): AnswerGradingConfig | undefined {
   return detectAnswerGradingPreset(config) === 'strict' ? undefined : config
 }
+
+const VALID_REGEX_FLAG_CHARS = /^[gimsuy]*$/
+
+export type GradingRegexValidation =
+  | { ok: true }
+  | { ok: false; error: string }
+
+/** G2: валидация regex до сохранения профиля / override. */
+export function validateGradingRegex(
+  pattern: string,
+  flags = ''
+): GradingRegexValidation {
+  const trimmed = pattern.trim()
+  if (!trimmed) {
+    return { ok: false, error: 'Укажите regex-паттерн' }
+  }
+  if (flags && !VALID_REGEX_FLAG_CHARS.test(flags)) {
+    return {
+      ok: false,
+      error: 'Недопустимые флаги (допустимы: g i m s u y)',
+    }
+  }
+  try {
+    // eslint-disable-next-line no-new -- intentional syntax check
+    new RegExp(trimmed, flags)
+    return { ok: true }
+  } catch (err: unknown) {
+    const msg =
+      err instanceof Error ? err.message : 'Некорректное регулярное выражение'
+    return { ok: false, error: msg }
+  }
+}
+
+const TEXT_MATCH_LABELS: Record<TextMatchMode, string> = {
+  strict: 'Точное совпадение',
+  fuzzy: 'Опечатки (fuzzy)',
+  keywords: 'Ключевые слова',
+  numeric: 'Число с допуском',
+  regex: 'Регулярное выражение',
+}
+
+const ROUTING_LABELS: Record<AnswerGradingRouting, string> = {
+  auto: 'Авто',
+  hybrid: 'Гибрид',
+  manual: 'Только модератор',
+}
+
+/** G3: краткое превью эффективного конфига после merge с игрой. */
+export function summarizeAnswerGradingConfig(
+  cfg: AnswerGradingConfig
+): string[] {
+  const lines: string[] = [
+    `Текст: ${TEXT_MATCH_LABELS[cfg.text_match]}`,
+    `Маршрут: ${ROUTING_LABELS[cfg.routing]}`,
+  ]
+  if (cfg.text_match === 'regex' && cfg.regex?.pattern?.trim()) {
+    const flagSuffix = cfg.regex.flags ? cfg.regex.flags : ''
+    lines.push(`Regex: /${cfg.regex.pattern.trim()}/${flagSuffix}`)
+  }
+  if (cfg.resubmit?.penalty_percent) {
+    lines.push(`Штраф пересдачи: ${cfg.resubmit.penalty_percent}%`)
+  }
+  if (cfg.jury?.enabled) {
+    lines.push(`Жюри: ${cfg.jury.required_votes} голосов`)
+  }
+  return lines
+}
