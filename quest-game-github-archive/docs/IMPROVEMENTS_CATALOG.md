@@ -26,7 +26,7 @@
 | IMP-INF-002 | Deploy `delete-game` | Удаление игры + Storage без сирот | DATA_LIFECYCLE | 1 | done |
 | IMP-INF-003 | RPC `increment_team_score` | Атомарный UPDATE счёта в Postgres | Quizz, best practice | 1 | done |
 | IMP-INF-004 | Docker Compose self-host | `docker compose up` — nginx + dist, `.env.docker.example`, [DOCKER_COMPOSE.md](DOCKER_COMPOSE.md) | Quizz, ClassQuiz | 3 | done |
-| IMP-INF-005 | CI build + e2e | GitHub Actions на PR | Standard | 1 | done |
+| IMP-INF-005 | CI build + tests | GHA: `test:unit`, `build`, Playwright E2E, `e2e-game-flow.mjs` | Standard | 1 | done |
 | IMP-INF-006 | Load test 20–100 VU | k6/Artillery, отчёт LOAD_TEST | QuizLive scale | 3 | proposed |
 | IMP-INF-007 | CDN / Image Transform | Supabase transform или Cloudflare перед Storage | Production | 3 | proposed |
 | IMP-INF-008 | Мониторинг 429/reset | Алерты Supabase Dashboard + runbook | Operations | 1 | done |

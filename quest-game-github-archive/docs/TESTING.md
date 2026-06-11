@@ -83,16 +83,18 @@ npm run db:test-connection
 
 Не добавлять параллельные `supabase.from()` на пути ответа без `requestQueue`.
 
-## CI (рекомендация, IMP-INF-005)
+## CI (IMP-INF-005)
 
-```yaml
-# пример
-- run: npm run build
-- run: node scripts/e2e-game-flow.mjs
-  env:
-    VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-    SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SERVICE_ROLE }}
-```
+Workflow: `.github/workflows/ci.yml` на каждый push/PR в `main`:
+
+1. `npm run test:unit` — Vitest (`scoring.test.ts`)
+2. `npm run build`
+3. `npm run test:e2e` — Playwright (smoke + `full-game-flow.spec.ts`)
+4. `node scripts/e2e-game-flow.mjs` — API smoke
+
+Секреты репозитория: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (см. `npm run ci:secrets`).
+
+Локально полный UI-сценарий: `npm run test:e2e` при запущенном `npm run dev` или без него (Playwright поднимет Vite сам).
 
 ## Связанные документы
 
