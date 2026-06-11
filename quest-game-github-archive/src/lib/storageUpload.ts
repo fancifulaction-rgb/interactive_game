@@ -185,7 +185,7 @@ export function uploadAnswerMediaQueued(
   gameId: string,
   options?: AnswerMediaUploadOptions
 ): Promise<string> {
-  return enqueueCritical(() => uploadAnswerMediaInner(file, gameId, options))
+  return enqueueBackground(() => uploadAnswerMediaInner(file, gameId, options))
 }
 
 export type QuestionMediaUploadOptions = {
