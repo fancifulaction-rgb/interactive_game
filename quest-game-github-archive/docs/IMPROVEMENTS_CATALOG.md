@@ -116,6 +116,7 @@
 | IMP-PRD-008 | Расширить оповещения админа | Broadcast всем игрокам | BACKLOG | proposed | proposed |
 | IMP-PRD-009 | Мульти-медиа вопросов и подсказок (этап 1) | `media_items` / `hints` JSONB; carousel в GamePlay; multi-upload + сжатие в редакторе; migrate 030–031 | Plan multi-media | 1 | done |
 | IMP-PRD-010 | Мульти-медиа (этап 2): layout / timeline / live-cue | Композитор раскладки, таймлайн подсказок, пульт ведущего | Plan multi-media | post | done |
+| IMP-PRD-012 | Режим презентации ведущего (этап 3 медиа) | Глобальный режим игры: экран ведущего (слайды), автокарусель по таймеру, стиль игры (авто/игрок/ведущий); не per-file live-cue | QA-B03c feedback 2026-06-11 | 6+ | proposed |
 
 ---
 

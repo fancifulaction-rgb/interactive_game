@@ -8,17 +8,24 @@ export function hasCustomLayout(items: QuestionMediaItem[]): boolean {
   return items.some((i) => i.layout != null)
 }
 
+export function canUseSideBySideLayout(count: number): boolean {
+  return count === 2
+}
+
 function box(x: number, y: number, w: number, h: number, zIndex?: number): MediaLayoutBox {
   return { x, y, w, h, zIndex }
+}
+
+function layoutMatches(a: MediaLayoutBox, b: MediaLayoutBox): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h && (a.zIndex ?? 0) === (b.zIndex ?? 0)
 }
 
 /** Раскладка по пресету (проценты 0–100 от контейнера). */
 export function layoutBoxesForPreset(count: number, preset: MediaLayoutPreset): MediaLayoutBox[] {
   if (preset === 'full' || count <= 1) return [box(0, 0, 100, 100)]
-  if (preset === 'sideBySide' && count >= 2) {
-    return Array.from({ length: count }, (_, i) =>
-      box(i % 2 === 0 ? 0 : 50, 0, 50, 100, i)
-    )
+  if (preset === 'sideBySide') {
+    if (count !== 2) return []
+    return [box(0, 0, 50, 100, 0), box(50, 0, 50, 100, 1)]
   }
   if (preset === 'stack' && count >= 2) {
     const h = Math.floor(100 / count)
@@ -47,10 +54,36 @@ export function applyLayoutPreset(
   }
   const sorted = [...items].sort((a, b) => a.order - b.order)
   const boxes = layoutBoxesForPreset(sorted.length, preset)
+  if (!boxes.length) return sorted
   return sorted.map((item, i) => ({
     ...item,
     layout: boxes[i] ?? box(0, 0, 100, 100, i),
   }))
+}
+
+/** Определяет активный пресет по сохранённым layout (для подсветки в редакторе). */
+export function inferLayoutPreset(items: QuestionMediaItem[]): MediaLayoutPreset | null {
+  const sorted = [...items].sort((a, b) => a.order - b.order)
+  if (!sorted.length) return null
+  if (!hasCustomLayout(sorted)) return 'carousel'
+
+  const candidates: MediaLayoutPreset[] =
+    sorted.length === 1
+      ? ['full', 'carousel']
+      : ['sideBySide', 'grid2', 'stack', 'full']
+
+  for (const preset of candidates) {
+    if (preset === 'sideBySide' && !canUseSideBySideLayout(sorted.length)) continue
+    const boxes = layoutBoxesForPreset(sorted.length, preset)
+    if (!boxes.length) continue
+    const matches = sorted.every((item, i) => {
+      const layout = item.layout
+      if (!layout) return false
+      return layoutMatches(layout, boxes[i])
+    })
+    if (matches) return preset
+  }
+  return null
 }
 
 export function assignDefaultLayouts(items: QuestionMediaItem[]): QuestionMediaItem[] {

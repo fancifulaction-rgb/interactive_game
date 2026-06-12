@@ -256,12 +256,12 @@
   3. Файлу триггер «Пульт ведущего» → `/host/:code` во время игры → «Пульт медиа» → кнопка показа → у игрока на этом вопросе медиа появляется.
   4. Игра без layout/playback — как раньше (карусель).
 - **Ожидание:** раскладка на экране игрока; delayed/manual cue работают; legacy без правил playback не меняется.
-- **Что вижу / комментарий:**
+- **Что вижу / комментарий:** 
 
 ```
 ```
 
-- **Ответ агента:** **Автопроверка (агент, 2026-06-11):** `MediaLayoutComposer`, `QuestionMediaStage`, `HostLiveCuePanel`, broadcast `media_cue`; unit `mediaPlayback.test.ts`; build + e2e 6/6 OK.
+- **Ответ агента:** **Автопроверка (агент, 2026-06-11):** `MediaLayoutComposer`, `QuestionMediaStage`, `HostLiveCuePanel`, broadcast `media_cue`; unit `mediaPlayback.test.ts`; build + e2e 6/6 OK. **UX (2026-06-11):** подсветка пресета, подсказки, «Рядом» только для 2 файлов; автокарусель и глобальный пульт ведущего → **IMP-PRD-012** (proposed).
 
 ---
 
