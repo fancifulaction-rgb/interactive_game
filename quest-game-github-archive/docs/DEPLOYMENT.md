@@ -52,6 +52,78 @@ docker compose up -d --build
 | `VITE_SUPABASE_ANON_KEY` | CI/CD и `.env` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Только CLI / Edge Functions / локальные скрипты |
 
+## Prod: igriva.ru (GitHub → VPS, без ручного SFTP)
+
+Бэкенд — Supabase Cloud. На VPS только статика из `dist/` в `/var/www/igriva`.
+Визитка `strelin-andrey.ru` в `/var/www/site_visitka_strelin` **не трогаем**.
+
+### Цикл разработки
+
+| Этап | Где | Действие |
+|------|-----|----------|
+| 1. Разработка | ПК | `npm run dev`, тесты, `.env` с LAN/`localhost` |
+| 2. Публикация кода | GitHub | `git push origin main` (после коммита) |
+| 3. Выкладка на prod | VPS (MobaXterm SSH) | одна команда — см. ниже |
+
+### Один раз: подготовка VPS
+
+На сервере `31.207.75.94` (SSH root или ваш пользователь):
+
+```bash
+# Node 20 LTS (если node -v < 18)
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y nodejs git rsync
+
+mkdir -p /opt
+cd /opt
+git clone https://github.com/fancifulaction-rgb/interactive_game.git quest-game
+cd quest-game/quest-game-github-archive
+cp .env.production.example .env.production
+nano .env.production   # VITE_SUPABASE_ANON_KEY + VITE_PUBLIC_URL=https://igriva.ru
+```
+
+Приватный репозиторий: настройте [Deploy key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys) или `git clone git@github.com:...` с SSH-ключом на VPS.
+
+Проверка первого деплоя:
+
+```bash
+bash scripts/deploy-prod-frontend.sh
+```
+
+### Каждое обновление prod (после push в GitHub)
+
+В MobaXterm, SSH на VPS:
+
+```bash
+bash /opt/quest-game/quest-game-github-archive/scripts/deploy-prod-frontend.sh
+```
+
+Скрипт: `git pull` → `npm ci` → `npm run build` → `rsync` в `/var/www/igriva` → права `www-data`.
+
+Опционально — короткий алиас в `~/.bashrc` на сервере:
+
+```bash
+alias igriva-deploy='bash /opt/quest-game/quest-game-github-archive/scripts/deploy-prod-frontend.sh'
+```
+
+### Локальный `.env` vs серверный `.env.production`
+
+| Файл | Где | Назначение |
+|------|-----|------------|
+| `.env` | только ПК | dev: `VITE_PUBLIC_URL` = LAN или пусто |
+| `.env.production` | только VPS | prod: `VITE_PUBLIC_URL=https://igriva.ru` |
+
+Оба в `.gitignore` — секреты не попадают в GitHub.
+
+### Edge / SQL (редко, не каждый фронт-релиз)
+
+С ПК при изменении бэкенда:
+
+```bash
+npm run edge:deploy          # Edge Functions
+npm run db:migrate           # миграции (осторожно на prod)
+```
+
 ## Чеклист перед мероприятием
 
 - [ ] Проект Supabase активен (не Paused)

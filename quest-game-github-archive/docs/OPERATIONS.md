@@ -5,11 +5,11 @@
 ## За 1–3 дня до события
 
 - [ ] Supabase проект **Active** (не Paused)
-- [ ] Миграции **001–034** применены (`npm run db:migrate` + `npm run db:verify-schema`)
-- [ ] После migrate: **Reload schema** в Supabase Dashboard → Settings → API
+- [ ] Миграции **001–041** применены на облаке (`npm run db:migrate` + `npm run db:verify-schema` — журнал и DDL)
+- [ ] После migrate: **обновить кэш PostgREST** (см. [§ Reload PostgREST schema](#reload-postgrest-schema)) — иначе REST может не видеть новые RPC/view
 - [ ] Realtime publication включена
 - [ ] Edge Functions `player-upload`, `delete-game`, `generate-questions` задеплоены — см. [§ Edge Functions](#edge-functions)
-- [ ] `npm run test:api` и `npm run edge:verify` на prod URL (security smoke 8/8)
+- [ ] `npm run test:api`, `npm run edge:verify` и `node scripts/security-smoke.mjs` на prod (14 проверок SEC-013–019, S3–S5)
 - [ ] Создана игра, код записан (например на бумаге для ведущего)
 - [ ] Все вопросы сохранены, превью в GameEditor
 - [ ] Тестовая команда прошла квест на телефоне
@@ -58,6 +58,30 @@
 - [ ] Удалить тестовые игры или вызвать `delete-game`
 - [x] Архив заездов — IMP-DATA-001 (`npm run db:migrate:014`)
 
+## Reload PostgREST schema
+
+PostgREST кэширует метаданные БД. После DDL (миграции, новые RPC/view) кэш нужно обновить.
+
+**Предпочтительно (агент через Supabase MCP):** SQL в проекте:
+
+```sql
+NOTIFY pgrst, 'reload schema';
+```
+
+Проверка: `npm run db:verify-schema` (блок PostgREST RPC) и `node scripts/security-smoke.mjs`.
+
+**Вручную в Dashboard (если кнопка есть):**
+
+1. [supabase.com/dashboard](https://supabase.com/dashboard) → проект `tvytsnnujaucoluoyvjq`
+2. Слева **Project Settings** (шестерёнка внизу) → **Infrastructure**
+3. Секция **PostgREST** / **PostgREST Health** → **Reload schema cache**
+
+Старая кнопка **Settings → API → Reload schema** в новом Studio часто **отсутствует** — это нормально, используйте SQL выше.
+
+Альтернатива: **SQL Editor** → New query → `NOTIFY pgrst, 'reload schema';` → Run.
+
+Если после NOTIFY всё ещё PGRST204/PGRST205: подождать ~1 мин, повторить NOTIFY; в крайнем случае **Infrastructure → Restart PostgREST** (краткий downtime API).
+
 ## Edge Functions
 
 Продакшен-функции: `player-upload` (upload с service role), `delete-game` (игра + Storage), `generate-questions` (AI-генерация вопросов, опционально).
@@ -78,7 +102,10 @@ npm run edge:verify
 
 Ожидается HTTP ≠ 404 для обеих функций. Клиент: `storageUpload.ts` fallback на `player-upload` при ошибке Storage; `deleteGame.ts` — Edge с fallback на CASCADE.
 
-Секреты в Dashboard → Edge Functions → Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+Секреты в Dashboard → Edge Functions → Secrets:
+
+- Обязательно: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (`player-upload`, `delete-game`)
+- Для AI (`generate-questions`, IMP-PRD-002): хотя бы один из `GROQ_API_KEY`, `DASHSCOPE_API_KEY`, `DEEPSEEK_API_KEY` (не в `VITE_*`, только Edge)
 
 **CI e2e (GitHub Actions):** один раз после `gh auth login`:
 

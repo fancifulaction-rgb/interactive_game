@@ -18,6 +18,8 @@
     "dev": "npm install && vite",
     "build": "npm install && tsc -b && vite build",
     "build:prod": "npm install && tsc -b && BUILD_MODE=prod vite build",
+    "build:verify-prod": "npm run build && node scripts/verify-prod-bundle.mjs",
+    "deploy:prod-frontend": "bash scripts/deploy-prod-frontend.sh",
     "lint": "npm install && eslint .",
     "preview": "npm install && vite preview",
     "clean": "rm -rf node_modules package-lock.json && npm cache clean --force",

@@ -6,6 +6,7 @@ offline_docs/
 .env.*
 !.env.example
 !.env.docker.example
+!.env.production.example
 **/Supabase.txt
 
 # Зависимости и сборка
