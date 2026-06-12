@@ -30,8 +30,8 @@ git pull --ff-only origin "$GIT_BRANCH"
 
 echo "==> npm ci + build в $APP_DIR"
 cd "$APP_DIR"
-export NODE_ENV=production
-npm ci
+# devDependencies нужны для tsc/vite build; vite сам собирает production bundle
+npm ci --include=dev
 npm run build
 
 [[ -d dist ]] || die "dist/ не создан — проверьте npm run build"
